@@ -36,4 +36,22 @@ interface IBlueBundles {
         uint256 referralFeePct,
         address referralFeeRecipient
     ) external;
+
+    function supply(
+        MarketParams memory marketParams,
+        uint256 assets,
+        address onBehalf,
+        TokenPermit memory loanTokenPermit,
+        uint256 referralFeePct,
+        address referralFeeRecipient
+    ) external;
+
+    function withdraw(
+        MarketParams memory marketParams,
+        uint256 withdrawAssets,
+        address onBehalf,
+        address receiver,
+        uint256 referralFeePct,
+        address referralFeeRecipient
+    ) external;
 }
