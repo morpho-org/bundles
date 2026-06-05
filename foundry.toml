@@ -1,0 +1,17 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+solc = "0.8.34"
+via_ir = true
+optimizer = true
+optimizer_runs = 999999
+evm_version = "osaka"
+bytecode_hash = "none"
+
+remappings = [
+    "midnight/=lib/midnight/src/",
+    "morpho-blue/=lib/morpho-blue/src/",
+    "forge-std/=lib/forge-std/src/",
+]

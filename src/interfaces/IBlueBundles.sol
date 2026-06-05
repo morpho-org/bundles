@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (c) 2025 Morpho Association
+pragma solidity >=0.5.0;
+
+import {MarketParams} from "morpho-blue/interfaces/IMorpho.sol";
+import {TokenPermit} from "../lib/BundlesUtils.sol";
+
+interface IBlueBundles {
+    /// ERRORS ///
+    error PctExceeded();
+    error Unauthorized();
+
+    /// STORAGE GETTERS ///
+    function PERMIT2() external view returns (address);
+    function BLUE() external view returns (address);
+
+    /// FUNCTIONS ///
+    function supplyCollateralAndBorrow(
+        MarketParams memory marketParams,
+        uint256 collateralAmount,
+        uint256 borrowAssets,
+        address onBehalf,
+        address receiver,
+        TokenPermit memory collateralPermit,
+        uint256 referralFeePct,
+        address referralFeeRecipient
+    ) external;
+
+    function repayAndWithdrawCollateral(
+        MarketParams memory marketParams,
+        uint256 repayAssets,
+        uint256 withdrawCollateralAssets,
+        address onBehalf,
+        address receiver,
+        TokenPermit memory loanTokenPermit,
+        uint256 referralFeePct,
+        address referralFeeRecipient
+    ) external;
+}

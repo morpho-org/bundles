@@ -1,0 +1,7 @@
+out/
+cache/
+broadcast/
+.env
+*.swp
+.DS_Store
+node_modules/
