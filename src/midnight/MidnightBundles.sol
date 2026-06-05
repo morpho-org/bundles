@@ -11,13 +11,13 @@ import {
     CollateralSupply,
     TokenPermit,
     PermitKind
-} from "./interfaces/IMidnightBundles.sol";
-import {IERC20Permit} from "./interfaces/IERC20Permit.sol";
-import {IPermit2} from "./interfaces/IPermit2.sol";
+} from "./IMidnightBundles.sol";
+import {IERC20Permit} from "../interfaces/IERC20Permit.sol";
+import {IPermit2} from "../interfaces/IPermit2.sol";
 import {UtilsLib} from "midnight/libraries/UtilsLib.sol";
 import {SafeTransferLib} from "midnight/libraries/SafeTransferLib.sol";
-import {TakeAmountsLib} from "./lib/TakeAmountsLib.sol";
-import {ConsumableUnitsLib} from "./lib/ConsumableUnitsLib.sol";
+import {TakeAmountsLib} from "./TakeAmountsLib.sol";
+import {ConsumableUnitsLib} from "./ConsumableUnitsLib.sol";
 import {WAD} from "midnight/libraries/ConstantsLib.sol";
 
 /// @dev Inherits the token safety requirements of Midnight (see Midnight.sol).

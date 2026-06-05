@@ -18,11 +18,11 @@ struct TokenPermit {
     bytes data;
 }
 
-/// @title BundlesUtils
-/// @notice Shared helpers for bundle contracts: Permit2/ERC-2612 token pulls, USDT-safe max approvals.
-/// @dev Mirrors the inlined helpers in MidnightBundles so that BlueBundles (and future bundles) reuse the same logic
-/// without modifying MidnightBundles itself.
-library BundlesUtils {
+/// @title BlueBundlesUtils
+/// @notice BlueBundles' own helpers: Permit2/ERC-2612 token pulls, USDT-safe max approvals.
+/// @dev Mirrors the inlined helpers in MidnightBundles (the reference) without modifying it. Each bundle owns its
+/// utils, so this copy is independent of any other bundle's.
+library BlueBundlesUtils {
     error ApproveReturnedFalse();
 
     /// @dev Canonical Permit2 singleton.

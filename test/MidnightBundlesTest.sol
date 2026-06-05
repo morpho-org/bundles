@@ -2,7 +2,7 @@
 pragma solidity 0.8.34;
 
 import {Test} from "forge-std/Test.sol";
-import {MidnightBundles} from "../src/MidnightBundles.sol";
+import {MidnightBundles} from "../src/midnight/MidnightBundles.sol";
 
 contract MidnightBundlesTest is Test {
     function test_compilesAndReferencesContract() external pure {

@@ -3,12 +3,12 @@
 pragma solidity 0.8.34;
 
 import {IMorpho, MarketParams} from "morpho-blue/interfaces/IMorpho.sol";
-import {IBlueBundles} from "./interfaces/IBlueBundles.sol";
+import {IBlueBundles} from "./IBlueBundles.sol";
 import {IERC20} from "midnight/interfaces/IERC20.sol";
 import {SafeTransferLib} from "midnight/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "midnight/libraries/UtilsLib.sol";
 import {WAD} from "midnight/libraries/ConstantsLib.sol";
-import {BundlesUtils, TokenPermit} from "./lib/BundlesUtils.sol";
+import {BlueBundlesUtils, TokenPermit} from "./BlueBundlesUtils.sol";
 
 /// @dev Inherits the token safety requirements of Morpho Blue (see Morpho.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
@@ -46,8 +46,8 @@ contract BlueBundles is IBlueBundles {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
-        BundlesUtils.pullToken(marketParams.collateralToken, msg.sender, collateralAmount, collateralPermit);
-        BundlesUtils.forceApproveMax(marketParams.collateralToken, BLUE);
+        BlueBundlesUtils.pullToken(marketParams.collateralToken, msg.sender, collateralAmount, collateralPermit);
+        BlueBundlesUtils.forceApproveMax(marketParams.collateralToken, BLUE);
 
         IMorpho(BLUE).supplyCollateral(marketParams, collateralAmount, onBehalf, "");
         (uint256 borrowed,) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, onBehalf, address(this));
@@ -82,8 +82,8 @@ contract BlueBundles is IBlueBundles {
         uint256 referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD);
         uint256 toRepay = repayAssets - referralFeeAssets;
 
-        BundlesUtils.pullToken(marketParams.loanToken, msg.sender, repayAssets, loanTokenPermit);
-        BundlesUtils.forceApproveMax(marketParams.loanToken, BLUE);
+        BlueBundlesUtils.pullToken(marketParams.loanToken, msg.sender, repayAssets, loanTokenPermit);
+        BlueBundlesUtils.forceApproveMax(marketParams.loanToken, BLUE);
 
         IMorpho(BLUE).repay(marketParams, toRepay, 0, onBehalf, "");
 
