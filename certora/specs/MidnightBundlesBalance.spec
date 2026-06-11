@@ -11,6 +11,10 @@ methods {
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
     function TokenLib.pullToken(address token, address from, uint256 amount, MidnightBundles.TokenPermit memory permit) internal => summaryPullToken(token, from, amount);
 
+    // Those calls are assumed to not-reenter.
+    function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
+    function _.touchMarket(MidnightBundles.Market memory market) internal => NONDET;
+
     function _.toId(MidnightBundles.Market market) external => summaryToId(market) expect(bytes32);
     function _.take(MidnightBundles.Offer offer, bytes ratifierData, uint256 units, address taker, address receiverIfTakerIsSeller, address takerCallback, bytes takerCallbackData) external with(env e) => summaryTake(e.msg.sender, offer, taker, receiverIfTakerIsSeller, takerCallback) expect(uint256, uint256);
 }
@@ -23,12 +27,12 @@ function summaryToId(MidnightBundles.Market market) returns (bytes32) {
 
 ghost mapping(address => mapping(address => uint256)) tokenBalance;
 
-function summarySafeTransfer(address token, address to, uint256 amount) {
-    summarySafeTransferFrom(token, currentContract, to, amount);
-}
-
 function summaryPullToken(address token, address from, uint256 amount) {
     summarySafeTransferFrom(token, from, currentContract, amount);
+}
+
+function summarySafeTransfer(address token, address to, uint256 amount) {
+    summarySafeTransferFrom(token, currentContract, to, amount);
 }
 
 function summarySafeTransferFrom(address token, address from, address to, uint256 amount) {
