@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IMidnight, Market, Offer} from "midnight/interfaces/IMidnight.sol";
+import {IMidnight, Market, Offer} from "../../lib/midnight/src/interfaces/IMidnight.sol";
 import {
     IMidnightBundles,
     Take,
@@ -10,11 +10,11 @@ import {
     CollateralSupply
 } from "./IMidnightBundles.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
-import {UtilsLib} from "midnight/libraries/UtilsLib.sol";
-import {SafeTransferLib} from "midnight/libraries/SafeTransferLib.sol";
-import {TakeAmountsLib} from "midnight/periphery/TakeAmountsLib.sol";
-import {ConsumableUnitsLib} from "midnight/periphery/ConsumableUnitsLib.sol";
-import {WAD} from "midnight/libraries/ConstantsLib.sol";
+import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
+import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
+import {TakeAmountsLib} from "../../lib/midnight/src/periphery/TakeAmountsLib.sol";
+import {ConsumableUnitsLib} from "../../lib/midnight/src/periphery/ConsumableUnitsLib.sol";
+import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev Inherits the token safety requirements of Midnight (see Midnight.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).

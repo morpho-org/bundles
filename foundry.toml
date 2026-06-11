@@ -5,28 +5,16 @@ libs = ["lib"]
 test = "test"
 via_ir = true
 optimizer = true
-optimizer_runs = 999999
+optimizer_runs = 4294967295
 evm_version = "osaka"
 bytecode_hash = "none"
 
-remappings = [
-    "midnight/=lib/midnight/src/",
-    "morpho-blue/=lib/morpho-blue/src/",
-    "forge-std/=lib/forge-std/src/",
-]
-
 [[profile.default.additional_compiler_profiles]]
 name = "morpho"
-solc = "0.8.19"
-via_ir = true
 evm_version = "paris"
-
-[[profile.default.compilation_restrictions]]
-paths = "lib/morpho-blue/src/Morpho.sol"
-version = "0.8.19"
-evm_version = "paris"
+optimizer_runs = 999999
 
 [[profile.default.compilation_restrictions]]
 paths = "src/imports/MorphoImport.sol"
-version = "0.8.19"
+version = "=0.8.19"
 evm_version = "paris"

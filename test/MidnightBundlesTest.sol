@@ -2,10 +2,10 @@
 // Copyright (c) 2025 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Market, Offer, CollateralParams} from "midnight/interfaces/IMidnight.sol";
-import {UtilsLib} from "midnight/libraries/UtilsLib.sol";
-import {TickLib, MAX_TICK} from "midnight/libraries/TickLib.sol";
-import {WAD, ORACLE_PRICE_SCALE, DEFAULT_TICK_SPACING} from "midnight/libraries/ConstantsLib.sol";
+import {Market, Offer, CollateralParams} from "../lib/midnight/src/interfaces/IMidnight.sol";
+import {UtilsLib} from "../lib/midnight/src/libraries/UtilsLib.sol";
+import {TickLib, MAX_TICK} from "../lib/midnight/src/libraries/TickLib.sol";
+import {WAD, ORACLE_PRICE_SCALE, DEFAULT_TICK_SPACING} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";

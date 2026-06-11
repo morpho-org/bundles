@@ -2,13 +2,13 @@
 // Copyright (c) 2025 Morpho Association
 pragma solidity 0.8.34;
 
-import {IMorpho, MarketParams} from "morpho-blue/interfaces/IMorpho.sol";
 import {IBlueBundles} from "./IBlueBundles.sol";
-import {IERC20} from "midnight/interfaces/IERC20.sol";
-import {SafeTransferLib} from "midnight/libraries/SafeTransferLib.sol";
-import {UtilsLib} from "midnight/libraries/UtilsLib.sol";
-import {WAD} from "midnight/libraries/ConstantsLib.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
+import {IMorpho, MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {IERC20} from "../../lib/midnight/src/interfaces/IERC20.sol";
+import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
+import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
+import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev Inherits the token safety requirements of Morpho Blue (see Morpho.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).

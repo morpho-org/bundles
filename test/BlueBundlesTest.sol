@@ -2,14 +2,14 @@
 // Copyright (c) 2025 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "forge-std/Test.sol";
-import {IMorpho, MarketParams, Id} from "morpho-blue/interfaces/IMorpho.sol";
-import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
-import {MorphoLib} from "morpho-blue/libraries/periphery/MorphoLib.sol";
-import {MorphoBalancesLib} from "morpho-blue/libraries/periphery/MorphoBalancesLib.sol";
-import {ORACLE_PRICE_SCALE} from "morpho-blue/libraries/ConstantsLib.sol";
-import {OracleMock} from "morpho-blue/mocks/OracleMock.sol";
-import {WAD} from "midnight/libraries/ConstantsLib.sol";
+import {Test} from "../lib/forge-std/src/Test.sol";
+import {IMorpho, MarketParams, Id} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
+import {MorphoLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
+import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
+import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
+import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
+import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
 import {BlueBundles} from "../src/blue/BlueBundles.sol";

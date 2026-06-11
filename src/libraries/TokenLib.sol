@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IERC20} from "midnight/interfaces/IERC20.sol";
-import {SafeTransferLib} from "midnight/libraries/SafeTransferLib.sol";
+import {IERC20} from "../../lib/midnight/src/interfaces/IERC20.sol";
+import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {IERC20Permit} from "../interfaces/IERC20Permit.sol";
 import {IPermit2} from "../interfaces/IPermit2.sol";
 
