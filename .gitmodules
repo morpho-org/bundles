@@ -1,9 +1,0 @@
-[submodule "lib/midnight"]
-	path = lib/midnight
-	url = ../midnight-930
-[submodule "lib/morpho-blue"]
-	path = lib/morpho-blue
-	url = ../morpho-blue
-[submodule "lib/forge-std"]
-	path = lib/forge-std
-	url = https://github.com/foundry-rs/forge-std
