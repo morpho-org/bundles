@@ -249,8 +249,7 @@ contract BlueBundlesTest is Test {
         collateralToken.approve(PERMIT2, collateral);
         vm.stopPrank();
 
-        TokenPermit memory permit =
-            _permit2(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
+        TokenPermit memory permit = _permit2(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
         vm.prank(user);
         blueBundles.supplyCollateralAndBorrow(
             marketParams, collateral, borrowAssets, user, receiver, permit, 0, address(0)
@@ -267,8 +266,7 @@ contract BlueBundlesTest is Test {
         uint256 collateral = _collateralFor(borrowAssets);
         deal(address(collateralToken), user, collateral);
 
-        TokenPermit memory permit =
-            _permit(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
+        TokenPermit memory permit = _permit(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
         vm.prank(user);
         blueBundles.supplyCollateralAndBorrow(
             marketParams, collateral, borrowAssets, user, receiver, permit, 0, address(0)
@@ -342,9 +340,7 @@ contract BlueBundlesTest is Test {
 
         TokenPermit memory permit = _permit2(address(loanToken), user, repayAssets, 0, vm.getBlockTimestamp() + 1);
         vm.prank(user);
-        blueBundles.repayAndWithdrawCollateral(
-            marketParams, repayAssets, 0, user, receiver, permit, 0, address(0)
-        );
+        blueBundles.repayAndWithdrawCollateral(marketParams, repayAssets, 0, user, receiver, permit, 0, address(0));
 
         assertEq(loanToken.allowance(user, address(blueBundles)), 0);
         assertEq(loanToken.allowance(user, PERMIT2), 0);
@@ -421,9 +417,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    function testWithdrawWithReferralFee(uint256 supplyAssets, uint256 withdrawAssets, uint256 referralFeePct)
-        public
-    {
+    function testWithdrawWithReferralFee(uint256 supplyAssets, uint256 withdrawAssets, uint256 referralFeePct) public {
         supplyAssets = bound(supplyAssets, 1, 1e30);
         withdrawAssets = bound(withdrawAssets, 1, supplyAssets);
         referralFeePct = bound(referralFeePct, 0, WAD - 1);

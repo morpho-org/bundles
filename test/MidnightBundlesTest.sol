@@ -10,12 +10,7 @@ import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {MidnightBundles} from "../src/midnight/MidnightBundles.sol";
-import {
-    IMidnightBundles,
-    Take,
-    CollateralWithdrawal,
-    CollateralSupply
-} from "../src/midnight/IMidnightBundles.sol";
+import {IMidnightBundles, Take, CollateralWithdrawal, CollateralSupply} from "../src/midnight/IMidnightBundles.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
 import {BaseTest} from "../lib/midnight/test/BaseTest.sol";

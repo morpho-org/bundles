@@ -3,12 +3,7 @@
 pragma solidity 0.8.34;
 
 import {IMidnight, Market, Offer} from "../../lib/midnight/src/interfaces/IMidnight.sol";
-import {
-    IMidnightBundles,
-    Take,
-    CollateralWithdrawal,
-    CollateralSupply
-} from "./IMidnightBundles.sol";
+import {IMidnightBundles, Take, CollateralWithdrawal, CollateralSupply} from "./IMidnightBundles.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
