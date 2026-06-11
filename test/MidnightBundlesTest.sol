@@ -2,37 +2,81 @@
 // Copyright (c) 2025 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Market, Offer, CollateralParams} from "midnight/interfaces/IMidnight.sol";
-import {UtilsLib} from "midnight/libraries/UtilsLib.sol";
-import {TickLib, MAX_TICK} from "midnight/libraries/TickLib.sol";
-import {WAD, ORACLE_PRICE_SCALE, DEFAULT_TICK_SPACING} from "midnight/libraries/ConstantsLib.sol";
+import {Test} from "../lib/forge-std/src/Test.sol";
+import {Market, Offer, CollateralParams} from "../lib/midnight/src/interfaces/IMidnight.sol";
+import {UtilsLib} from "../lib/midnight/src/libraries/UtilsLib.sol";
+import {TickLib, MAX_TICK} from "../lib/midnight/src/libraries/TickLib.sol";
+import {
+    WAD,
+    ORACLE_PRICE_SCALE,
+    DEFAULT_TICK_SPACING,
+    maxSettlementFee,
+    maxLif
+} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
+import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
+import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
 import {MidnightBundles} from "../src/midnight/MidnightBundles.sol";
-import {
-    IMidnightBundles,
-    Take,
-    CollateralWithdrawal,
-    CollateralSupply
-} from "../src/midnight/IMidnightBundles.sol";
+import {IMidnightBundles, Take, CollateralWithdrawal, CollateralSupply} from "../src/midnight/IMidnightBundles.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
-import {BaseTest} from "../lib/midnight/test/BaseTest.sol";
 
-contract MidnightBundlesTest is BaseTest {
+contract MidnightBundlesTest is Test {
     using UtilsLib for uint256;
 
     address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
+    mapping(address => uint256) internal privateKey;
+
+    IMidnight internal midnight;
     MidnightBundles internal midnightBundles;
+    ERC20 internal loanToken;
+    ERC20 internal collateralToken1;
+    ERC20 internal collateralToken2;
+    Oracle internal oracle1;
+    Oracle internal oracle2;
+    DummyRatifier internal dummyRatifier;
+    address internal borrower;
+    address internal lender;
 
     Market internal market;
     bytes32 internal id;
     Offer[] internal offers;
 
-    function setUp() public override {
-        super.setUp();
+    function setUp() public {
+        midnight = IMidnight(deployCode("Midnight"));
+        dummyRatifier = new DummyRatifier();
+
+        midnight.setFeeSetter(address(this));
+        midnight.setTickSpacingSetter(address(this));
+
+        uint256 key;
+        (borrower, key) = makeAddrAndKey("borrower");
+        privateKey[borrower] = key;
+        (lender, key) = makeAddrAndKey("lender");
+        privateKey[lender] = key;
+
+        vm.prank(borrower);
+        midnight.setIsAuthorized(address(dummyRatifier), true, borrower);
+        vm.prank(lender);
+        midnight.setIsAuthorized(address(dummyRatifier), true, lender);
+
+        loanToken = new ERC20Permit("loan", "loan");
+        collateralToken1 = new ERC20Permit("collat1", "collat1");
+        collateralToken2 = new ERC20Permit("collat2", "collat2");
+        oracle1 = new Oracle();
+        oracle2 = new Oracle();
+
+        vm.prank(lender);
+        loanToken.approve(address(midnight), type(uint256).max);
+        vm.prank(borrower);
+        loanToken.approve(address(midnight), type(uint256).max);
+
+        loanToken.approve(address(midnight), type(uint256).max);
+        collateralToken1.approve(address(midnight), type(uint256).max);
+        collateralToken2.approve(address(midnight), type(uint256).max);
 
         midnightBundles = new MidnightBundles(address(midnight));
         assertEq(midnightBundles.MIDNIGHT(), address(midnight));
@@ -99,6 +143,32 @@ contract MidnightBundlesTest is BaseTest {
 
         vm.prank(lender);
         loanToken.approve(address(midnightBundles), type(uint256).max);
+    }
+
+    function collateralize(Market memory _market, address _borrower, uint256 debt) internal {
+        uint256 oraclePrice = Oracle(_market.collateralParams[0].oracle).price();
+        uint256 collateral =
+            debt.mulDivUp(WAD, _market.collateralParams[0].lltv).mulDivUp(ORACLE_PRICE_SCALE, oraclePrice);
+        deal(address(_market.collateralParams[0].token), _borrower, collateral);
+
+        vm.startPrank(_borrower);
+        ERC20(_market.collateralParams[0].token).approve(address(midnight), 0);
+        ERC20(_market.collateralParams[0].token).approve(address(midnight), collateral);
+        midnight.supplyCollateral(_market, 0, collateral, _borrower);
+        vm.stopPrank();
+    }
+
+    function sortCollateralParams(CollateralParams[] memory arr) internal pure returns (CollateralParams[] memory) {
+        for (uint256 i = 1; i < arr.length; i++) {
+            uint256 j = i;
+            while (j > 0 && bytes20(arr[j].token) < bytes20(arr[j - 1].token)) {
+                CollateralParams memory temp = arr[j];
+                arr[j] = arr[j - 1];
+                arr[j - 1] = temp;
+                j--;
+            }
+        }
+        return arr;
     }
 
     function _noPermit() internal pure returns (TokenPermit memory) {}

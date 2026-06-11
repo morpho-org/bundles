@@ -2,14 +2,14 @@
 // Copyright (c) 2025 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "forge-std/Test.sol";
-import {IMorpho, MarketParams, Id} from "morpho-blue/interfaces/IMorpho.sol";
-import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
-import {MorphoLib} from "morpho-blue/libraries/periphery/MorphoLib.sol";
-import {MorphoBalancesLib} from "morpho-blue/libraries/periphery/MorphoBalancesLib.sol";
-import {ORACLE_PRICE_SCALE} from "morpho-blue/libraries/ConstantsLib.sol";
-import {OracleMock} from "morpho-blue/mocks/OracleMock.sol";
-import {WAD} from "midnight/libraries/ConstantsLib.sol";
+import {Test} from "../lib/forge-std/src/Test.sol";
+import {IMorpho, MarketParams, Id} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
+import {MorphoLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
+import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
+import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
+import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
+import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
 import {BlueBundles} from "../src/blue/BlueBundles.sol";
@@ -249,8 +249,7 @@ contract BlueBundlesTest is Test {
         collateralToken.approve(PERMIT2, collateral);
         vm.stopPrank();
 
-        TokenPermit memory permit =
-            _permit2(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
+        TokenPermit memory permit = _permit2(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
         vm.prank(user);
         blueBundles.supplyCollateralAndBorrow(
             marketParams, collateral, borrowAssets, user, receiver, permit, 0, address(0)
@@ -267,8 +266,7 @@ contract BlueBundlesTest is Test {
         uint256 collateral = _collateralFor(borrowAssets);
         deal(address(collateralToken), user, collateral);
 
-        TokenPermit memory permit =
-            _permit(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
+        TokenPermit memory permit = _permit(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
         vm.prank(user);
         blueBundles.supplyCollateralAndBorrow(
             marketParams, collateral, borrowAssets, user, receiver, permit, 0, address(0)
@@ -342,9 +340,7 @@ contract BlueBundlesTest is Test {
 
         TokenPermit memory permit = _permit2(address(loanToken), user, repayAssets, 0, vm.getBlockTimestamp() + 1);
         vm.prank(user);
-        blueBundles.repayAndWithdrawCollateral(
-            marketParams, repayAssets, 0, user, receiver, permit, 0, address(0)
-        );
+        blueBundles.repayAndWithdrawCollateral(marketParams, repayAssets, 0, user, receiver, permit, 0, address(0));
 
         assertEq(loanToken.allowance(user, address(blueBundles)), 0);
         assertEq(loanToken.allowance(user, PERMIT2), 0);
@@ -421,9 +417,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    function testWithdrawWithReferralFee(uint256 supplyAssets, uint256 withdrawAssets, uint256 referralFeePct)
-        public
-    {
+    function testWithdrawWithReferralFee(uint256 supplyAssets, uint256 withdrawAssets, uint256 referralFeePct) public {
         supplyAssets = bound(supplyAssets, 1, 1e30);
         withdrawAssets = bound(withdrawAssets, 1, supplyAssets);
         referralFeePct = bound(referralFeePct, 0, WAD - 1);

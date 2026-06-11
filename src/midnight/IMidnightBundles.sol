@@ -2,7 +2,7 @@
 // Copyright (c) 2025 Morpho Association
 pragma solidity >=0.5.0;
 
-import {Offer, Market} from "midnight/interfaces/IMidnight.sol";
+import {Offer, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol";
 import {TokenPermit} from "../libraries/TokenLib.sol";
 
 struct Take {
