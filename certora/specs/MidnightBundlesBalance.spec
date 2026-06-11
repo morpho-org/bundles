@@ -3,13 +3,15 @@
 using Utils as Utils;
 
 methods {
-    function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
-    function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
-
     function Utils.hashMarket(MidnightBundles.Market market) external returns (bytes32) envfree;
 
-    function _.toId(MidnightBundles.Market market) external => summaryToId(market) expect(bytes32);
+    function TickLib.tickToPrice(uint256 tick) internal returns (uint256) => NONDET;
 
+    function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
+    function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
+    function TokenLib.pullToken(address token, address from, uint256 amount, MidnightBundles.TokenPermit memory permit) internal => summaryPullToken(token, from, amount);
+
+    function _.toId(MidnightBundles.Market market) external => summaryToId(market) expect(bytes32);
     function _.take(MidnightBundles.Offer offer, bytes ratifierData, uint256 units, address taker, address receiverIfTakerIsSeller, address takerCallback, bytes takerCallbackData) external with(env e) => summaryTake(e.msg.sender, offer, taker, receiverIfTakerIsSeller, takerCallback) expect(uint256, uint256);
 }
 
@@ -25,7 +27,7 @@ function summarySafeTransfer(address token, address to, uint256 amount) {
     summarySafeTransferFrom(token, currentContract, to, amount);
 }
 
-function summaryPullToken(address token, address from, uint256 amount, MidnightBundles.TokenPermit permit) {
+function summaryPullToken(address token, address from, uint256 amount) {
     summarySafeTransferFrom(token, from, currentContract, amount);
 }
 
