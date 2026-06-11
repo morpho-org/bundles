@@ -1,13 +1,23 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+using Utils as Utils;
+
 methods {
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
+
+    function Utils.hashMarket(MidnightBundles.Market market) external returns (bytes32) envfree;
+
+    function _.toId(MidnightBundles.Market market, uint256, address) external => summaryToId(market) expect(bytes32);
 
     function _.take(MidnightBundles.Offer offer, bytes ratifierData, uint256 units, address taker, address receiverIfTakerIsSeller, address takerCallback, bytes takerCallbackData) external with(env e) => summaryTake(e.msg.sender, offer, taker, receiverIfTakerIsSeller, takerCallback) expect(uint256, uint256);
 }
 
 /// HELPERS ///
+
+function summaryToId(MidnightBundles.Market market) returns (bytes32) {
+    return Utils.hashMarket(market);
+}
 
 ghost mapping(address => mapping(address => uint256)) tokenBalance;
 
@@ -39,12 +49,17 @@ function summaryTake(address msgSender, MidnightBundles.Offer offer, address tak
 
 rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, uint256 targetUnits, uint256 maxBuyerAssets, address taker, MidnightBundles.TokenPermit loanTokenPermit, MidnightBundles.Take[] takes, MidnightBundles.CollateralWithdrawal[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient) {
     address loanToken = takes[0].offer.market.loanToken;
+    address midnight = currentContract.MIDNIGHT;
 
     boughtAssets = 0;
+    uint256 midnightBalanceBefore = tokenBalance[loanToken][midnight];
+    uint256 balanceBefore = tokenBalance[loanToken][e.msg.sender];
+    buyWithUnitsTargetAndWithdrawCollateral(e, targetUnits, maxBuyerAssets, e.msg.sender, loanTokenPermit, takes, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient);
+    uint256 balanceAfter = tokenBalance[loanToken][e.msg.sender];
+    uint256 midnightBalanceAfter = tokenBalance[loanToken][midnight];
 
-    uint256 balanceBefore = tokenBalance[loanToken][taker];
-    buyWithUnitsTargetAndWithdrawCollateral(e, targetUnits, maxBuyerAssets, taker, loanTokenPermit, takes, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient);
-    uint256 balanceAfter = tokenBalance[loanToken][taker];
+    mathint spent = balanceBefore - balanceAfter;
+    mathint fees = midnightBalanceAfter - midnightBalanceBefore;
 
-    assert balanceBefore - balanceAfter == boughtAssets;
+    assert spent == boughtAssets + fees;
 }
