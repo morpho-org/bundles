@@ -8,7 +8,7 @@ import {IERC20} from "midnight/interfaces/IERC20.sol";
 import {SafeTransferLib} from "midnight/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "midnight/libraries/UtilsLib.sol";
 import {WAD} from "midnight/libraries/ConstantsLib.sol";
-import {BlueBundlesUtils, TokenPermit} from "./BlueBundlesUtils.sol";
+import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 
 /// @dev Inherits the token safety requirements of Morpho Blue (see Morpho.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
@@ -46,8 +46,8 @@ contract BlueBundles is IBlueBundles {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
-        BlueBundlesUtils.pullToken(marketParams.collateralToken, msg.sender, collateralAmount, collateralPermit);
-        BlueBundlesUtils.forceApproveMax(marketParams.collateralToken, BLUE);
+        TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAmount, collateralPermit);
+        TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
 
         IMorpho(BLUE).supplyCollateral(marketParams, collateralAmount, onBehalf, "");
         (uint256 borrowed,) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, onBehalf, address(this));
@@ -82,8 +82,8 @@ contract BlueBundles is IBlueBundles {
         uint256 referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD);
         uint256 toRepay = repayAssets - referralFeeAssets;
 
-        BlueBundlesUtils.pullToken(marketParams.loanToken, msg.sender, repayAssets, loanTokenPermit);
-        BlueBundlesUtils.forceApproveMax(marketParams.loanToken, BLUE);
+        TokenLib.pullToken(marketParams.loanToken, msg.sender, repayAssets, loanTokenPermit);
+        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         IMorpho(BLUE).repay(marketParams, toRepay, 0, onBehalf, "");
 
@@ -119,8 +119,8 @@ contract BlueBundles is IBlueBundles {
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
         uint256 toSupply = assets - referralFeeAssets;
 
-        BlueBundlesUtils.pullToken(marketParams.loanToken, msg.sender, assets, loanTokenPermit);
-        BlueBundlesUtils.forceApproveMax(marketParams.loanToken, BLUE);
+        TokenLib.pullToken(marketParams.loanToken, msg.sender, assets, loanTokenPermit);
+        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         // assets specified => Blue pulls exactly `toSupply`, so no leftover refund is needed.
         IMorpho(BLUE).supply(marketParams, toSupply, 0, onBehalf, "");

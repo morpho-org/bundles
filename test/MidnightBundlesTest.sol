@@ -14,10 +14,9 @@ import {
     IMidnightBundles,
     Take,
     CollateralWithdrawal,
-    CollateralSupply,
-    TokenPermit,
-    PermitKind
+    CollateralSupply
 } from "../src/midnight/IMidnightBundles.sol";
+import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
 import {BaseTest} from "../lib/midnight/test/BaseTest.sol";
 

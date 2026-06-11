@@ -3,7 +3,7 @@
 pragma solidity >=0.5.0;
 
 import {MarketParams} from "morpho-blue/interfaces/IMorpho.sol";
-import {TokenPermit} from "./BlueBundlesUtils.sol";
+import {TokenPermit} from "../libraries/TokenLib.sol";
 
 interface IBlueBundles {
     /// ERRORS ///

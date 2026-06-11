@@ -3,22 +3,12 @@
 pragma solidity >=0.5.0;
 
 import {Offer, Market} from "midnight/interfaces/IMidnight.sol";
+import {TokenPermit} from "../libraries/TokenLib.sol";
 
 struct Take {
     uint256 units;
     Offer offer;
     bytes ratifierData;
-}
-
-enum PermitKind {
-    None,
-    ERC2612,
-    Permit2
-}
-
-struct TokenPermit {
-    PermitKind kind;
-    bytes data;
 }
 
 struct CollateralWithdrawal {
@@ -34,7 +24,6 @@ struct CollateralSupply {
 
 interface IMidnightBundles {
     /// ERRORS ///
-    error ApproveReturnedFalse();
     error InconsistentMarket();
     error InconsistentSide();
     error OutOfOffers();

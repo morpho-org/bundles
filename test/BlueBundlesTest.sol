@@ -14,13 +14,8 @@ import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
 import {BlueBundles} from "../src/blue/BlueBundles.sol";
 import {IBlueBundles} from "../src/blue/IBlueBundles.sol";
-import {TokenPermit, PermitKind} from "../src/blue/BlueBundlesUtils.sol";
+import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 
-/// @dev BlueBundles is a direct-asset wrapper over Morpho Blue (no order book), so this suite mirrors the
-/// cross-cutting periphery properties of MidnightBundlesTest — authorization, the referral-fee percentage cap,
-/// referral-fee accounting + zero bundler residual, ERC-2612/Permit2 token pulls, and collateral movement —
-/// and drops the matching-engine-specific tests (offers, units/assets targeting, slippage bounds) that have no
-/// counterpart on Blue.
 contract BlueBundlesTest is Test {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
@@ -136,7 +131,7 @@ contract BlueBundlesTest is Test {
         return TokenPermit({kind: PermitKind.Permit2, data: abi.encode(nonce, deadline, abi.encodePacked(r, s, v))});
     }
 
-    function _erc2612(address token, address holder, uint256 amount, uint256 nonce, uint256 deadline)
+    function _permit(address token, address holder, uint256 amount, uint256 nonce, uint256 deadline)
         internal
         view
         returns (TokenPermit memory)
@@ -273,7 +268,7 @@ contract BlueBundlesTest is Test {
         deal(address(collateralToken), user, collateral);
 
         TokenPermit memory permit =
-            _erc2612(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
+            _permit(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
         vm.prank(user);
         blueBundles.supplyCollateralAndBorrow(
             marketParams, collateral, borrowAssets, user, receiver, permit, 0, address(0)
