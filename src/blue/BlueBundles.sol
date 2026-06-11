@@ -4,7 +4,9 @@ pragma solidity 0.8.34;
 
 import {IBlueBundles} from "./IBlueBundles.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
-import {IMorpho, MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {IMorpho, MarketParams, Position} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
+import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {IERC20} from "../../lib/midnight/src/interfaces/IERC20.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
@@ -14,8 +16,17 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are allowed.
 /// @dev Zero checks are not systematically performed.
-contract BlueBundles is IBlueBundles {
+contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     using UtilsLib for uint256;
+    using MarketParamsLib for MarketParams;
+
+    struct RefinanceData {
+        MarketParams sourceMarketParams;
+        MarketParams destMarketParams;
+        uint256 collateral;
+        uint256 maxBorrowAssets;
+        address onBehalf;
+    }
 
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address public immutable BLUE;
@@ -153,5 +164,56 @@ contract BlueBundles is IBlueBundles {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
         SafeTransferLib.safeTransfer(marketParams.loanToken, receiver, withdrawn - referralFeeAssets);
+    }
+
+    /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
+    /// @dev Moves the full position of onBehalf (collateral and borrow shares, read from Blue) from the source market
+    /// to the destination market via Blue's repay callback, pulling no tokens from msg.sender.
+    /// @dev The markets must have the same loan token and the same collateral token.
+    /// @dev Total loan assets borrowed on the destination is the exact assets repaid on the source, at most
+    /// maxBorrowAssets.
+    /// @dev Refinancing a position without debt reverts on Blue.
+    function refinance(
+        MarketParams memory sourceMarketParams,
+        MarketParams memory destMarketParams,
+        uint256 maxBorrowAssets,
+        address onBehalf
+    ) external {
+        require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
+        require(
+            sourceMarketParams.loanToken == destMarketParams.loanToken
+                && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
+            InconsistentTokens()
+        );
+
+        Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), onBehalf);
+
+        bytes memory data = abi.encode(
+            RefinanceData({
+                sourceMarketParams: sourceMarketParams,
+                destMarketParams: destMarketParams,
+                collateral: position.collateral,
+                maxBorrowAssets: maxBorrowAssets,
+                onBehalf: onBehalf
+            })
+        );
+        IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, onBehalf, data);
+    }
+
+    /// @dev Blue's repay callback. Only reachable during refinance: no other function passes non-empty data to repay.
+    /// @dev Blue pulls exactly `assets` of the loan token from this contract after this callback returns.
+    function onMorphoRepay(uint256 assets, bytes calldata data) external {
+        require(msg.sender == BLUE, UnauthorizedCallback());
+        RefinanceData memory d = abi.decode(data, (RefinanceData));
+        require(assets <= d.maxBorrowAssets, MaxBorrowExceeded());
+
+        // The source debt is already zero, so this health check passes without reading the source oracle.
+        IMorpho(BLUE).withdrawCollateral(d.sourceMarketParams, d.collateral, d.onBehalf, address(this));
+
+        TokenLib.forceApproveMax(d.destMarketParams.collateralToken, BLUE);
+        IMorpho(BLUE).supplyCollateral(d.destMarketParams, d.collateral, d.onBehalf, "");
+        IMorpho(BLUE).borrow(d.destMarketParams, assets, 0, d.onBehalf, address(this));
+
+        TokenLib.forceApproveMax(d.destMarketParams.loanToken, BLUE);
     }
 }

@@ -9,6 +9,9 @@ interface IBlueBundles {
     /// ERRORS ///
     error PctExceeded();
     error Unauthorized();
+    error UnauthorizedCallback();
+    error InconsistentTokens();
+    error MaxBorrowExceeded();
 
     /// STORAGE GETTERS ///
     function PERMIT2() external view returns (address);
@@ -53,5 +56,12 @@ interface IBlueBundles {
         address receiver,
         uint256 referralFeePct,
         address referralFeeRecipient
+    ) external;
+
+    function refinance(
+        MarketParams memory sourceMarketParams,
+        MarketParams memory destMarketParams,
+        uint256 maxBorrowAssets,
+        address onBehalf
     ) external;
 }

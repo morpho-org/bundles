@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {IMorpho, MarketParams, Id} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {IOracle} from "../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {MorphoLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
 import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
@@ -23,6 +24,7 @@ contract BlueBundlesTest is Test {
 
     address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     uint256 internal constant LLTV = 0.8e18;
+    uint256 internal constant LLTV_DEST = 0.9e18;
     uint256 internal constant LIQUIDITY = 1e32;
 
     IMorpho internal morpho;
@@ -30,9 +32,12 @@ contract BlueBundlesTest is Test {
     ERC20Permit internal loanToken;
     ERC20Permit internal collateralToken;
     OracleMock internal oracle;
+    OracleMock internal destOracle;
 
     MarketParams internal marketParams;
     Id internal id;
+    MarketParams internal destMarketParams;
+    Id internal destId;
 
     address internal owner;
     address internal supplier;
@@ -76,11 +81,27 @@ contract BlueBundlesTest is Test {
         morpho.createMarket(marketParams);
         id = marketParams.id();
 
-        // Seed the market with loan-side liquidity so borrows can be served.
-        deal(address(loanToken), supplier, LIQUIDITY);
+        // Destination market for refinance tests: same token pair, own oracle, higher LLTV.
+        vm.prank(owner);
+        morpho.enableLltv(LLTV_DEST);
+        destOracle = new OracleMock();
+        destOracle.setPrice(ORACLE_PRICE_SCALE);
+        destMarketParams = MarketParams({
+            loanToken: address(loanToken),
+            collateralToken: address(collateralToken),
+            oracle: address(destOracle),
+            irm: address(0),
+            lltv: LLTV_DEST
+        });
+        morpho.createMarket(destMarketParams);
+        destId = destMarketParams.id();
+
+        // Seed both markets with loan-side liquidity so borrows can be served.
+        deal(address(loanToken), supplier, 2 * LIQUIDITY);
         vm.startPrank(supplier);
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(marketParams, LIQUIDITY, 0, supplier, "");
+        morpho.supply(destMarketParams, LIQUIDITY, 0, supplier, "");
         vm.stopPrank();
 
         // The user authorizes the bundler so it can borrow / withdraw on their behalf.
@@ -434,5 +455,95 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(receiver), withdrawAssets - expectedFee, "receiver net");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    /// REFINANCE ///
+
+    function testRefinanceUnauthorized() public {
+        vm.prank(address(0xdead));
+        vm.expectRevert(IBlueBundles.Unauthorized.selector);
+        blueBundles.refinance(marketParams, destMarketParams, 1, user);
+    }
+
+    function testRefinanceCallbackNotBlue() public {
+        vm.expectRevert(IBlueBundles.UnauthorizedCallback.selector);
+        blueBundles.onMorphoRepay(0, "");
+    }
+
+    function testRefinanceInconsistentTokens() public {
+        MarketParams memory wrongDest = destMarketParams;
+        wrongDest.loanToken = address(collateralToken);
+
+        vm.prank(user);
+        vm.expectRevert(IBlueBundles.InconsistentTokens.selector);
+        blueBundles.refinance(marketParams, wrongDest, 1, user);
+    }
+
+    function testRefinanceMaxBorrowExceeded() public {
+        uint256 borrowAssets = 100e18;
+        _openBorrow(user, borrowAssets);
+
+        vm.prank(user);
+        vm.expectRevert(IBlueBundles.MaxBorrowExceeded.selector);
+        blueBundles.refinance(marketParams, destMarketParams, borrowAssets - 1, user);
+    }
+
+    function testRefinance(uint256 borrowAssets) public {
+        borrowAssets = bound(borrowAssets, 1, 1e30);
+        _openBorrow(user, borrowAssets);
+        uint256 collateral = morpho.collateral(id, user);
+
+        vm.prank(user);
+        blueBundles.refinance(marketParams, destMarketParams, borrowAssets, user);
+
+        assertEq(morpho.collateral(id, user), 0, "source collateral");
+        assertEq(morpho.borrowShares(id, user), 0, "source debt");
+        assertEq(morpho.collateral(destId, user), collateral, "dest collateral");
+        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler loan residual");
+        assertEq(collateralToken.balanceOf(address(blueBundles)), 0, "bundler collateral residual");
+        // Capital-free: the user's loan token balance (the original borrow proceeds) is untouched.
+        assertEq(loanToken.balanceOf(user), borrowAssets, "user loan tokens untouched");
+    }
+
+    /// @dev The source oracle is never read during a full-position refinance: the debt is zero by the time the
+    /// collateral withdrawal health check runs, which short-circuits before the oracle call. Positions can therefore
+    /// migrate out of a market whose oracle is broken.
+    function testRefinanceWithBrokenSourceOracle() public {
+        uint256 borrowAssets = 100e18;
+        _openBorrow(user, borrowAssets);
+        uint256 collateral = morpho.collateral(id, user);
+
+        vm.mockCallRevert(address(oracle), abi.encodeWithSelector(IOracle.price.selector), "oracle down");
+
+        vm.prank(user);
+        blueBundles.refinance(marketParams, destMarketParams, borrowAssets, user);
+
+        assertEq(morpho.borrowShares(id, user), 0, "source debt");
+        assertEq(morpho.collateral(destId, user), collateral, "dest collateral");
+        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
+    }
+
+    /// @dev Reading the position from Blue makes refinance immune to drift: a third party repaying part of the debt
+    /// between quoting and execution no longer reverts the call — the remaining position is moved.
+    function testRefinanceAfterThirdPartyRepay() public {
+        uint256 borrowAssets = 100e18;
+        _openBorrow(user, borrowAssets);
+        uint256 collateral = morpho.collateral(id, user);
+
+        address thirdParty = makeAddr("thirdParty");
+        deal(address(loanToken), thirdParty, 1);
+        vm.startPrank(thirdParty);
+        loanToken.approve(address(morpho), 1);
+        morpho.repay(marketParams, 1, 0, user, "");
+        vm.stopPrank();
+
+        vm.prank(user);
+        blueBundles.refinance(marketParams, destMarketParams, borrowAssets, user);
+
+        assertEq(morpho.borrowShares(id, user), 0, "source debt");
+        assertEq(morpho.collateral(id, user), 0, "source collateral");
+        assertEq(morpho.collateral(destId, user), collateral, "dest collateral");
+        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets - 1, "dest debt");
     }
 }
