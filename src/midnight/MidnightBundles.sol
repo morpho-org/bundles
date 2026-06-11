@@ -3,21 +3,17 @@
 pragma solidity 0.8.34;
 
 import {IMidnight, Market, Offer} from "midnight/interfaces/IMidnight.sol";
-import {IERC20} from "midnight/interfaces/IERC20.sol";
 import {
     IMidnightBundles,
     Take,
     CollateralWithdrawal,
-    CollateralSupply,
-    TokenPermit,
-    PermitKind
-} from "./interfaces/IMidnightBundles.sol";
-import {IERC20Permit} from "./interfaces/IERC20Permit.sol";
-import {IPermit2} from "./interfaces/IPermit2.sol";
+    CollateralSupply
+} from "./IMidnightBundles.sol";
+import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {UtilsLib} from "midnight/libraries/UtilsLib.sol";
 import {SafeTransferLib} from "midnight/libraries/SafeTransferLib.sol";
-import {TakeAmountsLib} from "./lib/TakeAmountsLib.sol";
-import {ConsumableUnitsLib} from "./lib/ConsumableUnitsLib.sol";
+import {TakeAmountsLib} from "midnight/periphery/TakeAmountsLib.sol";
+import {ConsumableUnitsLib} from "midnight/periphery/ConsumableUnitsLib.sol";
 import {WAD} from "midnight/libraries/ConstantsLib.sol";
 
 /// @dev Inherits the token safety requirements of Midnight (see Midnight.sol).
@@ -63,8 +59,8 @@ contract MidnightBundles is IMidnightBundles {
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
 
-        pullToken(loanToken, msg.sender, maxBuyerAssets, loanTokenPermit);
-        forceApproveMax(loanToken, MIDNIGHT);
+        TokenLib.pullToken(loanToken, msg.sender, maxBuyerAssets, loanTokenPermit);
+        TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
         uint256 filledUnits;
         uint256 filledBuyerAssets;
@@ -133,8 +129,8 @@ contract MidnightBundles is IMidnightBundles {
         Market memory market = takes[0].offer.market;
         for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            pullToken(token, msg.sender, collateralSupplies[i].assets, collateralSupplies[i].permit);
-            forceApproveMax(token, MIDNIGHT);
+            TokenLib.pullToken(token, msg.sender, collateralSupplies[i].assets, collateralSupplies[i].permit);
+            TokenLib.forceApproveMax(token, MIDNIGHT);
             IMidnight(MIDNIGHT)
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
@@ -194,8 +190,8 @@ contract MidnightBundles is IMidnightBundles {
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
 
-        pullToken(loanToken, msg.sender, targetBuyerAssets, loanTokenPermit);
-        forceApproveMax(loanToken, MIDNIGHT);
+        TokenLib.pullToken(loanToken, msg.sender, targetBuyerAssets, loanTokenPermit);
+        TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
         uint256 referralFeeAssets = targetBuyerAssets.mulDivDown(referralFeePct, WAD);
         uint256 targetFilledBuyerAssets = targetBuyerAssets - referralFeeAssets;
@@ -268,8 +264,8 @@ contract MidnightBundles is IMidnightBundles {
         Market memory market = takes[0].offer.market;
         for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            pullToken(token, msg.sender, collateralSupplies[i].assets, collateralSupplies[i].permit);
-            forceApproveMax(token, MIDNIGHT);
+            TokenLib.pullToken(token, msg.sender, collateralSupplies[i].assets, collateralSupplies[i].permit);
+            TokenLib.forceApproveMax(token, MIDNIGHT);
             IMidnight(MIDNIGHT)
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
@@ -328,8 +324,8 @@ contract MidnightBundles is IMidnightBundles {
         address loanToken = market.loanToken;
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
         uint256 units = assets - referralFeeAssets;
-        pullToken(loanToken, msg.sender, assets, loanTokenPermit);
-        forceApproveMax(loanToken, MIDNIGHT);
+        TokenLib.pullToken(loanToken, msg.sender, assets, loanTokenPermit);
+        TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
         IMidnight(MIDNIGHT).repay(market, units, onBehalf, address(0), "");
 
@@ -350,50 +346,5 @@ contract MidnightBundles is IMidnightBundles {
     /// @dev Returns min(x, y, w).
     function min(uint256 x, uint256 y, uint256 w) internal pure returns (uint256) {
         return UtilsLib.min(UtilsLib.min(x, y), w);
-    }
-
-    /// INTERNAL ///
-
-    /// @dev Not checking the code size because a transfer will do it in the same call.
-    function safeApprove(address token, address spender, uint256 value) internal {
-        (bool success, bytes memory returndata) = token.call(abi.encodeCall(IERC20.approve, (spender, value)));
-        if (!success) {
-            assembly ("memory-safe") {
-                revert(add(returndata, 0x20), mload(returndata))
-            }
-        }
-        require(returndata.length == 0 || abi.decode(returndata, (bool)), ApproveReturnedFalse());
-    }
-
-    /// @dev Skips the approval entirely to save gas when the current allowance is already 2^95 - 1 (value chosen
-    /// because some token like COMP and UNI on ethereum have a max allowance of type(uint96).max).
-    /// @dev Resets to 0 before re-approving to support USDT like tokens.
-    function forceApproveMax(address token, address spender) internal {
-        if (IERC20(token).allowance(address(this), spender) >= type(uint96).max / 2) return;
-        safeApprove(token, spender, 0);
-        safeApprove(token, spender, type(uint256).max);
-    }
-
-    /// @dev Pulls `amount` of `token` from `from` to this bundler, optionally using ERC2612 or Permit2.
-    function pullToken(address token, address from, uint256 amount, TokenPermit memory permit) internal {
-        if (permit.kind == PermitKind.ERC2612) {
-            (uint256 deadline, uint8 v, bytes32 r, bytes32 s) =
-                abi.decode(permit.data, (uint256, uint8, bytes32, bytes32));
-            // Tolerate revert: a third party may have already consumed the permit.
-            try IERC20Permit(token).permit(from, address(this), amount, deadline, v, r, s) {} catch {}
-            SafeTransferLib.safeTransferFrom(token, from, address(this), amount);
-        } else if (permit.kind == PermitKind.Permit2) {
-            (uint256 nonce, uint256 deadline, bytes memory signature) =
-                abi.decode(permit.data, (uint256, uint256, bytes));
-            IPermit2(PERMIT2)
-                .permitTransferFrom(
-                    IPermit2.PermitTransferFrom(IPermit2.TokenPermissions(token, amount), nonce, deadline),
-                    IPermit2.SignatureTransferDetails(address(this), amount),
-                    from,
-                    signature
-                );
-        } else {
-            SafeTransferLib.safeTransferFrom(token, from, address(this), amount);
-        }
     }
 }

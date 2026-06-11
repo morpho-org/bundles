@@ -3,12 +3,12 @@
 pragma solidity 0.8.34;
 
 import {IMorpho, MarketParams} from "morpho-blue/interfaces/IMorpho.sol";
-import {IBlueBundles} from "./interfaces/IBlueBundles.sol";
+import {IBlueBundles} from "./IBlueBundles.sol";
 import {IERC20} from "midnight/interfaces/IERC20.sol";
 import {SafeTransferLib} from "midnight/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "midnight/libraries/UtilsLib.sol";
 import {WAD} from "midnight/libraries/ConstantsLib.sol";
-import {BundlesUtils, TokenPermit} from "./lib/BundlesUtils.sol";
+import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 
 /// @dev Inherits the token safety requirements of Morpho Blue (see Morpho.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
@@ -46,8 +46,8 @@ contract BlueBundles is IBlueBundles {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
-        BundlesUtils.pullToken(marketParams.collateralToken, msg.sender, collateralAmount, collateralPermit);
-        BundlesUtils.forceApproveMax(marketParams.collateralToken, BLUE);
+        TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAmount, collateralPermit);
+        TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
 
         IMorpho(BLUE).supplyCollateral(marketParams, collateralAmount, onBehalf, "");
         (uint256 borrowed,) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, onBehalf, address(this));
@@ -82,8 +82,8 @@ contract BlueBundles is IBlueBundles {
         uint256 referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD);
         uint256 toRepay = repayAssets - referralFeeAssets;
 
-        BundlesUtils.pullToken(marketParams.loanToken, msg.sender, repayAssets, loanTokenPermit);
-        BundlesUtils.forceApproveMax(marketParams.loanToken, BLUE);
+        TokenLib.pullToken(marketParams.loanToken, msg.sender, repayAssets, loanTokenPermit);
+        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         IMorpho(BLUE).repay(marketParams, toRepay, 0, onBehalf, "");
 
@@ -100,5 +100,58 @@ contract BlueBundles is IBlueBundles {
         if (leftover > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, leftover);
         }
+    }
+
+    /// @dev Supply is permissionless on Blue, so no authorization of msg.sender over onBehalf is required.
+    /// @dev Pulls `assets` of `marketParams.loanToken` from msg.sender (optionally via ERC-2612 or Permit2).
+    /// @dev The referral fee is deducted from `assets`; the remainder is supplied to the market for onBehalf.
+    /// @dev Fee = assets * referralFeePct / WAD; supplied = assets - fee.
+    function supply(
+        MarketParams memory marketParams,
+        uint256 assets,
+        address onBehalf,
+        TokenPermit memory loanTokenPermit,
+        uint256 referralFeePct,
+        address referralFeeRecipient
+    ) external {
+        require(referralFeePct < WAD, PctExceeded());
+
+        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
+        uint256 toSupply = assets - referralFeeAssets;
+
+        TokenLib.pullToken(marketParams.loanToken, msg.sender, assets, loanTokenPermit);
+        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+
+        // assets specified => Blue pulls exactly `toSupply`, so no leftover refund is needed.
+        IMorpho(BLUE).supply(marketParams, toSupply, 0, onBehalf, "");
+
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
+        }
+    }
+
+    /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
+    /// @dev Withdraws `withdrawAssets` of `marketParams.loanToken` from onBehalf's supply position, routed via this
+    /// contract.
+    /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to receiver.
+    /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
+    function withdraw(
+        MarketParams memory marketParams,
+        uint256 withdrawAssets,
+        address onBehalf,
+        address receiver,
+        uint256 referralFeePct,
+        address referralFeeRecipient
+    ) external {
+        require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
+        require(referralFeePct < WAD, PctExceeded());
+
+        (uint256 withdrawn,) = IMorpho(BLUE).withdraw(marketParams, withdrawAssets, 0, onBehalf, address(this));
+
+        uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
+        }
+        SafeTransferLib.safeTransfer(marketParams.loanToken, receiver, withdrawn - referralFeeAssets);
     }
 }

@@ -3,7 +3,7 @@
 pragma solidity >=0.5.0;
 
 import {MarketParams} from "morpho-blue/interfaces/IMorpho.sol";
-import {TokenPermit} from "../lib/BundlesUtils.sol";
+import {TokenPermit} from "../libraries/TokenLib.sol";
 
 interface IBlueBundles {
     /// ERRORS ///
@@ -33,6 +33,24 @@ interface IBlueBundles {
         address onBehalf,
         address receiver,
         TokenPermit memory loanTokenPermit,
+        uint256 referralFeePct,
+        address referralFeeRecipient
+    ) external;
+
+    function supply(
+        MarketParams memory marketParams,
+        uint256 assets,
+        address onBehalf,
+        TokenPermit memory loanTokenPermit,
+        uint256 referralFeePct,
+        address referralFeeRecipient
+    ) external;
+
+    function withdraw(
+        MarketParams memory marketParams,
+        uint256 withdrawAssets,
+        address onBehalf,
+        address receiver,
         uint256 referralFeePct,
         address referralFeeRecipient
     ) external;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (c) 2025 Morpho Association
+// Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
 import {IERC20} from "midnight/interfaces/IERC20.sol";
@@ -18,11 +18,10 @@ struct TokenPermit {
     bytes data;
 }
 
-/// @title BundlesUtils
-/// @notice Shared helpers for bundle contracts: Permit2/ERC-2612 token pulls, USDT-safe max approvals.
-/// @dev Mirrors the inlined helpers in MidnightBundles so that BlueBundles (and future bundles) reuse the same logic
-/// without modifying MidnightBundles itself.
-library BundlesUtils {
+/// @title TokenLib
+/// @notice Generic bundler token plumbing shared across bundles: Permit2/ERC-2612 token pulls and USDT-safe max
+/// approvals. Lives outside any single bundle so the boring-but-critical token handling has one canonical copy.
+library TokenLib {
     error ApproveReturnedFalse();
 
     /// @dev Canonical Permit2 singleton.
