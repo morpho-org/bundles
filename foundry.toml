@@ -10,11 +10,21 @@ evm_version = "osaka"
 bytecode_hash = "none"
 
 [[profile.default.additional_compiler_profiles]]
-name = "morpho"
+name = "blue"
 evm_version = "paris"
 optimizer_runs = 999999
+
+[[profile.default.additional_compiler_profiles]]
+name = "midnight"
+evm_version = "osaka"
+optimizer_runs = 800
 
 [[profile.default.compilation_restrictions]]
 paths = "src/imports/MorphoImport.sol"
 version = "=0.8.19"
 evm_version = "paris"
+
+[[profile.default.compilation_restrictions]]
+paths = "src/imports/MidnightImport.sol"
+version = "=0.8.34"
+evm_version = "osaka"
