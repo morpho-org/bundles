@@ -8,7 +8,7 @@ methods {
 
     function Utils.hashMarket(MidnightBundles.Market market) external returns (bytes32) envfree;
 
-    function _.toId(MidnightBundles.Market market, uint256, address) external => summaryToId(market) expect(bytes32);
+    function _.toId(MidnightBundles.Market market) external => summaryToId(market) expect(bytes32);
 
     function _.take(MidnightBundles.Offer offer, bytes ratifierData, uint256 units, address taker, address receiverIfTakerIsSeller, address takerCallback, bytes takerCallbackData) external with(env e) => summaryTake(e.msg.sender, offer, taker, receiverIfTakerIsSeller, takerCallback) expect(uint256, uint256);
 }
@@ -23,6 +23,10 @@ ghost mapping(address => mapping(address => uint256)) tokenBalance;
 
 function summarySafeTransfer(address token, address to, uint256 amount) {
     summarySafeTransferFrom(token, currentContract, to, amount);
+}
+
+function summaryPullToken(address token, address from, uint256 amount, MidnightBundles.TokenPermit permit) {
+    summarySafeTransferFrom(token, from, currentContract, amount);
 }
 
 function summarySafeTransferFrom(address token, address from, address to, uint256 amount) {
