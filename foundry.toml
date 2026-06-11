@@ -10,21 +10,21 @@ evm_version = "osaka"
 bytecode_hash = "none"
 
 [[profile.default.additional_compiler_profiles]]
-name = "blue"
+name = "paris-999999"
 evm_version = "paris"
 optimizer_runs = 999999
 
 [[profile.default.additional_compiler_profiles]]
-name = "midnight"
+name = "osaka-800"
 evm_version = "osaka"
 optimizer_runs = 800
 
 [[profile.default.compilation_restrictions]]
-paths = "src/imports/MorphoImport.sol"
-version = "=0.8.19"
+paths = "test/imports/BlueImport.sol"
 evm_version = "paris"
+optimizer_runs = 999999
 
 [[profile.default.compilation_restrictions]]
-paths = "src/imports/MidnightImport.sol"
-version = "=0.8.34"
+paths = "test/imports/MidnightImport.sol"
 evm_version = "osaka"
+optimizer_runs = 800
