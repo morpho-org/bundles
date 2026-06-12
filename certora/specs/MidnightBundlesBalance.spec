@@ -11,10 +11,18 @@ methods {
     function ConsumableUnitsLib.consumableUnits(address, bytes32, MidnightBundles.Offer memory) internal returns (uint256) => NONDET;
     function _.toId(MidnightBundles.Market) external => NONDET;
 
+    // Are all of those necessary?
+    function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
+    function _.supplyCollateral(MidnightBundles.Market, uint256, uint256, address) external => NONDET;
+    function _.withdrawCollateral(MidnightBundles.Market, uint256, uint256, address, address) external => NONDET;
+    function _.touchMarket(MidnightBundles.Market) external => HAVOC_ALL;
+
+    // Token modeling.
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
     function TokenLib.pullToken(address token, address from, uint256 amount, MidnightBundles.TokenPermit memory permit) internal => summaryPullToken(token, from, amount);
     function _.take(MidnightBundles.Offer offer, bytes ratifierData, uint256 units, address taker, address receiverIfTakerIsSeller, address takerCallback, bytes takerCallbackData) external with(env e) => summaryTake(e.msg.sender, offer, taker, receiverIfTakerIsSeller, takerCallback) expect(uint256, uint256);
+    function _.repay(MidnightBundles.Market, uint256 units, address, address, bytes) external => summaryRepay(units) expect void;
 }
 
 /// HELPERS ///
@@ -41,12 +49,18 @@ persistent ghost uint256 boughtAssets;
 
 persistent ghost uint256 soldAssets;
 
+persistent ghost uint256 repaidAssets;
+
 function summaryTake(address msgSender, MidnightBundles.Offer offer, address taker, address receiverIfTakerIsSeller, address takerCallback) returns (uint256, uint256) {
     uint256 buyerAssets;
     uint256 sellerAssets;
     boughtAssets = require_uint256(boughtAssets + buyerAssets);
     soldAssets = require_uint256(soldAssets + sellerAssets);
     return (buyerAssets, sellerAssets);
+}
+
+function summaryRepay(uint256 units) {
+    repaidAssets = require_uint256(repaidAssets + units);
 }
 
 /// RULES ///
@@ -71,4 +85,92 @@ rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, uint256 targ
     mathint fees = feeBalanceAfter - feeBalanceBefore;
 
     assert spent == boughtAssets + fees;
+}
+
+rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, uint256 targetBuyerAssets, uint256 minUnits, MidnightBundles.TokenPermit loanTokenPermit, MidnightBundles.Take[] takes, MidnightBundles.CollateralWithdrawal[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient) {
+    address loanToken = takes[0].offer.market.loanToken;
+
+    require e.msg.sender != currentContract;
+    require referralFeeRecipient != e.msg.sender;
+    require referralFeeRecipient != currentContract;
+
+    boughtAssets = 0;
+    uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
+    uint256 balanceBefore = tokenBalance[loanToken][e.msg.sender];
+    buyWithAssetsTargetAndWithdrawCollateral(e, targetBuyerAssets, minUnits, e.msg.sender, loanTokenPermit, takes, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient);
+    uint256 balanceAfter = tokenBalance[loanToken][e.msg.sender];
+    uint256 feeBalanceAfter = tokenBalance[loanToken][referralFeeRecipient];
+
+    mathint spent = balanceBefore - balanceAfter;
+    mathint fees = feeBalanceAfter - feeBalanceBefore;
+
+    assert spent == boughtAssets + fees;
+}
+
+rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, uint256 targetUnits, uint256 minSellerAssets, address receiver, MidnightBundles.CollateralSupply[] collateralSupplies, MidnightBundles.Take[] takes, uint256 referralFeePct, address referralFeeRecipient) {
+    address loanToken = takes[0].offer.market.loanToken;
+
+    // The proceeds go to the receiver and the referral fee to its recipient: they only count as received/fee if they
+    // are third parties, distinct from the collateral payer (msg.sender) and from the bundler.
+    require e.msg.sender != currentContract;
+    require receiver != e.msg.sender;
+    require receiver != currentContract;
+    require referralFeeRecipient != e.msg.sender;
+    require referralFeeRecipient != currentContract;
+    require receiver != referralFeeRecipient;
+
+    soldAssets = 0;
+    uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
+    uint256 receiverBalanceBefore = tokenBalance[loanToken][receiver];
+    supplyCollateralAndSellWithUnitsTarget(e, targetUnits, minSellerAssets, e.msg.sender, receiver, collateralSupplies, takes, referralFeePct, referralFeeRecipient);
+    uint256 receiverBalanceAfter = tokenBalance[loanToken][receiver];
+    uint256 feeBalanceAfter = tokenBalance[loanToken][referralFeeRecipient];
+
+    mathint received = receiverBalanceAfter - receiverBalanceBefore;
+    mathint fees = feeBalanceAfter - feeBalanceBefore;
+
+    assert received == soldAssets - fees;
+}
+
+rule supplyCollateralAndSellWithAssetsTargetDoesntLoseTokens(env e, uint256 targetSellerAssets, uint256 maxUnits, address receiver, MidnightBundles.CollateralSupply[] collateralSupplies, MidnightBundles.Take[] takes, uint256 referralFeePct, address referralFeeRecipient) {
+    address loanToken = takes[0].offer.market.loanToken;
+
+    require e.msg.sender != currentContract;
+    require receiver != e.msg.sender;
+    require receiver != currentContract;
+    require referralFeeRecipient != e.msg.sender;
+    require referralFeeRecipient != currentContract;
+    require receiver != referralFeeRecipient;
+
+    soldAssets = 0;
+    uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
+    uint256 receiverBalanceBefore = tokenBalance[loanToken][receiver];
+    supplyCollateralAndSellWithAssetsTarget(e, targetSellerAssets, maxUnits, e.msg.sender, receiver, collateralSupplies, takes, referralFeePct, referralFeeRecipient);
+    uint256 receiverBalanceAfter = tokenBalance[loanToken][receiver];
+    uint256 feeBalanceAfter = tokenBalance[loanToken][referralFeeRecipient];
+
+    mathint received = receiverBalanceAfter - receiverBalanceBefore;
+    mathint fees = feeBalanceAfter - feeBalanceBefore;
+
+    assert received == soldAssets - fees;
+}
+
+rule repayAndWithdrawCollateralDoesntLoseTokens(env e, MidnightBundles.Market market, uint256 assets, MidnightBundles.TokenPermit loanTokenPermit, MidnightBundles.CollateralWithdrawal[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient) {
+    address loanToken = market.loanToken;
+
+    require e.msg.sender != currentContract;
+    require referralFeeRecipient != e.msg.sender;
+    require referralFeeRecipient != currentContract;
+
+    repaidAssets = 0;
+    uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
+    uint256 balanceBefore = tokenBalance[loanToken][e.msg.sender];
+    repayAndWithdrawCollateral(e, market, assets, e.msg.sender, loanTokenPermit, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient);
+    uint256 balanceAfter = tokenBalance[loanToken][e.msg.sender];
+    uint256 feeBalanceAfter = tokenBalance[loanToken][referralFeeRecipient];
+
+    mathint spent = balanceBefore - balanceAfter;
+    mathint fees = feeBalanceAfter - feeBalanceBefore;
+
+    assert spent == repaidAssets + fees;
 }
