@@ -5,10 +5,14 @@ using Utils as Utils;
 methods {
     function Utils.hashMarket(MidnightBundles.Market market) external returns (bytes32) envfree;
 
-    function TickLib.tickToPrice(uint256 tick) internal returns (uint256) => NONDET;
-
+    // Over-approximate view functions.
+    function TakeAmountsLib.sellerAssetsToUnits(address midnight, bytes32 id, MidnightBundles.Offer memory offer, uint256 targetSellerAssets) internal returns (uint256) => NONDET;
+    function TakeAmountsLib.buyerAssetsToUnits(address midnight, bytes32 id, MidnightBundles.Offer memory offer, uint256 buyerAssets) internal returns (uint256) => NONDET;
     function ConsumableUnitsLib.consumableUnits(address midnight, bytes32 id, MidnightBundles.Offer memory offer) internal returns (uint256) => NONDET;
     function _.toId(MidnightBundles.Market market) external => NONDET;
+
+    // Over-approximate external calls.
+    function _.touchMarket(MidnightBundles.Market market) external => HAVOC_ALL;
 
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
@@ -17,13 +21,8 @@ methods {
 }
 
 /// HELPERS ///
-// Persistent ghosts so that the unresolved external calls to MIDNIGHT (e.g. touchMarket, withdrawCollateral) which are havoc'd by the Prover do not havoc the tracked balances.
 
 persistent ghost mapping(address => mapping(address => uint256)) tokenBalance;
-
-persistent ghost uint256 boughtAssets;
-
-persistent ghost uint256 soldAssets;
 
 function summaryPullToken(address token, address from, uint256 amount) {
     summarySafeTransferFrom(token, from, currentContract, amount);
@@ -40,6 +39,10 @@ function summarySafeTransferFrom(address token, address from, address to, uint25
     tokenBalance[token][from] = assert_uint256(tokenBalance[token][from] - amount);
     tokenBalance[token][to] = assert_uint256(tokenBalance[token][to] + amount);
 }
+
+persistent ghost uint256 boughtAssets;
+
+persistent ghost uint256 soldAssets;
 
 function summaryTake(address msgSender, MidnightBundles.Offer offer, address taker, address receiverIfTakerIsSeller, address takerCallback) returns (uint256, uint256) {
     uint256 buyerAssets;
