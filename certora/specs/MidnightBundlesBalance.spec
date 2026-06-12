@@ -7,25 +7,23 @@ methods {
 
     function TickLib.tickToPrice(uint256 tick) internal returns (uint256) => NONDET;
 
+    function ConsumableUnitsLib.consumableUnits(address midnight, bytes32 id, MidnightBundles.Offer memory offer) internal returns (uint256) => NONDET;
+    function _.toId(MidnightBundles.Market market) external => NONDET;
+
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
     function TokenLib.pullToken(address token, address from, uint256 amount, MidnightBundles.TokenPermit memory permit) internal => summaryPullToken(token, from, amount);
-
-    // Those calls are assumed to not-reenter.
-    function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
-    function _.touchMarket(MidnightBundles.Market memory market) internal => NONDET;
-
-    function _.toId(MidnightBundles.Market market) external => summaryToId(market) expect(bytes32);
     function _.take(MidnightBundles.Offer offer, bytes ratifierData, uint256 units, address taker, address receiverIfTakerIsSeller, address takerCallback, bytes takerCallbackData) external with(env e) => summaryTake(e.msg.sender, offer, taker, receiverIfTakerIsSeller, takerCallback) expect(uint256, uint256);
 }
 
 /// HELPERS ///
+// Persistent ghosts so that the unresolved external calls to MIDNIGHT (e.g. touchMarket, withdrawCollateral) which are havoc'd by the Prover do not havoc the tracked balances.
 
-function summaryToId(MidnightBundles.Market market) returns (bytes32) {
-    return Utils.hashMarket(market);
-}
+persistent ghost mapping(address => mapping(address => uint256)) tokenBalance;
 
-ghost mapping(address => mapping(address => uint256)) tokenBalance;
+persistent ghost uint256 boughtAssets;
+
+persistent ghost uint256 soldAssets;
 
 function summaryPullToken(address token, address from, uint256 amount) {
     summarySafeTransferFrom(token, from, currentContract, amount);
@@ -43,10 +41,6 @@ function summarySafeTransferFrom(address token, address from, address to, uint25
     tokenBalance[token][to] = assert_uint256(tokenBalance[token][to] + amount);
 }
 
-ghost uint256 boughtAssets;
-
-ghost uint256 soldAssets;
-
 function summaryTake(address msgSender, MidnightBundles.Offer offer, address taker, address receiverIfTakerIsSeller, address takerCallback) returns (uint256, uint256) {
     uint256 buyerAssets;
     uint256 sellerAssets;
@@ -59,17 +53,22 @@ function summaryTake(address msgSender, MidnightBundles.Offer offer, address tak
 
 rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, uint256 targetUnits, uint256 maxBuyerAssets, address taker, MidnightBundles.TokenPermit loanTokenPermit, MidnightBundles.Take[] takes, MidnightBundles.CollateralWithdrawal[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient) {
     address loanToken = takes[0].offer.market.loanToken;
-    address midnight = currentContract.MIDNIGHT;
+
+    // The referral fee is paid to a third party, so it only leaves the taker if the recipient is distinct from the
+    // taker and from the bundler.
+    require e.msg.sender != currentContract;
+    require referralFeeRecipient != e.msg.sender;
+    require referralFeeRecipient != currentContract;
 
     boughtAssets = 0;
-    uint256 midnightBalanceBefore = tokenBalance[loanToken][midnight];
+    uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
     uint256 balanceBefore = tokenBalance[loanToken][e.msg.sender];
     buyWithUnitsTargetAndWithdrawCollateral(e, targetUnits, maxBuyerAssets, e.msg.sender, loanTokenPermit, takes, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient);
     uint256 balanceAfter = tokenBalance[loanToken][e.msg.sender];
-    uint256 midnightBalanceAfter = tokenBalance[loanToken][midnight];
+    uint256 feeBalanceAfter = tokenBalance[loanToken][referralFeeRecipient];
 
     mathint spent = balanceBefore - balanceAfter;
-    mathint fees = midnightBalanceAfter - midnightBalanceBefore;
+    mathint fees = feeBalanceAfter - feeBalanceBefore;
 
     assert spent == boughtAssets + fees;
 }
