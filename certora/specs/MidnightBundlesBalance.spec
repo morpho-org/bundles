@@ -6,10 +6,10 @@ methods {
     function Utils.hashMarket(MidnightBundles.Market market) external returns (bytes32) envfree;
 
     // Over-approximate view functions.
-    function TakeAmountsLib.sellerAssetsToUnits(address midnight, bytes32 id, MidnightBundles.Offer memory offer, uint256 targetSellerAssets) internal returns (uint256) => NONDET;
-    function TakeAmountsLib.buyerAssetsToUnits(address midnight, bytes32 id, MidnightBundles.Offer memory offer, uint256 buyerAssets) internal returns (uint256) => NONDET;
-    function ConsumableUnitsLib.consumableUnits(address midnight, bytes32 id, MidnightBundles.Offer memory offer) internal returns (uint256) => NONDET;
-    function _.toId(MidnightBundles.Market market) external => NONDET;
+    function TakeAmountsLib.sellerAssetsToUnits(address, bytes32, MidnightBundles.Offer memory, uint256) internal returns (uint256) => NONDET;
+    function TakeAmountsLib.buyerAssetsToUnits(address, bytes32, MidnightBundles.Offer memory, uint256) internal returns (uint256) => NONDET;
+    function ConsumableUnitsLib.consumableUnits(address, bytes32, MidnightBundles.Offer memory) internal returns (uint256) => NONDET;
+    function _.toId(MidnightBundles.Market) external => NONDET;
 
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
