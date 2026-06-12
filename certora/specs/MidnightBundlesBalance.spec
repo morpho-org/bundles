@@ -11,9 +11,6 @@ methods {
     function ConsumableUnitsLib.consumableUnits(address midnight, bytes32 id, MidnightBundles.Offer memory offer) internal returns (uint256) => NONDET;
     function _.toId(MidnightBundles.Market market) external => NONDET;
 
-    // Over-approximate external calls.
-    function _.touchMarket(MidnightBundles.Market market) external => HAVOC_ALL;
-
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
     function TokenLib.pullToken(address token, address from, uint256 amount, MidnightBundles.TokenPermit memory permit) internal => summaryPullToken(token, from, amount);
