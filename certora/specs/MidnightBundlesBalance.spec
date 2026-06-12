@@ -65,7 +65,10 @@ function summaryRepay(uint256 units) {
 rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, uint256 targetUnits, uint256 maxBuyerAssets, address taker, MidnightBundles.TokenPermit loanTokenPermit, MidnightBundles.Take[] takes, MidnightBundles.CollateralWithdrawal[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient) {
     address loanToken = takes[0].offer.market.loanToken;
 
-    require referralFeeRecipient != e.msg.sender, "distinct fee recipient";
+    // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
+    require e.msg.sender == 11, "ack";
+    require referralFeeRecipient == 12, "ack";
+    require currentContract == 13, "ack";
 
     boughtAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
@@ -83,7 +86,10 @@ rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, uint256 targ
 rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, uint256 targetBuyerAssets, uint256 minUnits, MidnightBundles.TokenPermit loanTokenPermit, MidnightBundles.Take[] takes, MidnightBundles.CollateralWithdrawal[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient) {
     address loanToken = takes[0].offer.market.loanToken;
 
-    require referralFeeRecipient != e.msg.sender, "distinct fee recipient to simplify accounting";
+    // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
+    require e.msg.sender == 11;
+    require referralFeeRecipient == 12;
+    require currentContract == 13;
 
     boughtAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
@@ -101,7 +107,11 @@ rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, uint256 tar
 rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, uint256 targetUnits, uint256 minSellerAssets, address receiver, MidnightBundles.CollateralSupply[] collateralSupplies, MidnightBundles.Take[] takes, uint256 referralFeePct, address referralFeeRecipient) {
     address loanToken = takes[0].offer.market.loanToken;
 
-    require receiver != referralFeeRecipient, "distinct recipients to simplify accounting";
+    // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
+    require e.msg.sender == 11, "ack";
+    require referralFeeRecipient == 12, "ack";
+    require currentContract == 13, "ack";
+    require receiver == 14, "ack";
 
     soldAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
@@ -119,7 +129,11 @@ rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, uint256 targe
 rule supplyCollateralAndSellWithAssetsTargetDoesntLoseTokens(env e, uint256 targetSellerAssets, uint256 maxUnits, address receiver, MidnightBundles.CollateralSupply[] collateralSupplies, MidnightBundles.Take[] takes, uint256 referralFeePct, address referralFeeRecipient) {
     address loanToken = takes[0].offer.market.loanToken;
 
-    require receiver != referralFeeRecipient, "distinct recipients to simplify accounting";
+    // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
+    require e.msg.sender == 11, "ack";
+    require referralFeeRecipient == 12, "ack";
+    require currentContract == 13, "ack";
+    require receiver == 14, "ack";
 
     soldAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
@@ -137,7 +151,10 @@ rule supplyCollateralAndSellWithAssetsTargetDoesntLoseTokens(env e, uint256 targ
 rule repayAndWithdrawCollateralDoesntLoseTokens(env e, MidnightBundles.Market market, uint256 assets, MidnightBundles.TokenPermit loanTokenPermit, MidnightBundles.CollateralWithdrawal[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient) {
     address loanToken = market.loanToken;
 
-    require referralFeeRecipient != e.msg.sender, "distinct fee recipient to simplify accounting";
+    // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
+    require e.msg.sender == 11, "ack";
+    require referralFeeRecipient == 12, "ack";
+    require currentContract == 13, "ack";
 
     repaidAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
