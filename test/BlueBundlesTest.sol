@@ -353,6 +353,34 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
+    /// @dev repayAssets == type(uint256).max closes the debt by shares: no borrow shares remain, and exactly
+    /// debt + fee is pulled from msg.sender (fee computed on the accrued debt, as in refinance).
+    function testRepayMaxClosesDebt(uint256 borrowAssets, uint256 referralFeePct) public {
+        borrowAssets = bound(borrowAssets, 1, 1e30);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+        _openBorrow(user, borrowAssets);
+        uint256 collateral = morpho.collateral(id, user);
+
+        // Zero IRM and sole borrower: the accrued debt is exactly borrowAssets.
+        uint256 expectedFee = borrowAssets * referralFeePct / WAD;
+        uint256 pulled = borrowAssets + expectedFee;
+
+        deal(address(loanToken), user, pulled);
+        vm.startPrank(user);
+        loanToken.approve(address(blueBundles), pulled);
+        blueBundles.repayAndWithdrawCollateral(
+            marketParams, type(uint256).max, collateral, user, receiver, _noPermit(), referralFeePct, referrer
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.borrowShares(id, user), 0, "borrow shares");
+        assertEq(morpho.collateral(id, user), 0, "collateral");
+        assertEq(collateralToken.balanceOf(receiver), collateral, "collateral receiver");
+        assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
+        assertEq(loanToken.balanceOf(user), 0, "user spent exactly debt + fee");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
     function testRepayPermit2() public {
         uint256 borrowAssets = 100e18;
         _openBorrow(user, borrowAssets);
@@ -458,6 +486,29 @@ contract BlueBundlesTest is Test {
 
         assertEq(loanToken.balanceOf(receiver), withdrawAssets - expectedFee, "receiver net");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    /// @dev withdrawAssets == type(uint256).max closes the supply position by shares: no supply shares remain.
+    function testWithdrawMaxClosesPosition(uint256 supplyAssets, uint256 referralFeePct) public {
+        supplyAssets = bound(supplyAssets, 1, 1e30);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+        deal(address(loanToken), user, supplyAssets);
+
+        vm.startPrank(user);
+        loanToken.approve(address(morpho), type(uint256).max);
+        morpho.supply(marketParams, supplyAssets, 0, user, "");
+        blueBundles.withdraw(marketParams, type(uint256).max, user, receiver, referralFeePct, referrer);
+        vm.stopPrank();
+
+        // Withdrawing by shares rounds assets down, so up to 1 wei can stay behind in the market.
+        uint256 withdrawn = loanToken.balanceOf(receiver) + loanToken.balanceOf(referrer);
+        uint256 expectedFee = withdrawn * referralFeePct / WAD;
+
+        assertEq(morpho.supplyShares(id, user), 0, "supply shares");
+        assertApproxEqAbs(withdrawn, supplyAssets, 1, "withdrawn");
+        assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
+        assertEq(loanToken.balanceOf(receiver), withdrawn - expectedFee, "receiver net");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 

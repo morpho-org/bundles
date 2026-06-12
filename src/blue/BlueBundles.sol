@@ -8,6 +8,7 @@ import {IMorpho, MarketParams, Position} from "../../lib/morpho-blue/src/interfa
 import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
 import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
+import {MorphoBalancesLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
 import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {IERC20} from "../../lib/midnight/src/interfaces/IERC20.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
@@ -21,6 +22,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     using UtilsLib for uint256;
     using MarketParamsLib for MarketParams;
+    using MorphoBalancesLib for IMorpho;
 
     struct RefinanceData {
         MarketParams sourceMarketParams;
@@ -77,10 +79,14 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
     /// @dev Pulls `repayAssets` of `marketParams.loanToken` from msg.sender (optionally via ERC-2612 or Permit2).
     /// @dev The referral fee is deducted from repayAssets; the remainder is repaid against onBehalf's debt.
+    /// @dev If `repayAssets == type(uint256).max`, the full debt is closed by shares so no borrow shares remain:
+    /// debt + fee is pulled from msg.sender, with the fee computed on the exact accrued debt (fee = debt *
+    /// referralFeePct / WAD, as in refinance). Closing a position without debt reverts on Blue. Since the pulled
+    /// amount is only known at execution, permit-based pulls need the signed amount to match it exactly — otherwise
+    /// a standing allowance must cover it.
     /// @dev If `withdrawCollateralAssets > 0`, also withdraws that amount of collateral from onBehalf's position to
     /// receiver.
-    /// @dev Any leftover loan tokens (e.g. due to share-rounding overshoot on repay) are refunded to msg.sender.
-    /// @dev Fee = repayAssets * referralFeePct / WAD; units repaid = repayAssets - fee.
+    /// @dev Otherwise, fee = repayAssets * referralFeePct / WAD; units repaid = repayAssets - fee.
     function repayAndWithdrawCollateral(
         MarketParams memory marketParams,
         uint256 repayAssets,
@@ -94,13 +100,25 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
-        uint256 referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD);
+        uint256 repayShares;
+        uint256 referralFeeAssets;
+        if (repayAssets == type(uint256).max) {
+            // Full close by shares (accrual-invariant, so no dust debt can remain). expectedBorrowAssets rounds up
+            // exactly like Blue's repay-by-shares pull in the same block, so pulling debt + fee is always enough.
+            repayShares = IMorpho(BLUE).position(marketParams.id(), onBehalf).borrowShares;
+            uint256 debt = IMorpho(BLUE).expectedBorrowAssets(marketParams, onBehalf);
+            referralFeeAssets = debt.mulDivDown(referralFeePct, WAD);
+            repayAssets = debt + referralFeeAssets;
+        } else {
+            referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD);
+        }
         uint256 toRepay = repayAssets - referralFeeAssets;
 
         TokenLib.pullToken(marketParams.loanToken, msg.sender, repayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
-        IMorpho(BLUE).repay(marketParams, toRepay, 0, onBehalf, "");
+        if (repayShares > 0) IMorpho(BLUE).repay(marketParams, 0, repayShares, onBehalf, "");
+        else IMorpho(BLUE).repay(marketParams, toRepay, 0, onBehalf, "");
 
         if (withdrawCollateralAssets > 0) {
             IMorpho(BLUE).withdrawCollateral(marketParams, withdrawCollateralAssets, onBehalf, receiver);
@@ -108,12 +126,6 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
 
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
-        }
-
-        // Refund any leftover loan tokens (Blue may have used slightly less than toRepay due to share rounding).
-        uint256 leftover = IERC20(marketParams.loanToken).balanceOf(address(this));
-        if (leftover > 0) {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, leftover);
         }
     }
 
@@ -148,6 +160,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
     /// @dev Withdraws `withdrawAssets` of `marketParams.loanToken` from onBehalf's supply position, routed via this
     /// contract.
+    /// @dev If `withdrawAssets == type(uint256).max`, the full supply position is closed by shares so no supply
+    /// shares remain.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to receiver.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     function withdraw(
@@ -161,7 +175,13 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
-        (uint256 withdrawn,) = IMorpho(BLUE).withdraw(marketParams, withdrawAssets, 0, onBehalf, address(this));
+        uint256 withdrawn;
+        if (withdrawAssets == type(uint256).max) {
+            uint256 supplyShares = IMorpho(BLUE).position(marketParams.id(), onBehalf).supplyShares;
+            (withdrawn,) = IMorpho(BLUE).withdraw(marketParams, 0, supplyShares, onBehalf, address(this));
+        } else {
+            (withdrawn,) = IMorpho(BLUE).withdraw(marketParams, withdrawAssets, 0, onBehalf, address(this));
+        }
 
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
