@@ -87,9 +87,9 @@ rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, uint256 tar
     address loanToken = takes[0].offer.market.loanToken;
 
     // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
-    require e.msg.sender == 11;
-    require referralFeeRecipient == 12;
-    require currentContract == 13;
+    require e.msg.sender == 11, "ack";
+    require referralFeeRecipient == 12, "ack";
+    require currentContract == 13, "ack";
 
     boughtAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
