@@ -218,7 +218,9 @@ contract BlueBundlesTest is Test {
         vm.expectRevert(IBlueBundles.PctExceeded.selector);
         blueBundles.withdraw(marketParams, 1, user, receiver, WAD, address(0));
         vm.expectRevert(IBlueBundles.PctExceeded.selector);
-        blueBundles.refinance(marketParams, destMarketParams, 1, user, WAD, address(0));
+        blueBundles.refinance(marketParams, destMarketParams, WAD, user, WAD, address(0));
+        vm.expectRevert(IBlueBundles.PctExceeded.selector);
+        blueBundles.refinance(marketParams, destMarketParams, WAD + 1, user, 0, address(0));
         vm.stopPrank();
     }
 
@@ -464,7 +466,7 @@ contract BlueBundlesTest is Test {
     function testRefinanceUnauthorized() public {
         vm.prank(address(0xdead));
         vm.expectRevert(IBlueBundles.Unauthorized.selector);
-        blueBundles.refinance(marketParams, destMarketParams, 1, user, 0, address(0));
+        blueBundles.refinance(marketParams, destMarketParams, WAD, user, 0, address(0));
     }
 
     function testRefinanceCallbackNotBlue() public {
@@ -478,30 +480,76 @@ contract BlueBundlesTest is Test {
 
         vm.prank(user);
         vm.expectRevert(IBlueBundles.InconsistentTokens.selector);
-        blueBundles.refinance(marketParams, wrongDest, 1, user, 0, address(0));
+        blueBundles.refinance(marketParams, wrongDest, WAD, user, 0, address(0));
     }
 
-    function testRefinanceMaxBorrowExceeded() public {
+    function testRefinanceLtvExceeded() public {
         uint256 borrowAssets = 100e18;
         _openBorrow(user, borrowAssets);
+        uint256 collateral = morpho.collateral(id, user);
+
+        // Allowed borrow = collateral * destLltv * maxLtvPct (1:1 price). The floored fit pct allows just under the
+        // debt; one wei more tips the allowance over it.
+        uint256 fitPct = borrowAssets * WAD / (collateral * LLTV_DEST / WAD);
 
         vm.prank(user);
-        vm.expectRevert(IBlueBundles.MaxBorrowExceeded.selector);
-        blueBundles.refinance(marketParams, destMarketParams, borrowAssets - 1, user, 0, address(0));
+        vm.expectRevert(IBlueBundles.LtvExceeded.selector);
+        blueBundles.refinance(marketParams, destMarketParams, fitPct, user, 0, address(0));
+
+        vm.prank(user);
+        blueBundles.refinance(marketParams, destMarketParams, fitPct + 1, user, 0, address(0));
+        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
     }
 
-    /// @dev maxBorrowAssets bounds the total destination borrow, fee included.
-    function testRefinanceMaxBorrowExceededWithReferralFee() public {
+    /// @dev The LTV bound applies to the total destination borrow, fee included: a threshold that fits the debt
+    /// alone reverts once the fee is added on top.
+    function testRefinanceLtvExceededWithReferralFee() public {
         uint256 borrowAssets = 100e18;
-        uint256 referralFeePct = 0.01e18;
+        uint256 referralFeePct = 0.1e18;
         _openBorrow(user, borrowAssets);
-        uint256 expectedFee = borrowAssets * referralFeePct / WAD;
+
+        // Collateral 200e18 at 0.9 LLTV and maxLtvPct 0.6 allows 108e18: fits the 100e18 debt, not debt + 10e18 fee.
+        uint256 maxLtvPct = 0.6e18;
 
         vm.prank(user);
-        vm.expectRevert(IBlueBundles.MaxBorrowExceeded.selector);
-        blueBundles.refinance(
-            marketParams, destMarketParams, borrowAssets + expectedFee - 1, user, referralFeePct, referrer
-        );
+        vm.expectRevert(IBlueBundles.LtvExceeded.selector);
+        blueBundles.refinance(marketParams, destMarketParams, maxLtvPct, user, referralFeePct, referrer);
+
+        vm.prank(user);
+        blueBundles.refinance(marketParams, destMarketParams, maxLtvPct, user, 0, address(0));
+        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
+    }
+
+    /// @dev With maxLtvPct == WAD the bundler's allowance is exactly Blue's health-check maxBorrow: a position
+    /// landing precisely at the destination LLTV limit passes, one wei beyond reverts.
+    function testRefinanceLtvBoundAtWadExactLimit() public {
+        // Dest collateral value is half the source's: 200e18 collateral => 100e18 value => 90e18 limit at 0.9 LLTV.
+        destOracle.setPrice(ORACLE_PRICE_SCALE / 2);
+        uint256 collateral = 200e18;
+        deal(address(collateralToken), user, collateral);
+
+        vm.startPrank(user);
+        collateralToken.approve(address(morpho), type(uint256).max);
+        morpho.supplyCollateral(marketParams, collateral, user, "");
+        morpho.borrow(marketParams, 90e18, 0, user, user);
+        blueBundles.refinance(marketParams, destMarketParams, WAD, user, 0, address(0));
+        vm.stopPrank();
+
+        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), 90e18, "dest debt at the LLTV limit");
+    }
+
+    function testRefinanceLtvBoundAtWadOverLimit() public {
+        destOracle.setPrice(ORACLE_PRICE_SCALE / 2);
+        uint256 collateral = 200e18;
+        deal(address(collateralToken), user, collateral);
+
+        vm.startPrank(user);
+        collateralToken.approve(address(morpho), type(uint256).max);
+        morpho.supplyCollateral(marketParams, collateral, user, "");
+        morpho.borrow(marketParams, 90e18 + 1, 0, user, user);
+        vm.expectRevert(IBlueBundles.LtvExceeded.selector);
+        blueBundles.refinance(marketParams, destMarketParams, WAD, user, 0, address(0));
+        vm.stopPrank();
     }
 
     function testRefinance(uint256 borrowAssets) public {
@@ -510,7 +558,7 @@ contract BlueBundlesTest is Test {
         uint256 collateral = morpho.collateral(id, user);
 
         vm.prank(user);
-        blueBundles.refinance(marketParams, destMarketParams, borrowAssets, user, 0, address(0));
+        blueBundles.refinance(marketParams, destMarketParams, WAD, user, 0, address(0));
 
         assertEq(morpho.collateral(id, user), 0, "source collateral");
         assertEq(morpho.borrowShares(id, user), 0, "source debt");
@@ -535,9 +583,7 @@ contract BlueBundlesTest is Test {
         uint256 expectedFee = borrowAssets * referralFeePct / WAD;
 
         vm.prank(user);
-        blueBundles.refinance(
-            marketParams, destMarketParams, borrowAssets + expectedFee, user, referralFeePct, referrer
-        );
+        blueBundles.refinance(marketParams, destMarketParams, WAD, user, referralFeePct, referrer);
 
         assertEq(morpho.collateral(id, user), 0, "source collateral");
         assertEq(morpho.borrowShares(id, user), 0, "source debt");
@@ -561,7 +607,7 @@ contract BlueBundlesTest is Test {
         vm.mockCallRevert(address(oracle), abi.encodeWithSelector(IOracle.price.selector), "oracle down");
 
         vm.prank(user);
-        blueBundles.refinance(marketParams, destMarketParams, borrowAssets, user, 0, address(0));
+        blueBundles.refinance(marketParams, destMarketParams, WAD, user, 0, address(0));
 
         assertEq(morpho.borrowShares(id, user), 0, "source debt");
         assertEq(morpho.collateral(destId, user), collateral, "dest collateral");
@@ -583,7 +629,7 @@ contract BlueBundlesTest is Test {
         vm.stopPrank();
 
         vm.prank(user);
-        blueBundles.refinance(marketParams, destMarketParams, borrowAssets, user, 0, address(0));
+        blueBundles.refinance(marketParams, destMarketParams, WAD, user, 0, address(0));
 
         assertEq(morpho.borrowShares(id, user), 0, "source debt");
         assertEq(morpho.collateral(id, user), 0, "source collateral");

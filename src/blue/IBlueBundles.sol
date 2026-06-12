@@ -11,7 +11,7 @@ interface IBlueBundles {
     error Unauthorized();
     error UnauthorizedCallback();
     error InconsistentTokens();
-    error MaxBorrowExceeded();
+    error LtvExceeded();
 
     /// STORAGE GETTERS ///
     function PERMIT2() external view returns (address);
@@ -61,7 +61,7 @@ interface IBlueBundles {
     function refinance(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
-        uint256 maxBorrowAssets,
+        uint256 maxLtvPct,
         address onBehalf,
         uint256 referralFeePct,
         address referralFeeRecipient

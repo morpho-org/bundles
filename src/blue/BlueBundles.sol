@@ -6,7 +6,9 @@ import {IBlueBundles} from "./IBlueBundles.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {IMorpho, MarketParams, Position} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
+import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
+import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {IERC20} from "../../lib/midnight/src/interfaces/IERC20.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
@@ -24,7 +26,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         MarketParams sourceMarketParams;
         MarketParams destMarketParams;
         uint256 collateral;
-        uint256 maxBorrowAssets;
+        uint256 maxLtvPct;
         address onBehalf;
         uint256 referralFeePct;
         address referralFeeRecipient;
@@ -174,19 +176,21 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev The markets must have the same loan token and the same collateral token.
     /// @dev The referral fee is borrowed on the destination on top of the assets repaid on the source, so it adds to
     /// the destination debt and lowers the resulting health factor.
-    /// @dev Fee = repaidAssets * referralFeePct / WAD; total borrowed on the destination = repaidAssets + fee, at most
-    /// maxBorrowAssets.
+    /// @dev Fee = repaidAssets * referralFeePct / WAD; total borrowed on the destination = repaidAssets + fee.
+    /// @dev maxLtvPct bounds the resulting destination LTV relative to the destination LLTV (fee included): total
+    /// borrowed <= collateral value * destLltv * maxLtvPct / WAD. maxLtvPct = WAD adds no bound beyond Blue's own
+    /// health check.
     /// @dev Refinancing a position without debt reverts on Blue.
     function refinance(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
-        uint256 maxBorrowAssets,
+        uint256 maxLtvPct,
         address onBehalf,
         uint256 referralFeePct,
         address referralFeeRecipient
     ) external {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
-        require(referralFeePct < WAD, PctExceeded());
+        require(referralFeePct < WAD && maxLtvPct <= WAD, PctExceeded());
         require(
             sourceMarketParams.loanToken == destMarketParams.loanToken
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
@@ -200,7 +204,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
                 sourceMarketParams: sourceMarketParams,
                 destMarketParams: destMarketParams,
                 collateral: position.collateral,
-                maxBorrowAssets: maxBorrowAssets,
+                maxLtvPct: maxLtvPct,
                 onBehalf: onBehalf,
                 referralFeePct: referralFeePct,
                 referralFeeRecipient: referralFeeRecipient
@@ -217,9 +221,13 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
 
         uint256 referralFeeAssets = assets.mulDivDown(d.referralFeePct, WAD);
         uint256 borrowAssets = assets + referralFeeAssets;
-        require(borrowAssets <= d.maxBorrowAssets, MaxBorrowExceeded());
 
-        // The source debt is already zero, so this health check passes without reading the source oracle.
+        // Mirrors Blue's health check rounding (allowance rounded down); at maxLtvPct == WAD it is Blue's maxBorrow.
+        uint256 price = IOracle(d.destMarketParams.oracle).price();
+        uint256 maxBorrow = d.collateral.mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(d.destMarketParams.lltv, WAD)
+            .mulDivDown(d.maxLtvPct, WAD);
+        require(borrowAssets <= maxBorrow, LtvExceeded());
+
         IMorpho(BLUE).withdrawCollateral(d.sourceMarketParams, d.collateral, d.onBehalf, address(this));
 
         TokenLib.forceApproveMax(d.destMarketParams.collateralToken, BLUE);
