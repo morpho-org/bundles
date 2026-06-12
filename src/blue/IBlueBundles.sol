@@ -62,6 +62,8 @@ interface IBlueBundles {
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
         uint256 maxBorrowAssets,
-        address onBehalf
+        address onBehalf,
+        uint256 referralFeePct,
+        address referralFeeRecipient
     ) external;
 }

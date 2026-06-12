@@ -26,6 +26,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         uint256 collateral;
         uint256 maxBorrowAssets;
         address onBehalf;
+        uint256 referralFeePct;
+        address referralFeeRecipient;
     }
 
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
@@ -170,16 +172,21 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev Moves the full position of onBehalf (collateral and borrow shares, read from Blue) from the source market
     /// to the destination market via Blue's repay callback, pulling no tokens from msg.sender.
     /// @dev The markets must have the same loan token and the same collateral token.
-    /// @dev Total loan assets borrowed on the destination is the exact assets repaid on the source, at most
+    /// @dev The referral fee is borrowed on the destination on top of the assets repaid on the source, so it adds to
+    /// the destination debt and lowers the resulting health factor.
+    /// @dev Fee = repaidAssets * referralFeePct / WAD; total borrowed on the destination = repaidAssets + fee, at most
     /// maxBorrowAssets.
     /// @dev Refinancing a position without debt reverts on Blue.
     function refinance(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
         uint256 maxBorrowAssets,
-        address onBehalf
+        address onBehalf,
+        uint256 referralFeePct,
+        address referralFeeRecipient
     ) external {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
+        require(referralFeePct < WAD, PctExceeded());
         require(
             sourceMarketParams.loanToken == destMarketParams.loanToken
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
@@ -194,7 +201,9 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
                 destMarketParams: destMarketParams,
                 collateral: position.collateral,
                 maxBorrowAssets: maxBorrowAssets,
-                onBehalf: onBehalf
+                onBehalf: onBehalf,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referralFeeRecipient
             })
         );
         IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, onBehalf, data);
@@ -205,14 +214,21 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
         RefinanceData memory d = abi.decode(data, (RefinanceData));
-        require(assets <= d.maxBorrowAssets, MaxBorrowExceeded());
+
+        uint256 referralFeeAssets = assets.mulDivDown(d.referralFeePct, WAD);
+        uint256 borrowAssets = assets + referralFeeAssets;
+        require(borrowAssets <= d.maxBorrowAssets, MaxBorrowExceeded());
 
         // The source debt is already zero, so this health check passes without reading the source oracle.
         IMorpho(BLUE).withdrawCollateral(d.sourceMarketParams, d.collateral, d.onBehalf, address(this));
 
         TokenLib.forceApproveMax(d.destMarketParams.collateralToken, BLUE);
         IMorpho(BLUE).supplyCollateral(d.destMarketParams, d.collateral, d.onBehalf, "");
-        IMorpho(BLUE).borrow(d.destMarketParams, assets, 0, d.onBehalf, address(this));
+        IMorpho(BLUE).borrow(d.destMarketParams, borrowAssets, 0, d.onBehalf, address(this));
+
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(d.destMarketParams.loanToken, d.referralFeeRecipient, referralFeeAssets);
+        }
 
         TokenLib.forceApproveMax(d.destMarketParams.loanToken, BLUE);
     }
