@@ -5,3 +5,6 @@ broadcast/
 *.swp
 .DS_Store
 node_modules/
+
+# Certora local run cache
+.certora_internal/
