@@ -50,10 +50,12 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev Total loan assets routed: borrowedAssets - referralFeeAssets to receiver, referralFeeAssets to
     /// referralFeeRecipient.
     /// @dev Fee = borrowedAssets * referralFeePct / WAD; net = borrowedAssets - fee.
+    /// @dev maxLtv caps onBehalf's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
     function supplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAmount,
         uint256 borrowAssets,
+        uint256 maxLtv,
         address onBehalf,
         address receiver,
         TokenPermit memory collateralPermit,
@@ -68,6 +70,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
 
         IMorpho(BLUE).supplyCollateral(marketParams, collateralAmount, onBehalf, "");
         (uint256 borrowed,) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, onBehalf, address(this));
+
+        requireMaxLtv(marketParams, onBehalf, maxLtv);
 
         uint256 referralFeeAssets = borrowed.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
@@ -87,10 +91,12 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev If `withdrawCollateralAssets > 0`, also withdraws that amount of collateral from onBehalf's position to
     /// receiver.
     /// @dev Otherwise, fee = repayAssets * referralFeePct / WAD; units repaid = repayAssets - fee.
+    /// @dev maxLtv caps onBehalf's resulting LTV after a withdrawal; skipped on a pure repay (WAD disables it).
     function repayAndWithdrawCollateral(
         MarketParams memory marketParams,
         uint256 repayAssets,
         uint256 withdrawCollateralAssets,
+        uint256 maxLtv,
         address onBehalf,
         address receiver,
         TokenPermit memory loanTokenPermit,
@@ -122,6 +128,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
 
         if (withdrawCollateralAssets > 0) {
             IMorpho(BLUE).withdrawCollateral(marketParams, withdrawCollateralAssets, onBehalf, receiver);
+            requireMaxLtv(marketParams, onBehalf, maxLtv);
         }
 
         if (referralFeeAssets > 0) {
@@ -257,5 +264,14 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         }
 
         TokenLib.forceApproveMax(d.destMarketParams.loanToken, BLUE);
+    }
+
+    /// @dev Reverts unless onBehalf's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.
+    function requireMaxLtv(MarketParams memory marketParams, address onBehalf, uint256 maxLtv) internal view {
+        if (maxLtv >= marketParams.lltv) return;
+        uint256 price = IOracle(marketParams.oracle).price();
+        uint256 collateral = IMorpho(BLUE).position(marketParams.id(), onBehalf).collateral;
+        uint256 maxBorrow = collateral.mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
+        require(IMorpho(BLUE).expectedBorrowAssets(marketParams, onBehalf) <= maxBorrow, LtvExceeded());
     }
 }
