@@ -11,8 +11,8 @@ methods {
     function ConsumableUnitsLib.consumableUnits(address, bytes32, MidnightBundles.Offer memory) internal returns (uint256) => NONDET;
     function _.toId(MidnightBundles.Market) external => NONDET;
 
-    // This seems needed for call resolution.
-    function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
+    // Over-approximate non-view function.
+    function TokenLib.forceApproveMax(address token, address spender, uint256 value) internal => HAVOC_ALL;
 
     // Token modeling.
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
@@ -108,10 +108,9 @@ rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, uint256 targe
     address loanToken = takes[0].offer.market.loanToken;
 
     // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
-    require e.msg.sender == 11, "ack";
+    require receiver == 11, "ack";
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
-    require receiver == 14, "ack";
 
     soldAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
@@ -130,10 +129,9 @@ rule supplyCollateralAndSellWithAssetsTargetDoesntLoseTokens(env e, uint256 targ
     address loanToken = takes[0].offer.market.loanToken;
 
     // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
-    require e.msg.sender == 11, "ack";
+    require receiver == 11, "ack";
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
-    require receiver == 14, "ack";
 
     soldAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];

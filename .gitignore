@@ -5,3 +5,4 @@ broadcast/
 *.swp
 .DS_Store
 node_modules/
+.certora_internal/
