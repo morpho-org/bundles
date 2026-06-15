@@ -109,8 +109,6 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         uint256 repayShares;
         uint256 referralFeeAssets;
         if (repayAssets == type(uint256).max) {
-            // Full close by shares (accrual-invariant, so no dust debt can remain). expectedBorrowAssets rounds up
-            // exactly like Blue's repay-by-shares pull in the same block, so pulling debt + fee is always enough.
             repayShares = IMorpho(BLUE).position(marketParams.id(), onBehalf).borrowShares;
             uint256 debt = IMorpho(BLUE).expectedBorrowAssets(marketParams, onBehalf);
             referralFeeAssets = debt.mulDivDown(referralFeePct, WAD);
@@ -156,7 +154,6 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         TokenLib.pullToken(marketParams.loanToken, msg.sender, assets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
-        // assets specified => Blue pulls exactly `toSupply`, so no leftover refund is needed.
         IMorpho(BLUE).supply(marketParams, toSupply, 0, onBehalf, "");
 
         if (referralFeeAssets > 0) {
@@ -248,7 +245,6 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         uint256 referralFeeAssets = assets.mulDivDown(d.referralFeePct, WAD);
         uint256 borrowAssets = assets + referralFeeAssets;
 
-        // Caps the resulting destination LTV at maxLtv (collateral value * maxLtv / WAD), rounding down.
         uint256 price = IOracle(d.destMarketParams.oracle).price();
         uint256 maxBorrow = d.collateral.mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(d.maxLtv, WAD);
         require(borrowAssets <= maxBorrow, LtvExceeded());
