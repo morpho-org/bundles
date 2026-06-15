@@ -61,7 +61,7 @@ interface IBlueBundles {
     function refinance(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
-        uint256 maxLtvPct,
+        uint256 maxLtv,
         address onBehalf,
         uint256 referralFeePct,
         address referralFeeRecipient

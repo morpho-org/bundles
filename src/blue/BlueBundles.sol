@@ -28,7 +28,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         MarketParams sourceMarketParams;
         MarketParams destMarketParams;
         uint256 collateral;
-        uint256 maxLtvPct;
+        uint256 maxLtv;
         address onBehalf;
         uint256 referralFeePct;
         address referralFeeRecipient;
@@ -197,20 +197,19 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev The referral fee is borrowed on the destination on top of the assets repaid on the source, so it adds to
     /// the destination debt and lowers the resulting health factor.
     /// @dev Fee = repaidAssets * referralFeePct / WAD; total borrowed on the destination = repaidAssets + fee.
-    /// @dev maxLtvPct bounds the resulting destination LTV relative to the destination LLTV (fee included): total
-    /// borrowed <= collateral value * destLltv * maxLtvPct / WAD. maxLtvPct = WAD adds no bound beyond Blue's own
-    /// health check.
+    /// @dev maxLtv bounds the resulting destination LTV (fee included): total borrowed <= collateral value * maxLtv /
+    /// WAD. maxLtv = WAD adds no bound beyond Blue's own health check.
     /// @dev Refinancing a position without debt reverts on Blue.
     function refinance(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
-        uint256 maxLtvPct,
+        uint256 maxLtv,
         address onBehalf,
         uint256 referralFeePct,
         address referralFeeRecipient
     ) external {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
-        require(referralFeePct < WAD && maxLtvPct <= WAD, PctExceeded());
+        require(referralFeePct < WAD && maxLtv <= WAD, PctExceeded());
         require(
             sourceMarketParams.loanToken == destMarketParams.loanToken
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
@@ -224,7 +223,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
                 sourceMarketParams: sourceMarketParams,
                 destMarketParams: destMarketParams,
                 collateral: position.collateral,
-                maxLtvPct: maxLtvPct,
+                maxLtv: maxLtv,
                 onBehalf: onBehalf,
                 referralFeePct: referralFeePct,
                 referralFeeRecipient: referralFeeRecipient
@@ -242,10 +241,9 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         uint256 referralFeeAssets = assets.mulDivDown(d.referralFeePct, WAD);
         uint256 borrowAssets = assets + referralFeeAssets;
 
-        // Mirrors Blue's health check rounding (allowance rounded down); at maxLtvPct == WAD it is Blue's maxBorrow.
+        // Caps the resulting destination LTV at maxLtv (collateral value * maxLtv / WAD), rounding down.
         uint256 price = IOracle(d.destMarketParams.oracle).price();
-        uint256 maxBorrow = d.collateral.mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(d.destMarketParams.lltv, WAD)
-            .mulDivDown(d.maxLtvPct, WAD);
+        uint256 maxBorrow = d.collateral.mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(d.maxLtv, WAD);
         require(borrowAssets <= maxBorrow, LtvExceeded());
 
         IMorpho(BLUE).withdrawCollateral(d.sourceMarketParams, d.collateral, d.onBehalf, address(this));
