@@ -219,8 +219,6 @@ contract BlueBundlesTest is Test {
         blueBundles.withdraw(marketParams, 1, user, receiver, WAD, address(0));
         vm.expectRevert(IBlueBundles.PctExceeded.selector);
         blueBundles.refinance(marketParams, destMarketParams, WAD, user, WAD, address(0));
-        vm.expectRevert(IBlueBundles.PctExceeded.selector);
-        blueBundles.refinance(marketParams, destMarketParams, WAD + 1, user, 0, address(0));
         vm.stopPrank();
     }
 
@@ -539,8 +537,8 @@ contract BlueBundlesTest is Test {
         _openBorrow(user, borrowAssets);
         uint256 collateral = morpho.collateral(id, user);
 
-        // Allowed borrow = collateral value * maxLtv (1:1 price). One wei below the exact-fit ltv floors the
-        // allowance just under the debt; the exact fit lands on it.
+        // Allowed borrow = collateral value * maxLtv (1:1 price). At the exact-fit ltv the allowance equals the
+        // debt; one wei less drops it just below.
         uint256 fitLtv = borrowAssets * WAD / collateral;
 
         vm.prank(user);

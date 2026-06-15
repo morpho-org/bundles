@@ -198,7 +198,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// the destination debt and lowers the resulting health factor.
     /// @dev Fee = repaidAssets * referralFeePct / WAD; total borrowed on the destination = repaidAssets + fee.
     /// @dev maxLtv bounds the resulting destination LTV (fee included): total borrowed <= collateral value * maxLtv /
-    /// WAD. maxLtv = WAD adds no bound beyond Blue's own health check.
+    /// WAD. Any maxLtv at or above the destination LLTV adds no bound beyond Blue's own health check.
     /// @dev Refinancing a position without debt reverts on Blue.
     function refinance(
         MarketParams memory sourceMarketParams,
@@ -209,7 +209,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         address referralFeeRecipient
     ) external {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
-        require(referralFeePct < WAD && maxLtv <= WAD, PctExceeded());
+        require(referralFeePct < WAD, PctExceeded());
         require(
             sourceMarketParams.loanToken == destMarketParams.loanToken
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
