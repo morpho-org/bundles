@@ -60,7 +60,7 @@ interface IBlueBundles {
         address referralFeeRecipient
     ) external;
 
-    function refinance(
+    function migrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
         uint256 maxLtv,

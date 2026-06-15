@@ -24,7 +24,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
 
-    struct RefinanceData {
+    struct MigrateBorrowPositionData {
         MarketParams sourceMarketParams;
         MarketParams destMarketParams;
         uint256 collateral;
@@ -83,11 +83,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
     /// @dev Pulls `repayAssets` of `marketParams.loanToken` from msg.sender (optionally via ERC-2612 or Permit2).
     /// @dev The referral fee is deducted from repayAssets; the remainder is repaid against onBehalf's debt.
-    /// @dev If `repayAssets == type(uint256).max`, the full debt is closed by shares so no borrow shares remain:
-    /// debt + fee is pulled from msg.sender, with the fee computed on the exact accrued debt (fee = debt *
-    /// referralFeePct / WAD, as in refinance). Closing a position without debt reverts on Blue. Since the pulled
-    /// amount is only known at execution, permit-based pulls need the signed amount to match it exactly — otherwise
-    /// a standing allowance must cover it.
+    /// @dev If `repayAssets == type(uint256).max`, the full debt is closed by shares; debt + fee (fee on the
+    /// accrued debt) is pulled. Permit pulls must match this amount, else a standing allowance must cover it.
     /// @dev If `withdrawCollateralAssets > 0`, also withdraws that amount of collateral from onBehalf's position to
     /// receiver.
     /// @dev Otherwise, fee = repayAssets * referralFeePct / WAD; units repaid = repayAssets - fee.
@@ -198,13 +195,11 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev Moves the full position of onBehalf (collateral and borrow shares, read from Blue) from the source market
     /// to the destination market via Blue's repay callback, pulling no tokens from msg.sender.
     /// @dev The markets must have the same loan token and the same collateral token.
-    /// @dev The referral fee is borrowed on the destination on top of the assets repaid on the source, so it adds to
-    /// the destination debt and lowers the resulting health factor.
+    /// @dev The referral fee is borrowed on the destination on top of the repaid assets, adding to the debt.
     /// @dev Fee = repaidAssets * referralFeePct / WAD; total borrowed on the destination = repaidAssets + fee.
-    /// @dev maxLtv bounds the resulting destination LTV (fee included): total borrowed <= collateral value * maxLtv /
-    /// WAD. Any maxLtv at or above the destination LLTV adds no bound beyond Blue's own health check.
-    /// @dev Refinancing a position without debt reverts on Blue.
-    function refinance(
+    /// @dev maxLtv caps the resulting destination LTV (fee included); at or above the destination LLTV it is a no-op.
+    /// @dev Migrating a position without debt reverts on Blue.
+    function migrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
         uint256 maxLtv,
@@ -223,7 +218,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), onBehalf);
 
         bytes memory data = abi.encode(
-            RefinanceData({
+            MigrateBorrowPositionData({
                 sourceMarketParams: sourceMarketParams,
                 destMarketParams: destMarketParams,
                 collateral: position.collateral,
@@ -236,11 +231,12 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, onBehalf, data);
     }
 
-    /// @dev Blue's repay callback. Only reachable during refinance: no other function passes non-empty data to repay.
+    /// @dev Blue's repay callback. Only reachable during migrateBorrowPosition: no other function passes non-empty
+    /// data to repay.
     /// @dev Blue pulls exactly `assets` of the loan token from this contract after this callback returns.
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
-        RefinanceData memory d = abi.decode(data, (RefinanceData));
+        MigrateBorrowPositionData memory d = abi.decode(data, (MigrateBorrowPositionData));
 
         uint256 referralFeeAssets = assets.mulDivDown(d.referralFeePct, WAD);
         uint256 borrowAssets = assets + referralFeeAssets;
