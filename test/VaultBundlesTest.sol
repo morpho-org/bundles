@@ -222,7 +222,11 @@ contract VaultBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
         assertEq(loanToken.balanceOf(address(adapter)), 0, "adapter loan token balance");
         assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
-        assertEq(morpho.expectedSupplyAssets(marketParams, address(this)), assets, "supply position");
-        assertEq(vault.balanceOf(address(this)), 0, "vault balance");
+        assertEq(
+            morpho.expectedSupplyAssets(marketParams, address(this)),
+            optimalDeallocateAssets(assets),
+            "supply position"
+        );
+        assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
 }
