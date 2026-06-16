@@ -18,8 +18,9 @@ import {IVaultBundles} from "../src/vault/IVaultBundles.sol";
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IVaultV2Factory} from "../lib/vault-v2/src/interfaces/IVaultV2Factory.sol";
 import {IMorphoMarketV1AdapterV2} from "../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2.sol";
-import {IMorphoMarketV1AdapterV2Factory} from
-    "../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2Factory.sol";
+import {
+    IMorphoMarketV1AdapterV2Factory
+} from "../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2Factory.sol";
 
 contract VaultBundlesTest is Test {
     using MarketParamsLib for MarketParams;
@@ -80,7 +81,9 @@ contract VaultBundlesTest is Test {
         _submitAndExec(abi.encodeCall(IVaultV2.setIsAllocator, (allocator, true)));
 
         IMorphoMarketV1AdapterV2Factory adapterFactory = IMorphoMarketV1AdapterV2Factory(
-            deployCode("MorphoMarketV1AdapterV2Factory.sol:MorphoMarketV1AdapterV2Factory", abi.encode(morpho, address(0)))
+            deployCode(
+                "MorphoMarketV1AdapterV2Factory.sol:MorphoMarketV1AdapterV2Factory", abi.encode(morpho, address(0))
+            )
         );
         adapter = IMorphoMarketV1AdapterV2(adapterFactory.createMorphoMarketV1AdapterV2(address(vault)));
 
@@ -223,9 +226,7 @@ contract VaultBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(adapter)), 0, "adapter loan token balance");
         assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
         assertEq(
-            morpho.expectedSupplyAssets(marketParams, address(this)),
-            optimalDeallocateAssets(assets),
-            "supply position"
+            morpho.expectedSupplyAssets(marketParams, address(this)), optimalDeallocateAssets(assets), "supply position"
         );
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
