@@ -12,6 +12,7 @@ interface IBlueBundles {
     error UnauthorizedCallback();
     error InconsistentTokens();
     error LtvExceeded();
+    error DeadlinePassed();
 
     /// STORAGE GETTERS ///
     function PERMIT2() external view returns (address);
@@ -27,7 +28,8 @@ interface IBlueBundles {
         address receiver,
         TokenPermit memory collateralPermit,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 
     function repayAndWithdrawCollateral(
@@ -39,7 +41,8 @@ interface IBlueBundles {
         address receiver,
         TokenPermit memory loanTokenPermit,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 
     function supply(
@@ -48,7 +51,8 @@ interface IBlueBundles {
         address onBehalf,
         TokenPermit memory loanTokenPermit,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 
     function withdraw(
@@ -57,7 +61,8 @@ interface IBlueBundles {
         address onBehalf,
         address receiver,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 
     function migrateBorrowPosition(
@@ -66,6 +71,7 @@ interface IBlueBundles {
         uint256 maxLtv,
         address onBehalf,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 }
