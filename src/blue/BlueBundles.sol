@@ -75,15 +75,15 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
 
         IMorpho(BLUE).supplyCollateral(marketParams, collateralAmount, onBehalf, "");
-        (uint256 borrowed,) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, onBehalf, address(this));
+        IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, onBehalf, address(this));
 
         requireMaxLtv(marketParams, onBehalf, maxLtv);
 
-        uint256 referralFeeAssets = borrowed.mulDivDown(referralFeePct, WAD);
+        uint256 referralFeeAssets = borrowAssets.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        SafeTransferLib.safeTransfer(marketParams.loanToken, receiver, borrowed - referralFeeAssets);
+        SafeTransferLib.safeTransfer(marketParams.loanToken, receiver, borrowAssets - referralFeeAssets);
     }
 
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
@@ -120,13 +120,11 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         } else {
             referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD);
         }
-        uint256 toRepay = repayAssets - referralFeeAssets;
-
         TokenLib.pullToken(marketParams.loanToken, msg.sender, repayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         if (repayShares > 0) IMorpho(BLUE).repay(marketParams, 0, repayShares, onBehalf, "");
-        else IMorpho(BLUE).repay(marketParams, toRepay, 0, onBehalf, "");
+        else IMorpho(BLUE).repay(marketParams, repayAssets - referralFeeAssets, 0, onBehalf, "");
 
         if (withdrawCollateralAssets > 0) {
             IMorpho(BLUE).withdrawCollateral(marketParams, withdrawCollateralAssets, onBehalf, receiver);
