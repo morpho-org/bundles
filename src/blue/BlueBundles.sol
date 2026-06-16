@@ -268,6 +268,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
 
     /// @dev Reverts if the block timestamp is past `deadline`.
     function requireBeforeDeadline(uint256 deadline) internal view {
+        // forge-lint: disable-next-line(block-timestamp)
         require(block.timestamp <= deadline, DeadlinePassed());
     }
 
