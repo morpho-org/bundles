@@ -19,10 +19,20 @@ name = "osaka-800"
 evm_version = "osaka"
 optimizer_runs = 800
 
+[[profile.default.additional_compiler_profiles]]
+name = "cancun-vault"
+evm_version = "cancun"
+optimizer_runs = 100000
+
 [[profile.default.compilation_restrictions]]
 paths = "test/imports/BlueImport.sol"
 evm_version = "paris"
 optimizer_runs = 999999
+
+[[profile.default.compilation_restrictions]]
+paths = "test/imports/VaultImport.sol"
+evm_version = "cancun"
+optimizer_runs = 100000
 
 [[profile.default.compilation_restrictions]]
 paths = "test/imports/MidnightImport.sol"

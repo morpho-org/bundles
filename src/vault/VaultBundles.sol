@@ -71,6 +71,6 @@ contract VaultBundles is IVaultBundles {
         SupplyData memory s = abi.decode(data, (SupplyData));
 
         IVaultV2(s.vault).forceDeallocate(s.adapter, abi.encode(s.marketParams), deallocatedAssets, s.onBehalf);
-        IVaultV2(s.vault).withdraw(deallocatedAssets, s.onBehalf, s.onBehalf);
+        IVaultV2(s.vault).withdraw(deallocatedAssets, address(this), s.onBehalf);
     }
 }
