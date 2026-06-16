@@ -43,7 +43,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
 
     /// @dev Reverts if the transaction is executed after `deadline`.
     modifier checkDeadline(uint256 deadline) {
-        requireBeforeDeadline(deadline);
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp > deadline) revert DeadlinePassed();
         _;
     }
 
@@ -261,12 +262,6 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         }
 
         TokenLib.forceApproveMax(d.sourceMarketParams.loanToken, BLUE);
-    }
-
-    /// @dev Reverts if the block timestamp is past `deadline`.
-    function requireBeforeDeadline(uint256 deadline) internal view {
-        // forge-lint: disable-next-line(block-timestamp)
-        require(block.timestamp <= deadline, DeadlinePassed());
     }
 
     /// @dev Reverts unless onBehalf's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.
