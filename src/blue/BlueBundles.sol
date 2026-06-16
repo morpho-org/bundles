@@ -89,8 +89,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
     /// @dev Pulls `repayAssets` of `marketParams.loanToken` from msg.sender (optionally via ERC-2612 or Permit2).
     /// @dev The referral fee is deducted from repayAssets; the remainder is repaid against onBehalf's debt.
-    /// @dev If `repayAssets == type(uint256).max`, the full debt is closed by shares; debt + fee (fee on the
-    /// accrued debt) is pulled. Permit pulls must match this amount, else a standing allowance must cover it.
+    /// @dev If `repayAssets == type(uint256).max`, the full debt is closed by shares; debt + fee is pulled, with
+    /// fee = debt * referralFeePct / (WAD - referralFeePct).
     /// @dev If `withdrawCollateralAssets > 0`, also withdraws that amount of collateral from onBehalf's position to
     /// receiver.
     /// @dev Otherwise, fee = repayAssets * referralFeePct / WAD; units repaid = repayAssets - fee.
@@ -115,7 +115,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         if (repayAssets == type(uint256).max) {
             repayShares = IMorpho(BLUE).position(marketParams.id(), onBehalf).borrowShares;
             uint256 debt = IMorpho(BLUE).expectedBorrowAssets(marketParams, onBehalf);
-            referralFeeAssets = debt.mulDivDown(referralFeePct, WAD);
+            referralFeeAssets = debt.mulDivDown(referralFeePct, WAD - referralFeePct);
             repayAssets = debt + referralFeeAssets;
         } else {
             referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD);
@@ -203,7 +203,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// to the destination market via Blue's repay callback, pulling no tokens from msg.sender.
     /// @dev The markets must have the same loan token and the same collateral token.
     /// @dev The referral fee is borrowed on the destination on top of the repaid assets, adding to the debt.
-    /// @dev Fee = repaidAssets * referralFeePct / WAD; total borrowed on the destination = repaidAssets + fee.
+    /// @dev Fee = repaidAssets * referralFeePct / (WAD - referralFeePct); total borrowed = repaidAssets + fee.
     /// @dev maxLtv caps the resulting destination LTV (fee included); at or above the destination LLTV it is a no-op.
     /// @dev Migrating a position without debt reverts on Blue.
     function migrateBorrowPosition(
@@ -246,7 +246,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         require(msg.sender == BLUE, UnauthorizedCallback());
         MigrateBorrowPositionData memory d = abi.decode(data, (MigrateBorrowPositionData));
 
-        uint256 referralFeeAssets = assets.mulDivDown(d.referralFeePct, WAD);
+        uint256 referralFeeAssets = assets.mulDivDown(d.referralFeePct, WAD - d.referralFeePct);
         uint256 borrowAssets = assets + referralFeeAssets;
 
         uint256 price = IOracle(d.destMarketParams.oracle).price();

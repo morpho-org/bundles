@@ -481,8 +481,9 @@ contract BlueBundlesTest is Test {
         _openBorrow(user, borrowAssets);
         uint256 collateral = morpho.collateral(id, user);
 
-        // Zero IRM and sole borrower: the accrued debt is exactly borrowAssets.
-        uint256 expectedFee = borrowAssets * referralFeePct / WAD;
+        // Zero IRM and sole borrower: the accrued debt is exactly borrowAssets. Fee is borrowed on top, so it is a
+        // percentage of the total pulled (debt + fee), matching referralFeePct's meaning elsewhere.
+        uint256 expectedFee = borrowAssets * referralFeePct / (WAD - referralFeePct);
         uint256 pulled = borrowAssets + expectedFee;
 
         deal(address(loanToken), user, pulled);
@@ -764,13 +765,13 @@ contract BlueBundlesTest is Test {
     /// the user and the fee shows up as extra destination debt.
     function testMigrateBorrowPositionWithReferralFee(uint256 borrowAssets, uint256 referralFeePct) public {
         borrowAssets = bound(borrowAssets, 1, 1e30);
-        // Collateral is 2x the debt and dest LLTV is 0.9, so total borrow up to 1.8x stays healthy; cap the fee well
-        // below that.
-        referralFeePct = bound(referralFeePct, 0, 0.5e18);
+        // Collateral is 2x the debt and dest LLTV is 0.9, so total borrow must stay under 1.8x. The fee is borrowed on
+        // top (pct / (WAD - pct)), so cap pct at 0.4e18 => fee <= 0.667x => total <= 1.667x.
+        referralFeePct = bound(referralFeePct, 0, 0.4e18);
         _openBorrow(user, borrowAssets);
         uint256 collateral = morpho.collateral(id, user);
 
-        uint256 expectedFee = borrowAssets * referralFeePct / WAD;
+        uint256 expectedFee = borrowAssets * referralFeePct / (WAD - referralFeePct);
 
         vm.prank(user);
         blueBundles.migrateBorrowPosition(
