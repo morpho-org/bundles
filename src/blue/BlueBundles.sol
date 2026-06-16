@@ -4,11 +4,12 @@ pragma solidity 0.8.34;
 
 import {IBlueBundles} from "./IBlueBundles.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
-import {IMorpho, MarketParams, Position} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
 import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {MorphoBalancesLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
+import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
@@ -22,6 +23,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     using UtilsLib for uint256;
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
+    using SharesMathLib for uint256;
 
     struct MigrateBorrowPositionData {
         MarketParams sourceMarketParams;
@@ -268,11 +270,15 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     }
 
     /// @dev Reverts unless onBehalf's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.
+    /// @dev Must be called only after the market's interest has been accrued, so the stored totals are
+    /// current; mirrors Blue's own health check but against maxLtv.
     function requireMaxLtv(MarketParams memory marketParams, address onBehalf, uint256 maxLtv) internal view {
         if (maxLtv >= marketParams.lltv) return;
+        Market memory market = IMorpho(BLUE).market(marketParams.id());
+        Position memory position = IMorpho(BLUE).position(marketParams.id(), onBehalf);
+        uint256 borrowed = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
         uint256 price = IOracle(marketParams.oracle).price();
-        uint256 collateral = IMorpho(BLUE).position(marketParams.id(), onBehalf).collateral;
-        uint256 maxBorrow = collateral.mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
-        require(IMorpho(BLUE).expectedBorrowAssets(marketParams, onBehalf) <= maxBorrow, LtvExceeded());
+        uint256 maxBorrow = uint256(position.collateral).mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
+        require(borrowed <= maxBorrow, LtvExceeded());
     }
 }
