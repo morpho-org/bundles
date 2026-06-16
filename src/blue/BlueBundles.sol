@@ -27,7 +27,6 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         MarketParams sourceMarketParams;
         MarketParams destMarketParams;
         uint256 collateral;
-        uint256 maxLtv;
         address onBehalf;
         uint256 referralFeePct;
         address referralFeeRecipient;
@@ -89,8 +88,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
     /// @dev Pulls `repayAssets` of `marketParams.loanToken` from msg.sender (optionally via ERC-2612 or Permit2).
     /// @dev The referral fee is deducted from repayAssets; the remainder is repaid against onBehalf's debt.
-    /// @dev If `repayAssets == type(uint256).max`, the full debt is closed by shares; debt + fee is pulled, with
-    /// fee = debt * referralFeePct / (WAD - referralFeePct).
+    /// @dev If `repayAssets == type(uint256).max`, the full debt is closed;
     /// @dev If `withdrawCollateralAssets > 0`, also withdraws that amount of collateral from onBehalf's position to
     /// receiver.
     /// @dev Otherwise, fee = repayAssets * referralFeePct / WAD; units repaid = repayAssets - fee.
@@ -230,13 +228,14 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
                 sourceMarketParams: sourceMarketParams,
                 destMarketParams: destMarketParams,
                 collateral: position.collateral,
-                maxLtv: maxLtv,
                 onBehalf: onBehalf,
                 referralFeePct: referralFeePct,
                 referralFeeRecipient: referralFeeRecipient
             })
         );
         IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, onBehalf, data);
+
+        requireMaxLtv(destMarketParams, onBehalf, maxLtv);
     }
 
     /// @dev Blue's repay callback. Only reachable during migrateBorrowPosition: no other function passes non-empty
@@ -248,10 +247,6 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
 
         uint256 referralFeeAssets = assets.mulDivDown(d.referralFeePct, WAD - d.referralFeePct);
         uint256 borrowAssets = assets + referralFeeAssets;
-
-        uint256 price = IOracle(d.destMarketParams.oracle).price();
-        uint256 maxBorrow = d.collateral.mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(d.maxLtv, WAD);
-        require(borrowAssets <= maxBorrow, LtvExceeded());
 
         IMorpho(BLUE).withdrawCollateral(d.sourceMarketParams, d.collateral, d.onBehalf, address(this));
 

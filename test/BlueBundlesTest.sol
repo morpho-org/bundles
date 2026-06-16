@@ -707,8 +707,8 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
     }
 
-    /// @dev With maxLtv == destLltv the bundler's allowance equals Blue's health-check maxBorrow: a position
-    /// landing precisely at the destination LLTV limit passes, one wei beyond reverts.
+    /// @dev With maxLtv == destLltv the bundler cap is a no-op (it short-circuits at/above the LLTV), so Blue's own
+    /// health check bounds the borrow: a position landing precisely at the destination LLTV limit passes.
     function testMigrateBorrowPositionLtvBoundAtDestLltvExactLimit() public {
         // Dest collateral value is half the source's: 200e18 collateral => 100e18 value => 90e18 limit at 0.9 LLTV.
         destOracle.setPrice(ORACLE_PRICE_SCALE / 2);
@@ -736,7 +736,8 @@ contract BlueBundlesTest is Test {
         collateralToken.approve(address(morpho), type(uint256).max);
         morpho.supplyCollateral(marketParams, collateral, user, "");
         morpho.borrow(marketParams, 90e18 + 1, 0, user, user);
-        vm.expectRevert(IBlueBundles.LtvExceeded.selector);
+        // maxLtv == destLltv makes the bundler cap a no-op, so the over-limit borrow reverts on Blue's own check.
+        vm.expectRevert(bytes("insufficient collateral"));
         blueBundles.migrateBorrowPosition(
             marketParams, destMarketParams, LLTV_DEST, user, 0, address(0), block.timestamp
         );
