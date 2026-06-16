@@ -10,7 +10,6 @@ import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {MorphoBalancesLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
 import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
-import {IERC20} from "../../lib/midnight/src/interfaces/IERC20.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
@@ -43,7 +42,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
 
     /// @dev Reverts if the transaction is executed after `deadline`.
     modifier checkDeadline(uint256 deadline) {
-        require(block.timestamp <= deadline, DeadlinePassed());
+        requireBeforeDeadline(deadline);
         _;
     }
 
@@ -267,6 +266,11 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         }
 
         TokenLib.forceApproveMax(d.destMarketParams.loanToken, BLUE);
+    }
+
+    /// @dev Reverts if the block timestamp is past `deadline`.
+    function requireBeforeDeadline(uint256 deadline) internal view {
+        require(block.timestamp <= deadline, DeadlinePassed());
     }
 
     /// @dev Reverts unless onBehalf's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.
