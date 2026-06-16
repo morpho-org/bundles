@@ -258,7 +258,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
             SafeTransferLib.safeTransfer(d.destMarketParams.loanToken, d.referralFeeRecipient, referralFeeAssets);
         }
 
-        TokenLib.forceApproveMax(d.destMarketParams.loanToken, BLUE);
+        TokenLib.forceApproveMax(d.sourceMarketParams.loanToken, BLUE);
     }
 
     /// @dev Reverts if the block timestamp is past `deadline`.
