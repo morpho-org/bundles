@@ -91,7 +91,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
     /// @dev Pulls `repayAssets` of `marketParams.loanToken` from msg.sender (optionally via ERC-2612 or Permit2).
     /// @dev The referral fee is deducted from repayAssets; the remainder is repaid against onBehalf's debt.
-    /// @dev If `repayAssets == type(uint256).max`, the full debt is closed;
+    /// @dev If `repayAssets == type(uint256).max`, the full debt is closed by shares; closing a position without
+    /// debt reverts on Blue.
     /// @dev If `withdrawCollateralAssets > 0`, also withdraws that amount of collateral from onBehalf's position to
     /// receiver.
     /// @dev Otherwise, fee = repayAssets * referralFeePct / WAD; units repaid = repayAssets - fee.
