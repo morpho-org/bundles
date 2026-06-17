@@ -155,6 +155,24 @@ contract VaultBundlesTest is Test {
         deal(address(loanToken), address(this), 0);
     }
 
+    /// @dev Deposits `assets` into the vault for address(this) and allocates them to the Morpho market. Nothing is
+    /// borrowed out, so the market stays liquid and the assets can be deallocated directly from it.
+    function _setUpLiquid(uint256 assets) internal {
+        deal(address(loanToken), address(this), assets);
+        loanToken.approve(address(vault), type(uint256).max);
+        vault.deposit(assets, address(this));
+
+        vm.prank(allocator);
+        vault.allocate(address(adapter), abi.encode(marketParams), assets);
+        assertGt(adapter.supplyShares(Id.unwrap(marketParams.id())), 0, "allocation");
+
+        // onBehalf (this contract) authorizes the bundler to move its vault shares.
+        vault.approve(address(vaultBundles), type(uint256).max);
+
+        // Reset so the final balance measures exactly what is withdrawn from the vault.
+        deal(address(loanToken), address(this), 0);
+    }
+
     /// AUTHORIZATION & VALIDATION ///
 
     function testForceWithdrawUnauthorized() public {
@@ -228,6 +246,51 @@ contract VaultBundlesTest is Test {
         assertEq(
             morpho.expectedSupplyAssets(marketParams, address(this)), optimalDeallocateAssets(assets), "supply position"
         );
+        assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
+    }
+
+    /// LIQUID WITHDRAWAL ///
+
+    function testForceWithdrawLiquidUnauthorized() public {
+        uint256 assets = 100e18;
+        _setUpLiquid(assets);
+
+        vm.prank(makeAddr("intruder"));
+        vm.expectRevert(IVaultBundles.Unauthorized.selector);
+        vaultBundles.forceWithdrawLiquidVaultV2(address(vault), address(adapter), marketParams, address(this), assets);
+    }
+
+    function testForceWithdrawLiquidAdapterNotPartOfVault() public {
+        uint256 assets = 100e18;
+        _setUpLiquid(assets);
+
+        vm.expectRevert(IVaultBundles.AdapterNotPartOfVault.selector);
+        vaultBundles.forceWithdrawLiquidVaultV2(
+            address(vault), makeAddr("notAdapter"), marketParams, address(this), assets
+        );
+    }
+
+    function testForceWithdrawLiquidMarketNotPartOfAdapter() public {
+        uint256 assets = 100e18;
+        _setUpLiquid(assets);
+
+        // otherMarket was never allocated through the adapter ⇒ supplyShares == 0.
+        vm.expectRevert(IVaultBundles.MarketNotPartOfAdapter.selector);
+        vaultBundles.forceWithdrawLiquidVaultV2(address(vault), address(adapter), otherMarket, address(this), assets);
+    }
+
+    function testForceWithdrawLiquid(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        _setUpLiquid(assets);
+        vm.assume(optimalDeallocateAssets(assets) > 0);
+
+        vaultBundles.forceWithdrawLiquidVaultV2(address(vault), address(adapter), marketParams, address(this), assets);
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
+        assertEq(loanToken.balanceOf(address(adapter)), 0, "adapter loan token balance");
+        // The user leaves the vault with the deallocated assets.
+        assertEq(loanToken.balanceOf(address(this)), optimalDeallocateAssets(assets), "user loan token balance");
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
 }
