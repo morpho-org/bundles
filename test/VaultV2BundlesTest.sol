@@ -22,7 +22,7 @@ import {
     IMorphoMarketV1AdapterV2Factory
 } from "../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2Factory.sol";
 
-contract VaultBundlesTest is Test {
+contract VaultV2BundlesTest is Test {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;

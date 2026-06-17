@@ -2,6 +2,9 @@
   "lib/forge-std": {
     "rev": "620536fa5277db4e3fd46772d5cbc1ea0696fb43"
   },
+  "lib/metamorpho": {
+    "rev": "ae732258e55be466b959705ad2e6bc6c66e1819d"
+  },
   "lib/midnight": {
     "rev": "b458000205b580b8dd7a2083a9384611b3480615"
   },

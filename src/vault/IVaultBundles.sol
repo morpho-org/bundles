@@ -8,6 +8,7 @@ interface IVaultBundles {
     /// ERRORS ///
     error AdapterNotPartOfVault();
     error MarketNotPartOfAdapter();
+    error MarketNotPartOfVault();
     error Unauthorized();
     error DeadlinePassed();
 
@@ -29,6 +30,14 @@ interface IVaultBundles {
     function forceWithdrawLiquidVaultV2(
         address vault,
         address adapter,
+        MarketParams memory marketParams,
+        address onBehalf,
+        uint256 assets,
+        uint256 deadline
+    ) external;
+
+    function forceWithdrawIlliquidVaultV1(
+        address vault,
         MarketParams memory marketParams,
         address onBehalf,
         uint256 assets,
