@@ -9,6 +9,10 @@ interface IBlueBundles {
     /// ERRORS ///
     error PctExceeded();
     error Unauthorized();
+    error UnauthorizedCallback();
+    error InconsistentTokens();
+    error LtvExceeded();
+    error DeadlinePassed();
 
     /// STORAGE GETTERS ///
     function PERMIT2() external view returns (address);
@@ -19,22 +23,27 @@ interface IBlueBundles {
         MarketParams memory marketParams,
         uint256 collateralAmount,
         uint256 borrowAssets,
+        uint256 maxLtv,
         address onBehalf,
         address receiver,
         TokenPermit memory collateralPermit,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 
     function repayAndWithdrawCollateral(
         MarketParams memory marketParams,
-        uint256 repayAssets,
+        uint256 assets,
+        uint256 maxRepayAssets,
         uint256 withdrawCollateralAssets,
+        uint256 maxLtv,
         address onBehalf,
         address receiver,
         TokenPermit memory loanTokenPermit,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 
     function supply(
@@ -43,7 +52,8 @@ interface IBlueBundles {
         address onBehalf,
         TokenPermit memory loanTokenPermit,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 
     function withdraw(
@@ -52,6 +62,17 @@ interface IBlueBundles {
         address onBehalf,
         address receiver,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
+    ) external;
+
+    function migrateBorrowPosition(
+        MarketParams memory sourceMarketParams,
+        MarketParams memory destMarketParams,
+        uint256 maxLtv,
+        address onBehalf,
+        uint256 referralFeePct,
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 }
