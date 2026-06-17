@@ -35,7 +35,7 @@ contract VaultBundles is IVaultBundles {
         address onBehalf;
     }
 
-    /// EXTERNAL ///
+    /// FORCE WITHDRAW ILLIQUID VAULT V2 ///
 
     /// @dev onBehalf must have given max allowance over vault shares to msg.sender (if different from onBehalf).
     /// @dev onBehalf must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
@@ -73,5 +73,34 @@ contract VaultBundles is IVaultBundles {
 
         IVaultV2(s.vault).forceDeallocate(s.adapter, abi.encode(s.marketParams), deallocatedAssets, s.onBehalf);
         IVaultV2(s.vault).withdraw(deallocatedAssets, address(this), s.onBehalf);
+    }
+
+    /// FORCE WITHDRAW LIQUID VAULT V2 ///
+
+    /// @dev onBehalf must have given max allowance over vault shares to msg.sender (if different from onBehalf).
+    /// @dev onBehalf must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
+    /// @dev The adapter must be part of the vault, and the market must be part of the adapter.
+    /// @dev The deallocatedAssets amount is floor(assets * WAD / (WAD + penalty)).
+    /// @dev Requires the vault to have more than the deallocated assets in liquidity.
+    /// @dev Requires onBehalf to have enough shares to withdraw ceil(deallocatedAssets *  penalty / WAD) and then deallocatedAssets.
+    function forceWithdrawLiquidVaultV2(
+        address vault,
+        address adapter,
+        MarketParams memory marketParams,
+        address onBehalf,
+        uint256 assets
+    ) external {
+        require(
+            onBehalf == msg.sender || IVaultV2(vault).allowance(onBehalf, msg.sender) == type(uint256).max,
+            Unauthorized()
+        );
+        require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
+        bytes32 id = Id.unwrap(marketParams.id());
+        require(IMorphoMarketV1AdapterV2(adapter).supplyShares(id) > 0, MarketNotPartOfAdapter());
+
+        uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
+        uint256 deallocatedAssets = assets.mulDivDown(WAD, WAD + penalty);
+        IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), deallocatedAssets, onBehalf);
+        IVaultV2(vault).withdraw(deallocatedAssets, onBehalf, onBehalf);
     }
 }

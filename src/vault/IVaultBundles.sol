@@ -15,7 +15,16 @@ interface IVaultBundles {
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///
+
     function forceWithdrawIlliquidVaultV2(
+        address vault,
+        address adapter,
+        MarketParams memory marketParams,
+        address onBehalf,
+        uint256 assets
+    ) external;
+
+    function forceWithdrawLiquidVaultV2(
         address vault,
         address adapter,
         MarketParams memory marketParams,
