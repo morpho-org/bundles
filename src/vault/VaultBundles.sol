@@ -26,6 +26,13 @@ contract VaultBundles is IVaultBundles {
         BLUE = _blue;
     }
 
+    /// @dev Reverts if the transaction is executed after `deadline`.
+    modifier checkDeadline(uint256 deadline) {
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp > deadline) revert DeadlinePassed();
+        _;
+    }
+
     /// STRUCTS ///
 
     struct SupplyData {
@@ -49,8 +56,9 @@ contract VaultBundles is IVaultBundles {
         address adapter,
         MarketParams memory marketParams,
         address onBehalf,
-        uint256 assets
-    ) external {
+        uint256 assets,
+        uint256 deadline
+    ) external checkDeadline(deadline) {
         require(
             onBehalf == msg.sender || IVaultV2(vault).allowance(onBehalf, msg.sender) == type(uint256).max,
             Unauthorized()
@@ -88,8 +96,9 @@ contract VaultBundles is IVaultBundles {
         address adapter,
         MarketParams memory marketParams,
         address onBehalf,
-        uint256 assets
-    ) external {
+        uint256 assets,
+        uint256 deadline
+    ) external checkDeadline(deadline) {
         require(
             onBehalf == msg.sender || IVaultV2(vault).allowance(onBehalf, msg.sender) == type(uint256).max,
             Unauthorized()

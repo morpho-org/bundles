@@ -181,7 +181,9 @@ contract VaultBundlesTest is Test {
 
         vm.prank(makeAddr("intruder"));
         vm.expectRevert(IVaultBundles.Unauthorized.selector);
-        vaultBundles.forceWithdrawIlliquidVaultV2(address(vault), address(adapter), marketParams, address(this), assets);
+        vaultBundles.forceWithdrawIlliquidVaultV2(
+            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp
+        );
     }
 
     function testForceWithdrawAdapterNotPartOfVault() public {
@@ -190,7 +192,7 @@ contract VaultBundlesTest is Test {
 
         vm.expectRevert(IVaultBundles.AdapterNotPartOfVault.selector);
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), makeAddr("notAdapter"), marketParams, address(this), assets
+            address(vault), makeAddr("notAdapter"), marketParams, address(this), assets, block.timestamp
         );
     }
 
@@ -200,7 +202,9 @@ contract VaultBundlesTest is Test {
 
         // otherMarket was never allocated through the adapter ⇒ supplyShares == 0.
         vm.expectRevert(IVaultBundles.MarketNotPartOfAdapter.selector);
-        vaultBundles.forceWithdrawIlliquidVaultV2(address(vault), address(adapter), otherMarket, address(this), assets);
+        vaultBundles.forceWithdrawIlliquidVaultV2(
+            address(vault), address(adapter), otherMarket, address(this), assets, block.timestamp
+        );
     }
 
     function testOnMorphoSupplyOnlyBlue() public {
@@ -215,7 +219,9 @@ contract VaultBundlesTest is Test {
         assertEq(optimalDeallocateAssets(assets), 0, "precondition");
 
         vm.expectRevert();
-        vaultBundles.forceWithdrawIlliquidVaultV2(address(vault), address(adapter), marketParams, address(this), assets);
+        vaultBundles.forceWithdrawIlliquidVaultV2(
+            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp
+        );
     }
 
     /// IN-KIND REDEMPTION ///
@@ -237,7 +243,9 @@ contract VaultBundlesTest is Test {
         _setUpIlliquid(assets);
         vm.assume(optimalDeallocateAssets(assets) > 0);
 
-        vaultBundles.forceWithdrawIlliquidVaultV2(address(vault), address(adapter), marketParams, address(this), assets);
+        vaultBundles.forceWithdrawIlliquidVaultV2(
+            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp
+        );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
@@ -249,6 +257,17 @@ contract VaultBundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
 
+    /// @dev Reverts once `deadline` is in the past (checkDeadline runs before the body).
+    function testForceWithdrawIlliquidDeadlinePassed() public {
+        uint256 assets = 100e18;
+        _setUpIlliquid(assets);
+
+        vm.expectRevert(IVaultBundles.DeadlinePassed.selector);
+        vaultBundles.forceWithdrawIlliquidVaultV2(
+            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp - 1
+        );
+    }
+
     /// LIQUID WITHDRAWAL ///
 
     function testForceWithdrawLiquidUnauthorized() public {
@@ -257,7 +276,9 @@ contract VaultBundlesTest is Test {
 
         vm.prank(makeAddr("intruder"));
         vm.expectRevert(IVaultBundles.Unauthorized.selector);
-        vaultBundles.forceWithdrawLiquidVaultV2(address(vault), address(adapter), marketParams, address(this), assets);
+        vaultBundles.forceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp
+        );
     }
 
     function testForceWithdrawLiquidAdapterNotPartOfVault() public {
@@ -266,7 +287,7 @@ contract VaultBundlesTest is Test {
 
         vm.expectRevert(IVaultBundles.AdapterNotPartOfVault.selector);
         vaultBundles.forceWithdrawLiquidVaultV2(
-            address(vault), makeAddr("notAdapter"), marketParams, address(this), assets
+            address(vault), makeAddr("notAdapter"), marketParams, address(this), assets, block.timestamp
         );
     }
 
@@ -276,7 +297,9 @@ contract VaultBundlesTest is Test {
 
         // otherMarket was never allocated through the adapter ⇒ supplyShares == 0.
         vm.expectRevert(IVaultBundles.MarketNotPartOfAdapter.selector);
-        vaultBundles.forceWithdrawLiquidVaultV2(address(vault), address(adapter), otherMarket, address(this), assets);
+        vaultBundles.forceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), otherMarket, address(this), assets, block.timestamp
+        );
     }
 
     function testForceWithdrawLiquid(uint256 assets) public {
@@ -284,7 +307,9 @@ contract VaultBundlesTest is Test {
         _setUpLiquid(assets);
         vm.assume(optimalDeallocateAssets(assets) > 0);
 
-        vaultBundles.forceWithdrawLiquidVaultV2(address(vault), address(adapter), marketParams, address(this), assets);
+        vaultBundles.forceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp
+        );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
@@ -292,5 +317,16 @@ contract VaultBundlesTest is Test {
         // The user leaves the vault with the deallocated assets.
         assertEq(loanToken.balanceOf(address(this)), optimalDeallocateAssets(assets), "user loan token balance");
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
+    }
+
+    /// @dev Reverts once `deadline` is in the past (checkDeadline runs before the body).
+    function testForceWithdrawLiquidDeadlinePassed() public {
+        uint256 assets = 100e18;
+        _setUpLiquid(assets);
+
+        vm.expectRevert(IVaultBundles.DeadlinePassed.selector);
+        vaultBundles.forceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp - 1
+        );
     }
 }
