@@ -268,6 +268,38 @@ contract VaultBundlesTest is Test {
         );
     }
 
+    /// @dev Set a share price != 1 while keeping the vault balance consistent with the total supply.
+    function _setSharePrice(uint256 priceWad) internal {
+        uint256 newShares = vault.totalAssets() * WAD / priceWad;
+        vm.store(address(vault), bytes32(uint256(11)), bytes32(newShares));
+        vm.store(address(vault), keccak256(abi.encode(address(this), uint256(12))), bytes32(newShares));
+        assertEq(vault.totalSupply(), newShares, "totalSupply slot");
+        assertEq(vault.balanceOf(address(this)), newShares, "balanceOf slot");
+    }
+
+    /// @dev Passing assets = previewRedeem(balanceOf(onBehalf) - 2) never reverts and
+    /// sweeps all but a few assets' worth of the position (on top of the 2 shares). The
+    /// 2 shares margin keeps the two ceil-rounded withdrawals from over-burning.
+    function testForceWithdrawSafeExit(uint256 assets, uint256 priceWad) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        priceWad = bound(priceWad, WAD / 10, 10 * WAD);
+        _setUpIlliquid(assets);
+        _setSharePrice(priceWad);
+
+        uint256 sharesBefore = vault.balanceOf(address(this));
+        vm.assume(sharesBefore > 2);
+        uint256 amount = vault.previewRedeem(sharesBefore - 2);
+        vm.assume(optimalDeallocateAssets(amount) > 0);
+
+        vaultBundles.forceWithdrawIlliquidVaultV2(
+            address(vault), address(adapter), marketParams, address(this), amount, block.timestamp
+        );
+
+        assertLe(
+            vault.previewRedeem(vault.balanceOf(address(this))), 2 * priceWad / WAD + 2, "more than 2 shares worth left"
+        );
+    }
+
     /// LIQUID WITHDRAWAL ///
 
     function testForceWithdrawLiquidUnauthorized() public {
