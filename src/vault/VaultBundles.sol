@@ -37,7 +37,8 @@ contract VaultBundles is IVaultBundles {
 
     /// EXTERNAL ///
 
-    /// @dev onBehalf must have given max allowance over vault shares to this bundler and msg.sender (if different from onBehalf).
+    /// @dev onBehalf must have given max allowance over vault shares to msg.sender (if different from onBehalf).
+    /// @dev onBehalf must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
     /// @dev The adapter must be part of the vault, and the market must be part of the adapter.
     /// @dev The deallocatedAssets amount is floor(assets * WAD / (WAD + penalty)).
     /// @dev Reverts if the deallocatedAssets amount is 0.
