@@ -35,6 +35,7 @@ interface IBlueBundles {
     function repayAndWithdrawCollateral(
         MarketParams memory marketParams,
         uint256 repayAssets,
+        uint256 maxRepayAssets,
         uint256 withdrawCollateralAssets,
         uint256 maxLtv,
         address onBehalf,
