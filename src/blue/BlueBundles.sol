@@ -87,18 +87,14 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     }
 
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
-    /// @dev Pulls `marketParams.loanToken` from msg.sender (optionally via ERC-2612 or Permit2) to repay onBehalf.
-    /// @dev If `repayAssets == type(uint256).max`, the full debt is closed by shares: `maxRepayAssets` is pulled, fee
-    /// = debt * referralFeePct / (WAD - referralFeePct) is added on top of the repaid debt, and the unused remainder
-    /// is refunded to msg.sender. Closing a position without debt reverts on Blue.
-    /// @dev Otherwise `maxRepayAssets` is ignored: `repayAssets` is pulled and fee = repayAssets * referralFeePct /
-    /// WAD is deducted, the remainder repaid.
-    /// @dev If `withdrawCollateralAssets > 0`, also withdraws that amount of collateral from onBehalf's position to
-    /// receiver.
-    /// @dev maxLtv caps onBehalf's resulting LTV after a withdrawal; skipped on a pure repay (WAD disables it).
+    /// @dev Pulls maxRepayAssets from msg.sender, and reimburse the unused remainder at the end of the call.
+    /// @dev If assets == type(uint256).max, the full debt is closed by shares.
+    /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
+    /// @dev If withdrawCollateralAssets > 0, also withdraws that amount of collateral from onBehalf's position to receiver.
+    /// @dev maxLtv caps onBehalf's resulting LTV after a withdrawal; skipped on a pure repay.
     function repayAndWithdrawCollateral(
         MarketParams memory marketParams,
-        uint256 repayAssets,
+        uint256 assets,
         uint256 maxRepayAssets,
         uint256 withdrawCollateralAssets,
         uint256 maxLtv,
@@ -112,32 +108,26 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
-        bool repayAll = repayAssets == type(uint256).max;
-        uint256 referralFeeAssets;
-        if (!repayAll) referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD);
-
-        TokenLib.pullToken(marketParams.loanToken, msg.sender, repayAll ? maxRepayAssets : repayAssets, loanTokenPermit);
+        TokenLib.pullToken(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
-        if (repayAll) {
-            uint256 repayShares = IMorpho(BLUE).position(marketParams.id(), onBehalf).borrowShares;
-            (uint256 repaid,) = IMorpho(BLUE).repay(marketParams, 0, repayShares, onBehalf, "");
-            referralFeeAssets = repaid.mulDivDown(referralFeePct, WAD - referralFeePct);
-            SafeTransferLib.safeTransfer(
-                marketParams.loanToken, msg.sender, maxRepayAssets - repaid - referralFeeAssets
-            );
-        } else {
-            IMorpho(BLUE).repay(marketParams, repayAssets - referralFeeAssets, 0, onBehalf, "");
-        }
+        uint256 repayAssets = assets == type(uint256).max ? 0 : assets;
+        uint256 repayShares =
+            assets == type(uint256).max ? IMorpho(BLUE).position(marketParams.id(), onBehalf).borrowShares : 0;
+        (uint256 repaidAmount,) = IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, onBehalf, "");
 
         if (withdrawCollateralAssets > 0) {
             IMorpho(BLUE).withdrawCollateral(marketParams, withdrawCollateralAssets, onBehalf, receiver);
             requireMaxLtv(marketParams, onBehalf, maxLtv);
         }
 
+        uint256 referralFeeAssets = repaidAmount.mulDivDown(referralFeePct, WAD - referralFeePct);
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
+        SafeTransferLib.safeTransfer(
+            marketParams.loanToken, receiver, maxRepayAssets - repaidAmount - referralFeeAssets
+        );
     }
 
     /// @dev Supply is permissionless on Blue, so no authorization of msg.sender over onBehalf is required.
