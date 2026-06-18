@@ -13,6 +13,7 @@ interface IBlueBundles {
     error InconsistentTokens();
     error LtvExceeded();
     error DeadlinePassed();
+    error WithdrawAssetsTooLow();
 
     /// STORAGE GETTERS ///
     function PERMIT2() external view returns (address);
@@ -58,7 +59,8 @@ interface IBlueBundles {
 
     function withdraw(
         MarketParams memory marketParams,
-        uint256 withdrawAssets,
+        uint256 assets,
+        uint256 minWithdrawAssets,
         address onBehalf,
         address receiver,
         uint256 referralFeePct,

@@ -159,15 +159,16 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     }
 
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
-    /// @dev Withdraws `withdrawAssets` of `marketParams.loanToken` from onBehalf's supply position, routed via this
-    /// contract.
-    /// @dev If `withdrawAssets == type(uint256).max`, the full supply position is closed by shares so no supply
-    /// shares remain.
+    /// @dev Withdraws `assets` of `marketParams.loanToken` from onBehalf's supply position, routed via this contract.
+    /// @dev If `assets == type(uint256).max`, the full supply position is closed by shares so no supply shares remain.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to receiver.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
+    /// @dev Reverts unless receiver gets at least `minWithdrawAssets` (net of fee); bounds the by-shares path against
+    /// share-price moves between signing and execution.
     function withdraw(
         MarketParams memory marketParams,
-        uint256 withdrawAssets,
+        uint256 assets,
+        uint256 minWithdrawAssets,
         address onBehalf,
         address receiver,
         uint256 referralFeePct,
@@ -178,14 +179,15 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         uint256 withdrawn;
-        if (withdrawAssets == type(uint256).max) {
+        if (assets == type(uint256).max) {
             uint256 supplyShares = IMorpho(BLUE).position(marketParams.id(), onBehalf).supplyShares;
             (withdrawn,) = IMorpho(BLUE).withdraw(marketParams, 0, supplyShares, onBehalf, address(this));
         } else {
-            (withdrawn,) = IMorpho(BLUE).withdraw(marketParams, withdrawAssets, 0, onBehalf, address(this));
+            (withdrawn,) = IMorpho(BLUE).withdraw(marketParams, assets, 0, onBehalf, address(this));
         }
 
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
+        require(withdrawn - referralFeeAssets >= minWithdrawAssets, WithdrawAssetsTooLow());
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }

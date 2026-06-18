@@ -186,7 +186,7 @@ contract BlueBundlesTest is Test {
     function testWithdrawUnauthorized() public {
         vm.prank(address(0xdead));
         vm.expectRevert(IBlueBundles.Unauthorized.selector);
-        blueBundles.withdraw(marketParams, 1, user, receiver, 0, address(0), block.timestamp);
+        blueBundles.withdraw(marketParams, 1, 0, user, receiver, 0, address(0), block.timestamp);
     }
 
     /// @dev Blue-specific inverse of the auth tests: supply is permissionless, so it must succeed even when the
@@ -224,7 +224,7 @@ contract BlueBundlesTest is Test {
         vm.expectRevert(IBlueBundles.PctExceeded.selector);
         blueBundles.supply(marketParams, 1, user, _noPermit(), WAD, address(0), block.timestamp);
         vm.expectRevert(IBlueBundles.PctExceeded.selector);
-        blueBundles.withdraw(marketParams, 1, user, receiver, WAD, address(0), block.timestamp);
+        blueBundles.withdraw(marketParams, 1, 0, user, receiver, WAD, address(0), block.timestamp);
         vm.expectRevert(IBlueBundles.PctExceeded.selector);
         blueBundles.migrateBorrowPosition(marketParams, destMarketParams, WAD, user, WAD, address(0), block.timestamp);
         vm.stopPrank();
@@ -244,7 +244,7 @@ contract BlueBundlesTest is Test {
         vm.expectRevert(IBlueBundles.DeadlinePassed.selector);
         blueBundles.supply(marketParams, 1, user, _noPermit(), 0, address(0), past);
         vm.expectRevert(IBlueBundles.DeadlinePassed.selector);
-        blueBundles.withdraw(marketParams, 1, user, receiver, 0, address(0), past);
+        blueBundles.withdraw(marketParams, 1, 0, user, receiver, 0, address(0), past);
         vm.expectRevert(IBlueBundles.DeadlinePassed.selector);
         blueBundles.migrateBorrowPosition(marketParams, destMarketParams, WAD, user, 0, address(0), past);
         vm.stopPrank();
@@ -638,7 +638,7 @@ contract BlueBundlesTest is Test {
         vm.startPrank(user);
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(marketParams, supplyAssets, 0, user, "");
-        blueBundles.withdraw(marketParams, withdrawAssets, user, receiver, 0, address(0), block.timestamp);
+        blueBundles.withdraw(marketParams, withdrawAssets, 0, user, receiver, 0, address(0), block.timestamp);
         vm.stopPrank();
 
         assertEq(morpho.expectedSupplyAssets(marketParams, user), supplyAssets - withdrawAssets, "remaining supply");
@@ -657,7 +657,7 @@ contract BlueBundlesTest is Test {
         vm.startPrank(user);
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(marketParams, supplyAssets, 0, user, "");
-        blueBundles.withdraw(marketParams, withdrawAssets, user, receiver, referralFeePct, referrer, block.timestamp);
+        blueBundles.withdraw(marketParams, withdrawAssets, 0, user, receiver, referralFeePct, referrer, block.timestamp);
         vm.stopPrank();
 
         assertEq(loanToken.balanceOf(receiver), withdrawAssets - expectedFee, "receiver net");
@@ -674,7 +674,9 @@ contract BlueBundlesTest is Test {
         vm.startPrank(user);
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(marketParams, supplyAssets, 0, user, "");
-        blueBundles.withdraw(marketParams, type(uint256).max, user, receiver, referralFeePct, referrer, block.timestamp);
+        blueBundles.withdraw(
+            marketParams, type(uint256).max, 0, user, receiver, referralFeePct, referrer, block.timestamp
+        );
         vm.stopPrank();
 
         // Withdrawing by shares rounds assets down, so up to 1 wei can stay behind in the market.
@@ -686,6 +688,30 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(receiver), withdrawn - expectedFee, "receiver net");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    /// @dev minWithdrawAssets floors what the receiver gets: a floor above the by-shares output reverts, a reachable
+    /// one passes. Protects against the supply share price being deflated between signing and execution.
+    function testWithdrawAssetsTooLow() public {
+        uint256 assets = 100e18;
+        deal(address(loanToken), user, assets);
+        vm.startPrank(user);
+        loanToken.approve(address(morpho), type(uint256).max);
+        morpho.supply(marketParams, assets, 0, user, "");
+
+        // Closing the full supply by shares nets at most `assets`, so a floor of assets + 1 always reverts.
+        vm.expectRevert(IBlueBundles.WithdrawAssetsTooLow.selector);
+        blueBundles.withdraw(
+            marketParams, type(uint256).max, assets + 1, user, receiver, 0, address(0), block.timestamp
+        );
+
+        // A reachable floor (assets - 1, covering the ≤1 wei rounding) passes.
+        blueBundles.withdraw(
+            marketParams, type(uint256).max, assets - 1, user, receiver, 0, address(0), block.timestamp
+        );
+        vm.stopPrank();
+
+        assertGe(loanToken.balanceOf(receiver), assets - 1, "receiver got at least the floor");
     }
 
     /// MIGRATE BORROW POSITION ///
