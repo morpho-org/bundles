@@ -196,6 +196,22 @@ contract VaultV2BundlesTest is Test {
         );
     }
 
+    /// @dev The market is allocated through the adapter (supplyShares > 0), but the requested amount deallocates more
+    /// than the adapter holds, so availableAssets < assetsToDeallocate ⇒ revert.
+    function testForceWithdrawNotEnoughAvailable() public {
+        uint256 assets = 100e18;
+        _setUpIlliquid(assets);
+
+        // Requesting 2x the deposited assets ⇒ assetsToDeallocate ≈ 1.98x availableAssets.
+        uint256 tooMuch = 2 * assets;
+        assertGt(optimalDeallocateAssets(tooMuch), assets, "precondition");
+
+        vm.expectRevert(IVaultBundles.MarketNotPartOfAdapter.selector);
+        vaultBundles.forceWithdrawIlliquidVaultV2(
+            address(vault), address(adapter), marketParams, tooMuch, block.timestamp
+        );
+    }
+
     function testOnMorphoSupplyOnlyBlue() public {
         vm.expectRevert(IVaultBundles.Unauthorized.selector);
         vaultBundles.onMorphoSupply(1, "");

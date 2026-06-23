@@ -62,35 +62,42 @@ contract VaultBundles is IVaultBundles {
     function forceWithdrawIlliquidVaultV2(
         address vault,
         address adapter,
-        MarketParams memory marketParams,
-        uint256 assets,
+        MarketParams[] memory marketParams,
+        uint256 forceWithdrawAssets,
         uint256 deadline
     ) external checkDeadline(deadline) {
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
-
-        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+        require(marketParams.length > 0, NoMarketParams());
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
-        uint256 assetsToDeallocate = assets * WAD / (WAD + penalty);
+        uint256 remainingToDeallocate = forceWithdrawAssets * WAD / (WAD + penalty);
 
-        bytes32 id = Id.unwrap(marketParams.id());
-        uint256 supplyShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(id);
-        (uint256 totalSupplyAssets, uint256 totalSupplyShares,,) =
-            MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParams);
-        uint256 availableAssets = supplyShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
-        if (availableAssets < assetsToDeallocate) {
-            revert MarketNotPartOfAdapter();
+        for (uint256 i = 0; remainingToDeallocate > 0; i++) {
+            bytes32 id = Id.unwrap(marketParams[i].id());
+            uint256 supplyShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(id);
+            (uint256 totalSupplyAssets, uint256 totalSupplyShares,,) =
+                MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParams[i]);
+            uint256 availableToWithdraw = supplyShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
+            uint256 assets = availableToWithdraw < remainingToDeallocate ? availableToWithdraw : remainingToDeallocate;
+
+            // Markets that are not part of the adapter are skipped.
+            if (assets > 0) {
+                TokenLib.forceApproveMax(marketParams[i].loanToken, BLUE);
+
+                bytes memory data = abi.encode(SupplyData(vault, adapter, marketParams[i], msg.sender));
+                IMorpho(BLUE).supply(marketParams[i], assets, 0, msg.sender, data);
+
+                remainingToDeallocate -= assets;
+            }
         }
-        bytes memory data = abi.encode(SupplyData(vault, adapter, marketParams, msg.sender));
-        IMorpho(BLUE).supply(marketParams, assetsToDeallocate, 0, msg.sender, data);
     }
 
-    function onMorphoSupply(uint256 availableAssets, bytes memory data) external {
+    function onMorphoSupply(uint256 assets, bytes memory data) external {
         require(msg.sender == BLUE, Unauthorized());
         SupplyData memory s = abi.decode(data, (SupplyData));
 
-        IVaultV2(s.vault).forceDeallocate(s.adapter, abi.encode(s.marketParams), availableAssets, s.sender);
-        IVaultV2(s.vault).withdraw(availableAssets, address(this), s.sender);
+        IVaultV2(s.vault).forceDeallocate(s.adapter, abi.encode(s.marketParams), assets, s.sender);
+        IVaultV2(s.vault).withdraw(assets, address(this), s.sender);
     }
 
     /// FORCE WITHDRAW LIQUID VAULT V2 ///
