@@ -3,14 +3,15 @@
 pragma solidity 0.8.34;
 
 import {IVaultBundles} from "./IVaultBundles.sol";
-import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
-import {IMetaMorpho, Id as MMId} from "../../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
-import {IMorphoMarketV1AdapterV2} from "../../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
+import {IMetaMorpho, Id as MMId} from "../../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
+import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
+import {WAD} from "../../lib/vault-v2/src/libraries/ConstantsLib.sol";
+import {IMorphoMarketV1AdapterV2} from "../../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2.sol";
 import {IMorpho, MarketParams, Id} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
-import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
+import {MorphoBalancesLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
-import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
+import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
 
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
@@ -18,7 +19,7 @@ import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 /// @dev Zero checks are not systematically performed.
 contract VaultBundles is IVaultBundles {
     using MarketParamsLib for MarketParams;
-    using UtilsLib for uint256;
+    using SharesMathLib for uint256;
 
     address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address public immutable BLUE;
@@ -66,23 +67,30 @@ contract VaultBundles is IVaultBundles {
         uint256 deadline
     ) external checkDeadline(deadline) {
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
-        bytes32 id = Id.unwrap(marketParams.id());
-        require(IMorphoMarketV1AdapterV2(adapter).supplyShares(id) > 0, MarketNotPartOfAdapter());
 
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
-        uint256 deallocatedAssets = assets.mulDivDown(WAD, WAD + penalty);
+        uint256 assetsToDeallocate = assets * WAD / (WAD + penalty);
+
+        bytes32 id = Id.unwrap(marketParams.id());
+        uint256 supplyShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(id);
+        (uint256 totalSupplyAssets, uint256 totalSupplyShares,,) =
+            MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParams);
+        uint256 availableAssets = supplyShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
+        if (availableAssets < assetsToDeallocate) {
+            revert MarketNotPartOfAdapter();
+        }
         bytes memory data = abi.encode(SupplyData(vault, adapter, marketParams, msg.sender));
-        IMorpho(BLUE).supply(marketParams, deallocatedAssets, 0, msg.sender, data);
+        IMorpho(BLUE).supply(marketParams, assetsToDeallocate, 0, msg.sender, data);
     }
 
-    function onMorphoSupply(uint256 deallocatedAssets, bytes memory data) external {
+    function onMorphoSupply(uint256 availableAssets, bytes memory data) external {
         require(msg.sender == BLUE, Unauthorized());
         SupplyData memory s = abi.decode(data, (SupplyData));
 
-        IVaultV2(s.vault).forceDeallocate(s.adapter, abi.encode(s.marketParams), deallocatedAssets, s.sender);
-        IVaultV2(s.vault).withdraw(deallocatedAssets, address(this), s.sender);
+        IVaultV2(s.vault).forceDeallocate(s.adapter, abi.encode(s.marketParams), availableAssets, s.sender);
+        IVaultV2(s.vault).withdraw(availableAssets, address(this), s.sender);
     }
 
     /// FORCE WITHDRAW LIQUID VAULT V2 ///
@@ -104,7 +112,7 @@ contract VaultBundles is IVaultBundles {
         require(IMorphoMarketV1AdapterV2(adapter).supplyShares(id) > 0, MarketNotPartOfAdapter());
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
-        uint256 deallocatedAssets = assets.mulDivDown(WAD, WAD + penalty);
+        uint256 deallocatedAssets = assets * WAD / (WAD + penalty);
         IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), deallocatedAssets, msg.sender);
         IVaultV2(vault).withdraw(deallocatedAssets, msg.sender, msg.sender);
     }
