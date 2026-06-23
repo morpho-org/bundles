@@ -121,6 +121,12 @@ contract VaultV2BundlesTest is Test {
         return assets * WAD / (WAD + PENALTY);
     }
 
+    /// @dev Wraps a single market into the singleton list expected by forceWithdrawIlliquidVaultV2.
+    function _singleton(MarketParams memory marketParams_) internal pure returns (MarketParams[] memory list) {
+        list = new MarketParams[](1);
+        list[0] = marketParams_;
+    }
+
     /// @dev Deposits `assets` into the vault for address(this), allocates them to the Morpho market, then borrows all
     /// of them out so the market is fully illiquid. A second market is used so the Morpho contract still holds
     /// enough global loan token liquidity.
@@ -173,6 +179,48 @@ contract VaultV2BundlesTest is Test {
         deal(address(loanToken), address(this), 0);
     }
 
+    /// @dev Like _setUpIlliquid but allocates across two adapter markets (`marketParams` and `otherMarket`), both made
+    /// fully illiquid. A third market supplies Morpho's global loan token liquidity.
+    function _setUpIlliquidTwoMarkets(uint256 assets1, uint256 assets2) internal {
+        // Allow the adapter to allocate into otherMarket too (the `this` and collateral caps are already shared).
+        _increaseCaps(abi.encode("this/marketParams", address(adapter), otherMarket));
+
+        uint256 total = assets1 + assets2;
+        deal(address(loanToken), address(this), total);
+        loanToken.approve(address(vault), type(uint256).max);
+        vault.deposit(total, address(this));
+
+        vm.startPrank(allocator);
+        vault.allocate(address(adapter), abi.encode(marketParams), assets1);
+        vault.allocate(address(adapter), abi.encode(otherMarket), assets2);
+        vm.stopPrank();
+
+        // Borrow everything out of both markets ⇒ both illiquid.
+        deal(address(collateralToken), borrower, 4 * total);
+        vm.startPrank(borrower);
+        collateralToken.approve(address(morpho), type(uint256).max);
+        morpho.supplyCollateral(marketParams, 2 * assets1, borrower, "");
+        morpho.borrow(marketParams, assets1, 0, borrower, borrower);
+        morpho.supplyCollateral(otherMarket, 2 * assets2, borrower, "");
+        morpho.borrow(otherMarket, assets2, 0, borrower, borrower);
+        vm.stopPrank();
+
+        // Morpho global liquidity from a third market sharing the loan token (never borrowed).
+        vm.prank(owner);
+        morpho.enableLltv(0.5e18);
+        MarketParams memory liquidityMarket =
+            MarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), 0.5e18);
+        morpho.createMarket(liquidityMarket);
+        deal(address(loanToken), liquidityProvider, 2 * total);
+        vm.startPrank(liquidityProvider);
+        loanToken.approve(address(morpho), type(uint256).max);
+        morpho.supply(liquidityMarket, 2 * total, 0, liquidityProvider, "");
+        vm.stopPrank();
+
+        vault.approve(address(vaultBundles), type(uint256).max);
+        deal(address(loanToken), address(this), 0);
+    }
+
     /// AUTHORIZATION & VALIDATION ///
 
     function testForceWithdrawAdapterNotPartOfVault() public {
@@ -181,34 +229,36 @@ contract VaultV2BundlesTest is Test {
 
         vm.expectRevert(IVaultBundles.AdapterNotPartOfVault.selector);
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), makeAddr("notAdapter"), marketParams, assets, block.timestamp
+            address(vault), makeAddr("notAdapter"), _singleton(marketParams), assets, block.timestamp
         );
     }
 
+    /// @dev A market not allocated through the adapter (supplyShares == 0) is skipped; with no further market in the
+    /// list to cover the requested assets, the loop runs past the list and reverts.
     function testForceWithdrawMarketNotPartOfAdapter() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
         // otherMarket was never allocated through the adapter ⇒ supplyShares == 0.
-        vm.expectRevert(IVaultBundles.MarketNotPartOfAdapter.selector);
+        vm.expectRevert();
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), otherMarket, assets, block.timestamp
+            address(vault), address(adapter), _singleton(otherMarket), assets, block.timestamp
         );
     }
 
-    /// @dev The market is allocated through the adapter (supplyShares > 0), but the requested amount deallocates more
-    /// than the adapter holds, so availableAssets < assetsToDeallocate ⇒ revert.
+    /// @dev The single market is allocated through the adapter but holds less than the requested amount; with no
+    /// further market in the list to cover the remainder, the loop runs past the list and reverts.
     function testForceWithdrawNotEnoughAvailable() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
-        // Requesting 2x the deposited assets ⇒ assetsToDeallocate ≈ 1.98x availableAssets.
+        // Requesting 2x the deposited assets ⇒ assetsToDeallocate ≈ 1.98x what the single market holds.
         uint256 tooMuch = 2 * assets;
         assertGt(optimalDeallocateAssets(tooMuch), assets, "precondition");
 
-        vm.expectRevert(IVaultBundles.MarketNotPartOfAdapter.selector);
+        vm.expectRevert();
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), marketParams, tooMuch, block.timestamp
+            address(vault), address(adapter), _singleton(marketParams), tooMuch, block.timestamp
         );
     }
 
@@ -217,16 +267,19 @@ contract VaultV2BundlesTest is Test {
         vaultBundles.onMorphoSupply(1, "");
     }
 
-    /// @dev assets so small that deallocatedAssets rounds to 0 ⇒ Morpho's supply(0) reverts.
-    function testForceWithdrawIlliquidTooSmallReverts() public {
+    /// @dev assets so small that deallocatedAssets rounds to 0 ⇒ the deallocation loop never runs (no-op).
+    function testForceWithdrawIlliquidTooSmallNoOp() public {
         uint256 assets = 1;
         _setUpIlliquid(assets);
         assertEq(optimalDeallocateAssets(assets), 0, "precondition");
 
-        vm.expectRevert();
+        uint256 sharesBefore = vault.balanceOf(address(this));
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), marketParams, assets, block.timestamp
+            address(vault), address(adapter), _singleton(marketParams), assets, block.timestamp
         );
+
+        assertEq(vault.balanceOf(address(this)), sharesBefore, "vault balance unchanged");
+        assertEq(morpho.expectedSupplyAssets(marketParams, address(this)), 0, "no supply position");
     }
 
     /// IN-KIND REDEMPTION ///
@@ -249,7 +302,7 @@ contract VaultV2BundlesTest is Test {
         vm.assume(optimalDeallocateAssets(assets) > 0);
 
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), marketParams, assets, block.timestamp
+            address(vault), address(adapter), _singleton(marketParams), assets, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -262,6 +315,35 @@ contract VaultV2BundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
 
+    /// @dev When the first market does not hold enough, the loop drains it and pulls the remainder from the next
+    /// market in the list, leaving the sender an in-kind position in both.
+    function testForceWithdrawIlliquidMultipleMarkets() public {
+        uint256 assets1 = 60e18;
+        uint256 assets2 = 60e18;
+        _setUpIlliquidTwoMarkets(assets1, assets2);
+
+        MarketParams[] memory list = new MarketParams[](2);
+        list[0] = marketParams;
+        list[1] = otherMarket;
+
+        // Deallocate more than the first market holds, so the remainder must come from the second.
+        uint256 forceWithdrawAssets = 90e18;
+        uint256 deallocate = optimalDeallocateAssets(forceWithdrawAssets);
+        assertGt(deallocate, assets1, "precondition: one market is not enough");
+
+        vaultBundles.forceWithdrawIlliquidVaultV2(
+            address(vault), address(adapter), list, forceWithdrawAssets, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
+        // First market drained, remainder pulled from the second.
+        assertApproxEqAbs(morpho.expectedSupplyAssets(marketParams, address(this)), assets1, 2, "first market position");
+        assertApproxEqAbs(
+            morpho.expectedSupplyAssets(otherMarket, address(this)), deallocate - assets1, 2, "second market position"
+        );
+    }
+
     /// @dev Reverts once `deadline` is in the past (checkDeadline runs before the body).
     function testForceWithdrawIlliquidDeadlinePassed() public {
         uint256 assets = 100e18;
@@ -269,7 +351,7 @@ contract VaultV2BundlesTest is Test {
 
         vm.expectRevert(IVaultBundles.DeadlinePassed.selector);
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), marketParams, assets, block.timestamp - 1
+            address(vault), address(adapter), _singleton(marketParams), assets, block.timestamp - 1
         );
     }
 
@@ -297,7 +379,7 @@ contract VaultV2BundlesTest is Test {
         vm.assume(optimalDeallocateAssets(amount) > 0);
 
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), marketParams, amount, block.timestamp
+            address(vault), address(adapter), _singleton(marketParams), amount, block.timestamp
         );
 
         assertLe(
@@ -323,9 +405,7 @@ contract VaultV2BundlesTest is Test {
 
         // otherMarket was never allocated through the adapter ⇒ supplyShares == 0.
         vm.expectRevert(IVaultBundles.MarketNotPartOfAdapter.selector);
-        vaultBundles.forceWithdrawLiquidVaultV2(
-            address(vault), address(adapter), otherMarket, assets, block.timestamp
-        );
+        vaultBundles.forceWithdrawLiquidVaultV2(address(vault), address(adapter), otherMarket, assets, block.timestamp);
     }
 
     function testForceWithdrawLiquid(uint256 assets) public {
@@ -333,9 +413,7 @@ contract VaultV2BundlesTest is Test {
         _setUpLiquid(assets);
         vm.assume(optimalDeallocateAssets(assets) > 0);
 
-        vaultBundles.forceWithdrawLiquidVaultV2(
-            address(vault), address(adapter), marketParams, assets, block.timestamp
-        );
+        vaultBundles.forceWithdrawLiquidVaultV2(address(vault), address(adapter), marketParams, assets, block.timestamp);
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");

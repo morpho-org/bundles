@@ -53,11 +53,10 @@ contract VaultBundles is IVaultBundles {
     /// FORCE WITHDRAW ILLIQUID VAULT V2 ///
 
     /// @dev The sender must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
-    /// @dev The adapter must be part of the vault, and the market must be part of the adapter.
     /// @dev The deallocatedAssets amount is floor(assets * WAD / (WAD + penalty)).
     /// @dev Reverts if the deallocatedAssets amount is 0.
     /// @dev Requires Morpho Blue to have more than the deallocated assets in liquidity.
-    /// @dev Requires the sender to have enough shares to withdraw ceil(deallocatedAssets *  penalty / WAD) and then deallocatedAssets.
+    /// @dev Requires the sender to have enough shares to withdraw ceil(assets *  penalty / WAD) and then assets, for each market in the list.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields a position on the market.
     function forceWithdrawIlliquidVaultV2(
         address vault,
@@ -103,15 +102,14 @@ contract VaultBundles is IVaultBundles {
     /// FORCE WITHDRAW LIQUID VAULT V2 ///
 
     /// @dev The sender must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
-    /// @dev The adapter must be part of the vault, and the market must be part of the adapter.
-    /// @dev The deallocatedAssets amount is floor(assets * WAD / (WAD + penalty)).
+    /// @dev The deallocatedAssets amount is floor(forceWithdrawAssets * WAD / (WAD + penalty)).
     /// @dev Requires the vault to have more than the deallocated assets in liquidity.
     /// @dev Requires the sender to have enough shares to withdraw ceil(deallocatedAssets *  penalty / WAD) and then deallocatedAssets.
     function forceWithdrawLiquidVaultV2(
         address vault,
         address adapter,
         MarketParams memory marketParams,
-        uint256 assets,
+        uint256 forceWithdrawAssets,
         uint256 deadline
     ) external checkDeadline(deadline) {
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
@@ -119,7 +117,7 @@ contract VaultBundles is IVaultBundles {
         require(IMorphoMarketV1AdapterV2(adapter).supplyShares(id) > 0, MarketNotPartOfAdapter());
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
-        uint256 deallocatedAssets = assets * WAD / (WAD + penalty);
+        uint256 deallocatedAssets = forceWithdrawAssets * WAD / (WAD + penalty);
         IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), deallocatedAssets, msg.sender);
         IVaultV2(vault).withdraw(deallocatedAssets, msg.sender, msg.sender);
     }
@@ -127,7 +125,6 @@ contract VaultBundles is IVaultBundles {
     /// FORCE WITHDRAW ILLIQUID VAULT V1 ///
 
     /// @dev The sender must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
-    /// @dev The market must be part of the vault.
     /// @dev Requires Morpho Blue to have more than the assets in liquidity.
     /// @dev Requires onBehalf to have enough shares to withdraw assets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields a position on the market.
