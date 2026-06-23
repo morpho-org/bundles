@@ -148,7 +148,7 @@ contract VaultV2BundlesTest is Test {
         morpho.supply(otherMarket, 2 * assets, 0, liquidityProvider, "");
         vm.stopPrank();
 
-        // onBehalf (this contract) authorizes the bundler to move its vault shares.
+        // The sender (this contract) authorizes the bundler to move its vault shares.
         vault.approve(address(vaultBundles), type(uint256).max);
 
         // Sanity: the depositor cannot redeem normally, yet still "owns" ~assets worth of shares.
@@ -166,7 +166,7 @@ contract VaultV2BundlesTest is Test {
         vault.allocate(address(adapter), abi.encode(marketParams), assets);
         assertGt(adapter.supplyShares(Id.unwrap(marketParams.id())), 0, "allocation");
 
-        // onBehalf (this contract) authorizes the bundler to move its vault shares.
+        // The sender (this contract) authorizes the bundler to move its vault shares.
         vault.approve(address(vaultBundles), type(uint256).max);
 
         // Reset so the final balance measures exactly what is withdrawn from the vault.
@@ -175,24 +175,13 @@ contract VaultV2BundlesTest is Test {
 
     /// AUTHORIZATION & VALIDATION ///
 
-    function testForceWithdrawUnauthorized() public {
-        uint256 assets = 100e18;
-        _setUpIlliquid(assets);
-
-        vm.prank(makeAddr("intruder"));
-        vm.expectRevert(IVaultBundles.Unauthorized.selector);
-        vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp
-        );
-    }
-
     function testForceWithdrawAdapterNotPartOfVault() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
         vm.expectRevert(IVaultBundles.AdapterNotPartOfVault.selector);
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), makeAddr("notAdapter"), marketParams, address(this), assets, block.timestamp
+            address(vault), makeAddr("notAdapter"), marketParams, assets, block.timestamp
         );
     }
 
@@ -203,7 +192,7 @@ contract VaultV2BundlesTest is Test {
         // otherMarket was never allocated through the adapter ⇒ supplyShares == 0.
         vm.expectRevert(IVaultBundles.MarketNotPartOfAdapter.selector);
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), otherMarket, address(this), assets, block.timestamp
+            address(vault), address(adapter), otherMarket, assets, block.timestamp
         );
     }
 
@@ -220,7 +209,7 @@ contract VaultV2BundlesTest is Test {
 
         vm.expectRevert();
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp
+            address(vault), address(adapter), marketParams, assets, block.timestamp
         );
     }
 
@@ -244,7 +233,7 @@ contract VaultV2BundlesTest is Test {
         vm.assume(optimalDeallocateAssets(assets) > 0);
 
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp
+            address(vault), address(adapter), marketParams, assets, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -264,7 +253,7 @@ contract VaultV2BundlesTest is Test {
 
         vm.expectRevert(IVaultBundles.DeadlinePassed.selector);
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp - 1
+            address(vault), address(adapter), marketParams, assets, block.timestamp - 1
         );
     }
 
@@ -277,7 +266,7 @@ contract VaultV2BundlesTest is Test {
         assertEq(vault.balanceOf(address(this)), newShares, "balanceOf slot");
     }
 
-    /// @dev Passing assets = previewRedeem(balanceOf(onBehalf) - 2) never reverts and
+    /// @dev Passing assets = previewRedeem(balanceOf(sender) - 2) never reverts and
     /// sweeps all but a few assets' worth of the position (on top of the 2 shares). The
     /// 2 shares margin keeps the two ceil-rounded withdrawals from over-burning.
     function testForceWithdrawSafeExit(uint256 assets, uint256 priceWad) public {
@@ -292,7 +281,7 @@ contract VaultV2BundlesTest is Test {
         vm.assume(optimalDeallocateAssets(amount) > 0);
 
         vaultBundles.forceWithdrawIlliquidVaultV2(
-            address(vault), address(adapter), marketParams, address(this), amount, block.timestamp
+            address(vault), address(adapter), marketParams, amount, block.timestamp
         );
 
         assertLe(
@@ -302,24 +291,13 @@ contract VaultV2BundlesTest is Test {
 
     /// LIQUID WITHDRAWAL ///
 
-    function testForceWithdrawLiquidUnauthorized() public {
-        uint256 assets = 100e18;
-        _setUpLiquid(assets);
-
-        vm.prank(makeAddr("intruder"));
-        vm.expectRevert(IVaultBundles.Unauthorized.selector);
-        vaultBundles.forceWithdrawLiquidVaultV2(
-            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp
-        );
-    }
-
     function testForceWithdrawLiquidAdapterNotPartOfVault() public {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
 
         vm.expectRevert(IVaultBundles.AdapterNotPartOfVault.selector);
         vaultBundles.forceWithdrawLiquidVaultV2(
-            address(vault), makeAddr("notAdapter"), marketParams, address(this), assets, block.timestamp
+            address(vault), makeAddr("notAdapter"), marketParams, assets, block.timestamp
         );
     }
 
@@ -330,7 +308,7 @@ contract VaultV2BundlesTest is Test {
         // otherMarket was never allocated through the adapter ⇒ supplyShares == 0.
         vm.expectRevert(IVaultBundles.MarketNotPartOfAdapter.selector);
         vaultBundles.forceWithdrawLiquidVaultV2(
-            address(vault), address(adapter), otherMarket, address(this), assets, block.timestamp
+            address(vault), address(adapter), otherMarket, assets, block.timestamp
         );
     }
 
@@ -340,7 +318,7 @@ contract VaultV2BundlesTest is Test {
         vm.assume(optimalDeallocateAssets(assets) > 0);
 
         vaultBundles.forceWithdrawLiquidVaultV2(
-            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp
+            address(vault), address(adapter), marketParams, assets, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -358,7 +336,7 @@ contract VaultV2BundlesTest is Test {
 
         vm.expectRevert(IVaultBundles.DeadlinePassed.selector);
         vaultBundles.forceWithdrawLiquidVaultV2(
-            address(vault), address(adapter), marketParams, address(this), assets, block.timestamp - 1
+            address(vault), address(adapter), marketParams, assets, block.timestamp - 1
         );
     }
 }

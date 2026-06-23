@@ -116,7 +116,7 @@ contract VaultV1BundlesTest is Test {
         morpho.supply(otherMarket, 2 * assets, 0, liquidityProvider, "");
         vm.stopPrank();
 
-        // onBehalf (this contract) authorizes the bundler to move its vault shares.
+        // The sender (this contract) authorizes the bundler to move its vault shares.
         vault.approve(address(vaultBundles), type(uint256).max);
 
         // Sanity: the depositor still "owns" ~assets worth of shares but holds no loan token.
@@ -124,15 +124,6 @@ contract VaultV1BundlesTest is Test {
     }
 
     /// AUTHORIZATION & VALIDATION ///
-
-    function testForceWithdrawUnauthorized() public {
-        uint256 assets = 100e18;
-        _setUpIlliquid(assets);
-
-        vm.prank(makeAddr("intruder"));
-        vm.expectRevert(IVaultBundles.Unauthorized.selector);
-        vaultBundles.forceWithdrawIlliquidVaultV1(address(vault), marketParams, address(this), assets, block.timestamp);
-    }
 
     function testOnMorphoFlashLoanOnlyBlue() public {
         vm.expectRevert(IVaultBundles.Unauthorized.selector);
@@ -154,7 +145,7 @@ contract VaultV1BundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
-        vaultBundles.forceWithdrawIlliquidVaultV1(address(vault), marketParams, address(this), assets, block.timestamp);
+        vaultBundles.forceWithdrawIlliquidVaultV1(address(vault), marketParams, assets, block.timestamp);
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
@@ -170,8 +161,6 @@ contract VaultV1BundlesTest is Test {
         _setUpIlliquid(assets);
 
         vm.expectRevert(IVaultBundles.DeadlinePassed.selector);
-        vaultBundles.forceWithdrawIlliquidVaultV1(
-            address(vault), marketParams, address(this), assets, block.timestamp - 1
-        );
+        vaultBundles.forceWithdrawIlliquidVaultV1(address(vault), marketParams, assets, block.timestamp - 1);
     }
 }

@@ -22,7 +22,6 @@ interface IVaultBundles {
         address vault,
         address adapter,
         MarketParams memory marketParams,
-        address onBehalf,
         uint256 assets,
         uint256 deadline
     ) external;
@@ -31,7 +30,6 @@ interface IVaultBundles {
         address vault,
         address adapter,
         MarketParams memory marketParams,
-        address onBehalf,
         uint256 assets,
         uint256 deadline
     ) external;
@@ -39,7 +37,6 @@ interface IVaultBundles {
     function forceWithdrawIlliquidVaultV1(
         address vault,
         MarketParams memory marketParams,
-        address onBehalf,
         uint256 assets,
         uint256 deadline
     ) external;
