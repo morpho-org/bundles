@@ -2,14 +2,15 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IMidnight, Market, Offer} from "../../lib/midnight/src/interfaces/IMidnight.sol";
-import {IMidnightBundles, Take, CollateralWithdrawal, CollateralSupply} from "./IMidnightBundles.sol";
-import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
-import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
-import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
-import {TakeAmountsLib} from "../../lib/midnight/src/periphery/TakeAmountsLib.sol";
-import {ConsumableUnitsLib} from "../../lib/midnight/src/periphery/ConsumableUnitsLib.sol";
-import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
+import {IMidnight, Market, Offer} from "../lib/midnight/src/interfaces/IMidnight.sol";
+import {IMidnightBundles, Take, CollateralWithdrawal, CollateralSupply} from "./interfaces/IMidnightBundles.sol";
+import {TokenLib, TokenPermit} from "./libraries/TokenLib.sol";
+import {UtilsLib} from "../lib/midnight/src/libraries/UtilsLib.sol";
+import {IdLib} from "../lib/midnight/src/libraries/IdLib.sol";
+import {SafeTransferLib} from "../lib/midnight/src/libraries/SafeTransferLib.sol";
+import {TakeAmountsLib} from "../lib/midnight/src/periphery/TakeAmountsLib.sol";
+import {ConsumableUnitsLib} from "../lib/midnight/src/periphery/ConsumableUnitsLib.sol";
+import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev Inherits the token safety requirements of Midnight (see Midnight.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
@@ -61,7 +62,7 @@ contract MidnightBundles is IMidnightBundles {
         uint256 filledBuyerAssets;
         for (uint256 i; i < takes.length && filledUnits < targetUnits; i++) {
             require(!takes[i].offer.buy, InconsistentSide());
-            require(IMidnight(MIDNIGHT).toId(takes[i].offer.market) == id, InconsistentMarket());
+            require(IdLib.toId(takes[i].offer.market) == id, InconsistentMarket());
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 takes[i].units,
@@ -134,7 +135,7 @@ contract MidnightBundles is IMidnightBundles {
         uint256 filledSellerAssets;
         for (uint256 i; i < takes.length && filledUnits < targetUnits; i++) {
             require(takes[i].offer.buy, InconsistentSide());
-            require(IMidnight(MIDNIGHT).toId(takes[i].offer.market) == id, InconsistentMarket());
+            require(IdLib.toId(takes[i].offer.market) == id, InconsistentMarket());
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 takes[i].units,
@@ -195,7 +196,7 @@ contract MidnightBundles is IMidnightBundles {
         uint256 filledBuyerAssets;
         for (uint256 i; i < takes.length && filledBuyerAssets < targetFilledBuyerAssets; i++) {
             require(!takes[i].offer.buy, InconsistentSide());
-            require(IMidnight(MIDNIGHT).toId(takes[i].offer.market) == id, InconsistentMarket());
+            require(IdLib.toId(takes[i].offer.market) == id, InconsistentMarket());
             uint256 unitsToTake = min(
                 TakeAmountsLib.buyerAssetsToUnits(
                     MIDNIGHT, id, takes[i].offer, targetFilledBuyerAssets - filledBuyerAssets
@@ -272,7 +273,7 @@ contract MidnightBundles is IMidnightBundles {
         uint256 filledSellerAssets;
         for (uint256 i; i < takes.length && filledSellerAssets < targetFilledSellerAssets; i++) {
             require(takes[i].offer.buy, InconsistentSide());
-            require(IMidnight(MIDNIGHT).toId(takes[i].offer.market) == id, InconsistentMarket());
+            require(IdLib.toId(takes[i].offer.market) == id, InconsistentMarket());
             uint256 unitsToTake = min(
                 TakeAmountsLib.sellerAssetsToUnits(
                     MIDNIGHT, id, takes[i].offer, targetFilledSellerAssets - filledSellerAssets
@@ -338,8 +339,8 @@ contract MidnightBundles is IMidnightBundles {
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
     }
 
-    /// @dev Returns min(x, y, w).
-    function min(uint256 x, uint256 y, uint256 w) internal pure returns (uint256) {
-        return UtilsLib.min(UtilsLib.min(x, y), w);
+    /// @dev Returns min(x, y, z).
+    function min(uint256 x, uint256 y, uint256 z) internal pure returns (uint256) {
+        return UtilsLib.min(UtilsLib.min(x, y), z);
     }
 }

@@ -18,8 +18,8 @@ import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
-import {MidnightBundles} from "../src/midnight/MidnightBundles.sol";
-import {IMidnightBundles, Take, CollateralWithdrawal, CollateralSupply} from "../src/midnight/IMidnightBundles.sol";
+import {MidnightBundles} from "../src/MidnightBundles.sol";
+import {IMidnightBundles, Take, CollateralWithdrawal, CollateralSupply} from "../src/interfaces/IMidnightBundles.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
 
@@ -51,6 +51,7 @@ contract MidnightBundlesTest is Test {
 
         midnight.setFeeSetter(address(this));
         midnight.setTickSpacingSetter(address(this));
+        midnight.addLltv(0.77e18);
 
         uint256 key;
         (borrower, key) = makeAddrAndKey("borrower");
@@ -89,6 +90,8 @@ contract MidnightBundlesTest is Test {
         }
 
         market.loanToken = address(loanToken);
+        market.chainId = block.chainid;
+        market.midnight = address(midnight);
         market.maturity = vm.getBlockTimestamp() + 100;
         market.collateralParams
             .push(
@@ -244,8 +247,8 @@ contract MidnightBundlesTest is Test {
             uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
             uint256 consumed1 = midnight.consumed(offers[1].maker, offers[1].group);
             assertEq(consumed0, fromOffer0, "consumed offer 0");
-            assertEq(consumed0 + consumed1, midnight.debtOf(id, borrower), "total consumed");
-            assertEq(midnight.debtOf(id, borrower), units, "debt");
+            assertEq(consumed0 + consumed1, midnight.debt(id, borrower), "total consumed");
+            assertEq(midnight.debt(id, borrower), units, "debt");
         } else {
             vm.prank(borrower);
             vm.expectRevert(IMidnightBundles.OutOfOffers.selector);
@@ -300,7 +303,7 @@ contract MidnightBundlesTest is Test {
             uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
             uint256 consumed1 = midnight.consumed(offers[1].maker, offers[1].group);
             assertEq(consumed0, fromOffer0, "consumed offer 0");
-            assertEq(consumed0 + consumed1, midnight.debtOf(id, borrower), "total consumed");
+            assertEq(consumed0 + consumed1, midnight.debt(id, borrower), "total consumed");
             assertEq(loanToken.balanceOf(lender), type(uint256).max - targetBuyerAssets, "lender balance");
         } else {
             vm.prank(lender);
@@ -353,7 +356,7 @@ contract MidnightBundlesTest is Test {
         assertEq(loanToken.allowance(lender, address(midnightBundles)), 0);
         assertEq(loanToken.allowance(lender, PERMIT2), 0);
         assertEq(loanToken.balanceOf(lender), type(uint256).max - targetBuyerAssets);
-        assertEq(midnight.creditOf(id, lender), units);
+        assertEq(midnight.credit(id, lender), units);
     }
 
     function testBuyBuyerAssetsTargetPermit() public {
@@ -385,7 +388,7 @@ contract MidnightBundlesTest is Test {
 
         assertEq(loanToken.allowance(lender, address(midnightBundles)), 0);
         assertEq(loanToken.balanceOf(lender), type(uint256).max - targetBuyerAssets);
-        assertEq(midnight.creditOf(id, lender), units);
+        assertEq(midnight.credit(id, lender), units);
     }
 
     function testBuyUnitsTargetPermit2() public {
@@ -419,7 +422,7 @@ contract MidnightBundlesTest is Test {
         assertEq(loanToken.allowance(lender, address(midnightBundles)), 0);
         assertEq(loanToken.allowance(lender, PERMIT2), 0);
         assertEq(loanToken.balanceOf(lender), type(uint256).max - maxBuyerAssets);
-        assertEq(midnight.creditOf(id, lender), units);
+        assertEq(midnight.credit(id, lender), units);
     }
 
     function testBuyUnitsTargetInconsistentMarket() public {
@@ -537,7 +540,7 @@ contract MidnightBundlesTest is Test {
             uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
             uint256 consumed1 = midnight.consumed(offers[1].maker, offers[1].group);
             assertEq(consumed0, fromOffer0, "consumed offer 0");
-            assertEq(consumed0 + consumed1, midnight.debtOf(id, borrower), "total consumed");
+            assertEq(consumed0 + consumed1, midnight.debt(id, borrower), "total consumed");
             assertEq(loanToken.balanceOf(borrower), targetSellerAssets, "borrower balance");
         } else {
             vm.prank(borrower);
@@ -612,7 +615,7 @@ contract MidnightBundlesTest is Test {
             referrer
         );
 
-        assertEq(midnight.debtOf(id, borrower), units, "units filled");
+        assertEq(midnight.debt(id, borrower), units, "units filled");
         assertEq(loanToken.balanceOf(borrower), expectedFilledBuyerAssets, "maker receipt");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(
@@ -646,7 +649,7 @@ contract MidnightBundlesTest is Test {
             units, 0, borrower, receiver, new CollateralSupply[](0), takes, referralFeePct, referrer
         );
 
-        assertEq(midnight.debtOf(id, borrower), units, "units sold");
+        assertEq(midnight.debt(id, borrower), units, "units sold");
         assertEq(loanToken.balanceOf(receiver), expectedFilledSellerAssets - expectedFee, "receiver net");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
@@ -774,7 +777,7 @@ contract MidnightBundlesTest is Test {
             market, assets, borrower, _noPermit(), new CollateralWithdrawal[](0), address(0), referralFeePct, referrer
         );
 
-        assertEq(midnight.debtOf(id, borrower), units - expectedUnits, "debt");
+        assertEq(midnight.debt(id, borrower), units - expectedUnits, "debt");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(borrower), 0, "borrower spent assets");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
@@ -811,7 +814,7 @@ contract MidnightBundlesTest is Test {
             market, assets, borrower, _noPermit(), new CollateralWithdrawal[](0), address(0), referralFeePct, referrer
         );
 
-        assertEq(midnight.debtOf(id, borrower), 0, "debt fully repaid");
+        assertEq(midnight.debt(id, borrower), 0, "debt fully repaid");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(borrower), 0, "borrower spent assets");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
@@ -979,7 +982,7 @@ contract MidnightBundlesTest is Test {
         for (uint256 i; i < numCollaterals; i++) {
             assertEq(midnight.collateral(id, borrower, i), supplies[i].assets);
         }
-        assertEq(midnight.debtOf(id, borrower), units);
+        assertEq(midnight.debt(id, borrower), units);
     }
 
     function testSellUnitsTargetPermit2() public {
@@ -1012,7 +1015,7 @@ contract MidnightBundlesTest is Test {
         assertEq(ERC20(collateralToken).allowance(borrower, address(midnightBundles)), 0);
         assertEq(ERC20(collateralToken).allowance(borrower, PERMIT2), 0);
         assertEq(midnight.collateral(id, borrower, 0), amount);
-        assertEq(midnight.debtOf(id, borrower), units);
+        assertEq(midnight.debt(id, borrower), units);
     }
 
     function testRepay(uint256 units, uint256 repayUnits, uint256 withdrawAssets) public {
@@ -1054,7 +1057,7 @@ contract MidnightBundlesTest is Test {
             market, repayUnits, borrower, _noPermit(), withdrawals, collateralReceiver, 0, address(0)
         );
 
-        assertEq(midnight.debtOf(id, borrower), units - repayUnits, "debt");
+        assertEq(midnight.debt(id, borrower), units - repayUnits, "debt");
         assertEq(midnight.collateral(id, borrower, 0), collateralAmount - withdrawAssets, "remaining collateral");
         assertEq(
             ERC20(market.collateralParams[0].token).balanceOf(collateralReceiver), withdrawAssets, "collateral receiver"
@@ -1273,7 +1276,7 @@ contract MidnightBundlesTest is Test {
 
         assertEq(midnight.consumed(offers[0].maker, offers[0].group), 100, "consumed offer 0");
         assertEq(midnight.consumed(offers[1].maker, offers[1].group), 30, "consumed offer 1");
-        assertEq(midnight.debtOf(id, borrower), 100, "debt");
+        assertEq(midnight.debt(id, borrower), 100, "debt");
     }
 
     function testSellSellerAssetsTargetPartiallyConsumed() public {
@@ -1307,7 +1310,7 @@ contract MidnightBundlesTest is Test {
         // Offer 0 should hit its cap (consumed 30 + filled up to 70).
         assertEq(consumed0, 100, "consumed offer 0");
         // Total newly filled units equal the borrower's debt.
-        assertEq(consumed0 - 30 + consumed1, midnight.debtOf(id, borrower), "total consumed");
+        assertEq(consumed0 - 30 + consumed1, midnight.debt(id, borrower), "total consumed");
         assertEq(loanToken.balanceOf(borrower), targetSellerAssets, "borrower balance");
     }
 
@@ -1346,7 +1349,7 @@ contract MidnightBundlesTest is Test {
 
         assertEq(midnight.consumed(offers[0].maker, offers[0].group), 100, "consumed offer 0");
         assertEq(midnight.consumed(offers[1].maker, offers[1].group), 30, "consumed offer 1");
-        assertEq(midnight.debtOf(id, borrower), 100, "debt");
+        assertEq(midnight.debt(id, borrower), 100, "debt");
     }
 
     function testBuyBuyerAssetsTargetPartiallyConsumed() public {
@@ -1385,6 +1388,6 @@ contract MidnightBundlesTest is Test {
         uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
         uint256 consumed1 = midnight.consumed(offers[1].maker, offers[1].group);
         assertEq(consumed0, 100, "consumed offer 0");
-        assertEq(consumed0 - 30 + consumed1, midnight.debtOf(id, borrower), "total consumed");
+        assertEq(consumed0 - 30 + consumed1, midnight.debt(id, borrower), "total consumed");
     }
 }
