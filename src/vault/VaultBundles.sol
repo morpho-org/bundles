@@ -46,7 +46,7 @@ contract VaultBundles is IVaultBundles {
 
     struct FlashLoanData {
         address vault;
-        MarketParams marketParams;
+        MarketParams[] marketParamsList;
         address sender;
     }
 
@@ -66,6 +66,7 @@ contract VaultBundles is IVaultBundles {
         uint256 deadline
     ) external checkDeadline(deadline) {
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
+        require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
         require(marketParams.length > 0, NoMarketParams());
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
@@ -73,11 +74,12 @@ contract VaultBundles is IVaultBundles {
 
         for (uint256 i = 0; remainingToDeallocate > 0; i++) {
             bytes32 id = Id.unwrap(marketParams[i].id());
+            // Use the shares accounted in the adapter to compute the available to withdraw.
             uint256 supplyShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(id);
             (uint256 totalSupplyAssets, uint256 totalSupplyShares,,) =
                 MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParams[i]);
             uint256 availableToWithdraw = supplyShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
-            uint256 assets = availableToWithdraw < remainingToDeallocate ? availableToWithdraw : remainingToDeallocate;
+            uint256 assets = min(availableToWithdraw, remainingToDeallocate);
 
             // Markets that are not part of the adapter are skipped.
             if (assets > 0) {
@@ -113,6 +115,7 @@ contract VaultBundles is IVaultBundles {
         uint256 deadline
     ) external checkDeadline(deadline) {
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
+        require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
         bytes32 id = Id.unwrap(marketParams.id());
         require(IMorphoMarketV1AdapterV2(adapter).supplyShares(id) > 0, MarketNotPartOfAdapter());
 
@@ -128,26 +131,44 @@ contract VaultBundles is IVaultBundles {
     /// @dev Requires Morpho Blue to have more than the assets in liquidity.
     /// @dev Requires onBehalf to have enough shares to withdraw assets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields a position on the market.
+    /// @dev All markets should belong to the vault.
     function forceWithdrawIlliquidVaultV1(
         address vault,
-        MarketParams memory marketParams,
+        MarketParams[] memory marketParamsList,
         uint256 assets,
         uint256 deadline
     ) external checkDeadline(deadline) {
-        bytes32 id = Id.unwrap(marketParams.id());
-        require(IMetaMorpho(vault).config(MMId.wrap(id)).enabled, MarketNotPartOfVault());
+        require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
+        require(marketParamsList.length > 0, NoMarketParams());
+        address loanToken = marketParamsList[0].loanToken;
+        TokenLib.forceApproveMax(loanToken, BLUE);
 
-        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
-
-        bytes memory data = abi.encode(FlashLoanData(vault, marketParams, msg.sender));
-        IMorpho(BLUE).flashLoan(marketParams.loanToken, assets, data);
+        bytes memory data = abi.encode(FlashLoanData(vault, marketParamsList, msg.sender));
+        IMorpho(BLUE).flashLoan(loanToken, assets, data);
     }
 
     function onMorphoFlashLoan(uint256 assets, bytes memory data) external {
         require(msg.sender == BLUE, Unauthorized());
-        FlashLoanData memory f = abi.decode(data, (FlashLoanData));
 
-        IMorpho(BLUE).supply(f.marketParams, assets, 0, f.sender, "");
+        uint256 remainingAssets = assets;
+
+        FlashLoanData memory f = abi.decode(data, (FlashLoanData));
+        for (uint256 i = 0; remainingAssets > 0; i++) {
+            MarketParams memory marketParams = f.marketParamsList[i];
+            bytes32 id = Id.unwrap(marketParams.id());
+            require(IMetaMorpho(f.vault).config(MMId.wrap(id)).enabled, MarketNotPartOfVault());
+
+            uint256 availableToWithdraw = MorphoBalancesLib.expectedSupplyAssets(IMorpho(BLUE), marketParams, f.vault);
+            uint256 assetsToSupply = min(availableToWithdraw, remainingAssets);
+
+            IMorpho(BLUE).supply(marketParams, assetsToSupply, 0, f.sender, "");
+            remainingAssets -= assetsToSupply;
+        }
+
         IMetaMorpho(f.vault).withdraw(assets, address(this), f.sender);
+    }
+
+    function min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
     }
 }

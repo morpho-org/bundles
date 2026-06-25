@@ -7,6 +7,7 @@ import {IMorpho, MarketParams, Id} from "../lib/morpho-blue/src/interfaces/IMorp
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {MorphoLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
 import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
+import {MorphoStorageLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoStorageLib.sol";
 import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
@@ -127,6 +128,18 @@ contract VaultV2BundlesTest is Test {
         list[0] = marketParams_;
     }
 
+    /// @dev Simulates accrued yield on a market via a storage cheat so its (and its suppliers') assets/shares ratio
+    /// is non-round, exercising real rounding. Funds Morpho with the extra assets so they remain withdrawable.
+    function _accrueYield(MarketParams memory mp, uint256 yield) internal {
+        if (yield == 0) return;
+        bytes32 slot = MorphoStorageLib.marketTotalSupplyAssetsAndSharesSlot(mp.id());
+        uint256 packed = uint256(vm.load(address(morpho), slot));
+        uint256 totalSupplyAssets = uint128(packed);
+        uint256 totalSupplyShares = packed >> 128;
+        vm.store(address(morpho), slot, bytes32((totalSupplyShares << 128) | (totalSupplyAssets + yield)));
+        deal(address(loanToken), address(morpho), loanToken.balanceOf(address(morpho)) + yield);
+    }
+
     /// @dev Deposits `assets` into the vault for address(this), allocates them to the Morpho market, then borrows all
     /// of them out so the market is fully illiquid. A second market is used so the Morpho contract still holds
     /// enough global loan token liquidity.
@@ -179,8 +192,8 @@ contract VaultV2BundlesTest is Test {
         deal(address(loanToken), address(this), 0);
     }
 
-    /// @dev Like _setUpIlliquid but allocates across two adapter markets (`marketParams` and `otherMarket`), both made
-    /// fully illiquid. A third market supplies Morpho's global loan token liquidity.
+    /// @dev Like _setUpIlliquid but allocates across two adapter markets (`marketParams` and `otherMarket`), both
+    /// borrowed out and given non-round share/asset ratios. A third market supplies Morpho's global loan liquidity.
     function _setUpIlliquidTwoMarkets(uint256 assets1, uint256 assets2) internal {
         // Allow the adapter to allocate into otherMarket too (the `this` and collateral caps are already shared).
         _increaseCaps(abi.encode("this/marketParams", address(adapter), otherMarket));
@@ -204,6 +217,10 @@ contract VaultV2BundlesTest is Test {
         morpho.supplyCollateral(otherMarket, 2 * assets2, borrower, "");
         morpho.borrow(otherMarket, assets2, 0, borrower, borrower);
         vm.stopPrank();
+
+        // Non-round share/asset ratios on both markets so the redemption math exercises real rounding.
+        _accrueYield(marketParams, assets1 / 3);
+        _accrueYield(otherMarket, assets2 / 7);
 
         // Morpho global liquidity from a third market sharing the loan token (never borrowed).
         vm.prank(owner);
@@ -321,15 +338,19 @@ contract VaultV2BundlesTest is Test {
         uint256 assets1 = 60e18;
         uint256 assets2 = 60e18;
         _setUpIlliquidTwoMarkets(assets1, assets2);
+        _setSharePrice(1.07e18); // non-round vault share/asset ratio
 
         MarketParams[] memory list = new MarketParams[](2);
         list[0] = marketParams;
         list[1] = otherMarket;
 
+        // The adapter's (yield-inflated) position in the first market.
+        uint256 available1 = morpho.expectedSupplyAssets(marketParams, address(adapter));
+
         // Deallocate more than the first market holds, so the remainder must come from the second.
         uint256 forceWithdrawAssets = 90e18;
         uint256 deallocate = optimalDeallocateAssets(forceWithdrawAssets);
-        assertGt(deallocate, assets1, "precondition: one market is not enough");
+        assertGt(deallocate, available1, "precondition: one market is not enough");
 
         vaultBundles.forceWithdrawIlliquidVaultV2(
             address(vault), address(adapter), list, forceWithdrawAssets, block.timestamp
@@ -338,9 +359,14 @@ contract VaultV2BundlesTest is Test {
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
         // First market drained, remainder pulled from the second.
-        assertApproxEqAbs(morpho.expectedSupplyAssets(marketParams, address(this)), assets1, 2, "first market position");
         assertApproxEqAbs(
-            morpho.expectedSupplyAssets(otherMarket, address(this)), deallocate - assets1, 2, "second market position"
+            morpho.expectedSupplyAssets(marketParams, address(this)), available1, 3, "first market position"
+        );
+        assertApproxEqAbs(
+            morpho.expectedSupplyAssets(otherMarket, address(this)),
+            deallocate - available1,
+            3,
+            "second market position"
         );
     }
 

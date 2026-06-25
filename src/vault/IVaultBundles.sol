@@ -9,6 +9,7 @@ interface IVaultBundles {
     error AdapterNotPartOfVault();
     error MarketNotPartOfAdapter();
     error MarketNotPartOfVault();
+    error MorphoMismatch();
     error NoMarketParams();
     error Unauthorized();
     error DeadlinePassed();
@@ -37,7 +38,7 @@ interface IVaultBundles {
 
     function forceWithdrawIlliquidVaultV1(
         address vault,
-        MarketParams memory marketParams,
+        MarketParams[] memory marketParams,
         uint256 assets,
         uint256 deadline
     ) external;
