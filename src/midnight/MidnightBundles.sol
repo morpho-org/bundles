@@ -2,15 +2,15 @@
 // Copyright (c) 2025 Morpho Association
 pragma solidity 0.8.34;
 
-import {IMidnight, Market} from "../lib/midnight/src/interfaces/IMidnight.sol";
-import {IMidnightBundles, Take, CollateralWithdrawal, CollateralSupply} from "./interfaces/IMidnightBundles.sol";
-import {TokenLib, TokenPermit} from "./libraries/TokenLib.sol";
-import {UtilsLib} from "../lib/midnight/src/libraries/UtilsLib.sol";
-import {IdLib} from "../lib/midnight/src/libraries/IdLib.sol";
-import {SafeTransferLib} from "../lib/midnight/src/libraries/SafeTransferLib.sol";
-import {TakeAmountsLib} from "../lib/midnight/src/periphery/TakeAmountsLib.sol";
-import {ConsumableUnitsLib} from "../lib/midnight/src/periphery/ConsumableUnitsLib.sol";
-import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
+import {IMidnight, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol";
+import {IMidnightBundles, Take, CollateralWithdrawal, CollateralSupply} from "./IMidnightBundles.sol";
+import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
+import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
+import {IdLib} from "../../lib/midnight/src/libraries/IdLib.sol";
+import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
+import {TakeAmountsLib} from "../../lib/midnight/src/periphery/TakeAmountsLib.sol";
+import {ConsumableUnitsLib} from "../../lib/midnight/src/periphery/ConsumableUnitsLib.sol";
+import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev For each offer, the buy/sell functions will take min("units needed to fill target units / assets",
 /// takes[i].units, "units still consumable in takes[i].offer") units.

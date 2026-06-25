@@ -2,17 +2,17 @@
 // Copyright (c) 2025 Morpho Association
 pragma solidity 0.8.34;
 
-import {IBlueBundles} from "./interfaces/IBlueBundles.sol";
-import {TokenLib, TokenPermit} from "./libraries/TokenLib.sol";
-import {IMorpho, MarketParams, Position, Market} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
-import {IMorphoRepayCallback} from "../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
-import {IOracle} from "../lib/morpho-blue/src/interfaces/IOracle.sol";
-import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
-import {SharesMathLib} from "../lib/morpho-blue/src/libraries/SharesMathLib.sol";
-import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
-import {SafeTransferLib} from "../lib/midnight/src/libraries/SafeTransferLib.sol";
-import {UtilsLib} from "../lib/midnight/src/libraries/UtilsLib.sol";
-import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
+import {IBlueBundles} from "./IBlueBundles.sol";
+import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
+import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
+import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
+import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
+import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
+import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
+import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
+import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
+import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev Inherits the token safety requirements of Morpho Blue (see Morpho.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
