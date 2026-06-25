@@ -3,28 +3,27 @@
 pragma solidity ^0.8.0;
 
 import {Test} from "../lib/forge-std/src/Test.sol";
-import {IMorpho, MarketParams, Id} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
-import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
-import {MorphoLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
-import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
-import {MorphoStorageLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoStorageLib.sol";
-import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
-import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
 import {VaultBundles} from "../src/vault/VaultBundles.sol";
 import {IVaultBundles} from "../src/vault/IVaultBundles.sol";
 
-// MetaMorpho (Vault V1) ships its own nested morpho-blue, so its market types are distinct from the ones above.
+// Use the vault's own (nested) morpho-blue everywhere, so Morpho, MetaMorpho and this test share a single market type.
 import {IMetaMorpho} from "../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
-import {MarketParams as MMMarketParams, Id as MMId} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
-import {
-    MarketParamsLib as MMMarketParamsLib
-} from "../lib/metamorpho/lib/morpho-blue/src/libraries/MarketParamsLib.sol";
+import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {MarketParamsLib} from "../lib/metamorpho/lib/morpho-blue/src/libraries/MarketParamsLib.sol";
+import {MorphoLib} from "../lib/metamorpho/lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
+import {MorphoBalancesLib} from "../lib/metamorpho/lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
+import {MorphoStorageLib} from "../lib/metamorpho/lib/morpho-blue/src/libraries/periphery/MorphoStorageLib.sol";
+import {ORACLE_PRICE_SCALE} from "../lib/metamorpho/lib/morpho-blue/src/libraries/ConstantsLib.sol";
+import {OracleMock} from "../lib/metamorpho/lib/morpho-blue/src/mocks/OracleMock.sol";
+
+// The bundler is compiled against the top-level morpho-blue (a different commit), so its MarketParams is a distinct
+// type: alias it just for the forceWithdrawIlliquidVaultV1 argument and convert at that single boundary.
+import {MarketParams as BundlerMarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 
 contract VaultV1BundlesTest is Test {
     using MarketParamsLib for MarketParams;
-    using MMMarketParamsLib for MMMarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;
 
@@ -74,10 +73,15 @@ contract VaultV1BundlesTest is Test {
 
     /// HELPERS ///
 
+    /// @dev Converts a market to the bundler's (top-level morpho-blue) MarketParams type.
+    function _toBundler(MarketParams memory mp) internal pure returns (BundlerMarketParams memory) {
+        return BundlerMarketParams(mp.loanToken, mp.collateralToken, mp.oracle, mp.irm, mp.lltv);
+    }
+
     /// @dev Wraps a single market into the singleton list expected by forceWithdrawIlliquidVaultV1.
-    function _singleton(MarketParams memory marketParams_) internal pure returns (MarketParams[] memory list) {
-        list = new MarketParams[](1);
-        list[0] = marketParams_;
+    function _singleton(MarketParams memory marketParams_) internal pure returns (BundlerMarketParams[] memory list) {
+        list = new BundlerMarketParams[](1);
+        list[0] = _toBundler(marketParams_);
     }
 
     /// @dev Deploys a MetaMorpho (Vault V1) over the loan token, deposits `assets` for address(this) which get
@@ -91,14 +95,12 @@ contract VaultV1BundlesTest is Test {
         );
 
         // Enable marketParams with an infinite cap and make it the only entry of the supply/withdraw queues.
-        MMMarketParams memory mmMarketParams =
-            MMMarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), LLTV_1);
-        MMId[] memory queue = new MMId[](1);
-        queue[0] = mmMarketParams.id();
+        Id[] memory queue = new Id[](1);
+        queue[0] = marketParams.id();
         vm.startPrank(owner);
-        vault.submitCap(mmMarketParams, type(uint184).max);
+        vault.submitCap(marketParams, type(uint184).max);
         vm.warp(block.timestamp + 1 days);
-        vault.acceptCap(mmMarketParams);
+        vault.acceptCap(marketParams);
         vault.setSupplyQueue(queue);
         vm.stopPrank();
 
@@ -164,20 +166,16 @@ contract VaultV1BundlesTest is Test {
             )
         );
 
-        MMMarketParams memory mm1 =
-            MMMarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), LLTV_1);
-        MMMarketParams memory mm2 =
-            MMMarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), LLTV_2);
-        MMId[] memory queue = new MMId[](2);
-        queue[0] = mm1.id();
-        queue[1] = mm2.id();
+        Id[] memory queue = new Id[](2);
+        queue[0] = marketParams.id();
+        queue[1] = otherMarket.id();
         vm.startPrank(owner);
-        vault.submitCap(mm1, uint184(assets1));
-        vault.submitCap(mm2, type(uint184).max);
+        vault.submitCap(marketParams, uint184(assets1));
+        vault.submitCap(otherMarket, type(uint184).max);
         vm.warp(block.timestamp + 1 days);
-        vault.acceptCap(mm1);
-        vault.acceptCap(mm2);
-        vault.setSupplyQueue(queue); // withdraw queue defaults to acceptance order [mm1, mm2].
+        vault.acceptCap(marketParams);
+        vault.acceptCap(otherMarket);
+        vault.setSupplyQueue(queue); // withdraw queue defaults to acceptance order [marketParams, otherMarket].
         vm.stopPrank();
 
         // Depositing allocates marketParams up to its cap, then the rest to otherMarket.
@@ -253,9 +251,9 @@ contract VaultV1BundlesTest is Test {
         _borrowOut(marketParams, available1 / 2);
         _borrowOut(otherMarket, available2 / 2);
 
-        MarketParams[] memory list = new MarketParams[](2);
-        list[0] = marketParams;
-        list[1] = otherMarket;
+        BundlerMarketParams[] memory list = new BundlerMarketParams[](2);
+        list[0] = _toBundler(marketParams);
+        list[1] = _toBundler(otherMarket);
 
         // Withdraw more than the first market holds so the remainder spills into the second.
         uint256 forceWithdrawAssets = available1 + 20e18;
@@ -280,9 +278,9 @@ contract VaultV1BundlesTest is Test {
         _borrowOut(marketParams, available1);
         _borrowOut(otherMarket, available2);
 
-        MarketParams[] memory list = new MarketParams[](2);
-        list[0] = marketParams;
-        list[1] = otherMarket;
+        BundlerMarketParams[] memory list = new BundlerMarketParams[](2);
+        list[0] = _toBundler(marketParams);
+        list[1] = _toBundler(otherMarket);
 
         // More than the first market holds ⇒ in-kind redeemed across both.
         uint256 forceWithdrawAssets = available1 + 20e18;
