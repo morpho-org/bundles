@@ -41,7 +41,6 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
 
     /// @dev Reverts if the transaction is executed after `deadline`.
     modifier checkDeadline(uint256 deadline) {
-        // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp > deadline) revert DeadlinePassed();
         _;
     }
