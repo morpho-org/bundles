@@ -1,0 +1,89 @@
+name: certora
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: ">=3.11"
+
+      - name: Install certora
+        run: pip install certora-cli
+
+      - name: Run Certora Specs Linter
+        run: |
+          for file in certora/specs/*.spec; do
+            echo "Fix lint errors by applying the following diff to $file:"
+            diff -u "$file" <(certoraCVLFormatter "$file")
+          done
+
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      confs: ${{ steps.list.outputs.confs }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - id: list
+        run: echo "confs=$(ls certora/confs/*.conf | xargs -I{} basename {} .conf | jq -nRc '[inputs]')" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: [matrix, format]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        conf: ${{ fromJson(needs.matrix.outputs.confs) }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Run Certora Config Linter
+        run: |
+          file="certora/confs/${{ matrix.conf }}.conf"
+          echo "Fix lint errors by applying the following diff to $file:"
+          diff -u "$file" <(jq < "$file")
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: ">=3.11"
+
+      - name: Install certora
+        run: pip install certora-cli
+
+      - name: Install solc (0.8.34)
+        env:
+          EXPECTED_SOLC_SHA256: d40adc6f9fdbb22a97d32a02fa05688bf2ee7886affc48c9851b0afd4a726b39
+        run: |
+          wget https://github.com/ethereum/solidity/releases/download/v0.8.34/solc-static-linux
+          actual="$(sha256sum solc-static-linux | awk '{print $1}')"
+          [ "$actual" = "$EXPECTED_SOLC_SHA256" ] || { echo "solc hash mismatch"; exit 1; }
+          chmod +x solc-static-linux
+          sudo mv solc-static-linux /usr/local/bin/solc-0.8.34
+
+      - name: Verify ${{ matrix.conf }}
+        run: certoraRun certora/confs/${{ matrix.conf }}.conf
+        env:
+          CERTORAKEY: ${{ secrets.CERTORAKEY }}
