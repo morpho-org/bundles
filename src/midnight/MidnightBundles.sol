@@ -56,8 +56,10 @@ contract MidnightBundles is IMidnightBundles {
         CollateralWithdrawal[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
         address loanToken = takes[0].offer.market.loanToken;
@@ -117,8 +119,10 @@ contract MidnightBundles is IMidnightBundles {
         CollateralSupply[] memory collateralSupplies,
         Take[] memory takes,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
         address loanToken = takes[0].offer.market.loanToken;
@@ -177,8 +181,10 @@ contract MidnightBundles is IMidnightBundles {
         CollateralWithdrawal[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
         address loanToken = takes[0].offer.market.loanToken;
@@ -242,8 +248,10 @@ contract MidnightBundles is IMidnightBundles {
         CollateralSupply[] memory collateralSupplies,
         Take[] memory takes,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
         address loanToken = takes[0].offer.market.loanToken;
@@ -305,8 +313,10 @@ contract MidnightBundles is IMidnightBundles {
         CollateralWithdrawal[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(onBehalf == msg.sender || IMidnight(MIDNIGHT).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 

@@ -39,13 +39,6 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         BLUE = _blue;
     }
 
-    /// @dev Reverts if the transaction is executed after `deadline`.
-    modifier checkDeadline(uint256 deadline) {
-        // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp > deadline) revert DeadlinePassed();
-        _;
-    }
-
     /// EXTERNAL ///
 
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
@@ -67,7 +60,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external checkDeadline(deadline) {
+    ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
@@ -104,7 +98,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external checkDeadline(deadline) {
+    ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
@@ -142,7 +137,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external checkDeadline(deadline) {
+    ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
@@ -173,7 +169,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external checkDeadline(deadline) {
+    ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
@@ -208,7 +205,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external checkDeadline(deadline) {
+    ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
         require(

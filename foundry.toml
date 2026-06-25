@@ -9,6 +9,9 @@ optimizer_runs = 4294967295
 evm_version = "osaka"
 bytecode_hash = "none"
 
+[lint]
+exclude_lints = ["block-timestamp"]
+
 [[profile.default.additional_compiler_profiles]]
 name = "paris-999999"
 evm_version = "paris"
