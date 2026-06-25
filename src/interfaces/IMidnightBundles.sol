@@ -34,7 +34,6 @@ interface IMidnightBundles {
     error UnitsTooLow();
 
     /// STORAGE GETTERS ///
-    function PERMIT2() external view returns (address);
     function MIDNIGHT() external view returns (address);
 
     // forgefmt: disable-start

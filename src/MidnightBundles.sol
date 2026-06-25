@@ -33,7 +33,6 @@ import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 contract MidnightBundles is IMidnightBundles {
     using UtilsLib for uint256;
 
-    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address public immutable MIDNIGHT;
 
     constructor(address _midnight) {
