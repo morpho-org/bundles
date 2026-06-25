@@ -57,7 +57,10 @@ rule repayAndWithdrawCollateralRepaysTargetUnits(env e, Midnight.Market market, 
     MidnightBundles.CollateralWithdrawal[] collateralWithdrawals;
     require collateralWithdrawals.length == 0, "isolate repay path from withdrawals";
 
-    repayAndWithdrawCollateral(e, market, assets, onBehalf, loanTokenPermit, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient);
+    uint256 deadline;
+    require deadline >= e.block.timestamp, "deadline in the future, DeadlinePassed not triggered";
+
+    repayAndWithdrawCollateral(e, market, assets, onBehalf, loanTokenPermit, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, deadline);
 
     assert midnight.debt(id, onBehalf) == debtBefore - U;
 }
