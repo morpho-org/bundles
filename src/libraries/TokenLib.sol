@@ -27,15 +27,6 @@ library TokenLib {
     /// @dev Canonical Permit2 singleton.
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
-    /// @dev Skips the approval entirely to save gas when the current allowance is already 2^95 - 1 (value chosen
-    /// because some tokens like COMP and UNI on ethereum have a max allowance of type(uint96).max).
-    /// @dev Resets to 0 before re-approving to support USDT like tokens.
-    function forceApproveMax(address token, address spender) internal {
-        if (IERC20(token).allowance(address(this), spender) >= type(uint96).max / 2) return;
-        safeApprove(token, spender, 0);
-        safeApprove(token, spender, type(uint256).max);
-    }
-
     /// @dev Not checking the code size because a transfer will do it in the same call.
     function safeApprove(address token, address spender, uint256 value) internal {
         (bool success, bytes memory returndata) = token.call(abi.encodeCall(IERC20.approve, (spender, value)));
@@ -47,7 +38,16 @@ library TokenLib {
         require(returndata.length == 0 || abi.decode(returndata, (bool)), ApproveReturnedFalse());
     }
 
-    /// @dev Pulls `amount` of `token` from `from` to address(this), optionally using ERC2612 or Permit2.
+    /// @dev Skips the approval entirely to save gas when the current allowance is already 2^95 - 1 (value chosen
+    /// because some tokens like COMP and UNI on Ethereum have a max allowance of type(uint96).max).
+    /// @dev Resets to 0 before re-approving to support USDT like tokens.
+    function forceApproveMax(address token, address spender) internal {
+        if (IERC20(token).allowance(address(this), spender) >= type(uint96).max / 2) return;
+        safeApprove(token, spender, 0);
+        safeApprove(token, spender, type(uint256).max);
+    }
+
+    /// @dev Pulls `amount` of `token` from `from` to this bundler, optionally using ERC2612 or Permit2.
     function pullToken(address token, address from, uint256 amount, TokenPermit memory permit) internal {
         if (permit.kind == PermitKind.ERC2612) {
             (uint256 deadline, uint8 v, bytes32 r, bytes32 s) =
