@@ -51,6 +51,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetUnits,
         uint256 maxBuyerAssets,
         address taker,
+        bool reduceOnly,
         TokenPermit memory loanTokenPermit,
         Take[] memory takes,
         CollateralWithdrawal[] memory collateralWithdrawals,
@@ -89,6 +90,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         }
 
         require(filledUnits == targetUnits, OutOfOffers());
+        require(!reduceOnly || IMidnight(MIDNIGHT).credit(id, taker) == 0, TakerCreditOrDebtIncreased());
 
         Market memory market = takes[0].offer.market;
         for (uint256 i; i < collateralWithdrawals.length; i++) {
@@ -115,6 +117,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetUnits,
         uint256 minSellerAssets,
         address taker,
+        bool reduceOnly,
         address receiver,
         CollateralSupply[] memory collateralSupplies,
         Take[] memory takes,
@@ -160,6 +163,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         }
 
         require(filledUnits == targetUnits, OutOfOffers());
+        require(!reduceOnly || IMidnight(MIDNIGHT).debt(id, taker) == 0, TakerCreditOrDebtIncreased());
 
         uint256 referralFeeAssets = filledSellerAssets.mulDivDown(referralFeePct, WAD);
         require(filledSellerAssets - referralFeeAssets >= minSellerAssets, SellerAssetsTooLow());
@@ -176,6 +180,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetBuyerAssets,
         uint256 minUnits,
         address taker,
+        bool reduceOnly,
         TokenPermit memory loanTokenPermit,
         Take[] memory takes,
         CollateralWithdrawal[] memory collateralWithdrawals,
@@ -220,6 +225,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
 
         require(filledBuyerAssets == targetFilledBuyerAssets, OutOfOffers());
         require(filledUnits >= minUnits, UnitsTooLow());
+        require(!reduceOnly || IMidnight(MIDNIGHT).credit(id, taker) == 0, TakerCreditOrDebtIncreased());
 
         Market memory market = takes[0].offer.market;
         for (uint256 i; i < collateralWithdrawals.length; i++) {
@@ -244,6 +250,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetSellerAssets,
         uint256 maxUnits,
         address taker,
+        bool reduceOnly,
         address receiver,
         CollateralSupply[] memory collateralSupplies,
         Take[] memory takes,
@@ -295,6 +302,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
 
         require(filledSellerAssets == targetFilledSellerAssets, OutOfOffers());
         require(filledUnits <= maxUnits, UnitsTooHigh());
+        require(!reduceOnly || IMidnight(MIDNIGHT).debt(id, taker) == 0, TakerCreditOrDebtIncreased());
 
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
         SafeTransferLib.safeTransfer(loanToken, receiver, targetSellerAssets);
