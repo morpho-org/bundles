@@ -23,16 +23,6 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
 
-    struct MigrateBorrowPositionData {
-        MarketParams sourceMarketParams;
-        MarketParams destMarketParams;
-        uint256 collateral;
-        address onBehalf;
-        uint256 referralFeePct;
-        address referralFeeRecipient;
-    }
-
-    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address public immutable BLUE;
 
     constructor(address _blue) {
@@ -218,14 +208,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), onBehalf);
 
         bytes memory data = abi.encode(
-            MigrateBorrowPositionData({
-                sourceMarketParams: sourceMarketParams,
-                destMarketParams: destMarketParams,
-                collateral: position.collateral,
-                onBehalf: onBehalf,
-                referralFeePct: referralFeePct,
-                referralFeeRecipient: referralFeeRecipient
-            })
+            sourceMarketParams, destMarketParams, position.collateral, onBehalf, referralFeePct, referralFeeRecipient
         );
         IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, onBehalf, data);
 
@@ -237,22 +220,29 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev Blue pulls exactly `assets` of the loan token from this contract after this callback returns.
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
-        MigrateBorrowPositionData memory d = abi.decode(data, (MigrateBorrowPositionData));
+        (
+            MarketParams memory sourceMarketParams,
+            MarketParams memory destMarketParams,
+            uint256 collateral,
+            address onBehalf,
+            uint256 referralFeePct,
+            address referralFeeRecipient
+        ) = abi.decode(data, (MarketParams, MarketParams, uint256, address, uint256, address));
 
-        uint256 referralFeeAssets = assets.mulDivDown(d.referralFeePct, WAD - d.referralFeePct);
+        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD - referralFeePct);
         uint256 borrowAssets = assets + referralFeeAssets;
 
-        IMorpho(BLUE).withdrawCollateral(d.sourceMarketParams, d.collateral, d.onBehalf, address(this));
+        IMorpho(BLUE).withdrawCollateral(sourceMarketParams, collateral, onBehalf, address(this));
 
-        TokenLib.forceApproveMax(d.destMarketParams.collateralToken, BLUE);
-        IMorpho(BLUE).supplyCollateral(d.destMarketParams, d.collateral, d.onBehalf, "");
-        IMorpho(BLUE).borrow(d.destMarketParams, borrowAssets, 0, d.onBehalf, address(this));
+        TokenLib.forceApproveMax(destMarketParams.collateralToken, BLUE);
+        IMorpho(BLUE).supplyCollateral(destMarketParams, collateral, onBehalf, "");
+        IMorpho(BLUE).borrow(destMarketParams, borrowAssets, 0, onBehalf, address(this));
 
         if (referralFeeAssets > 0) {
-            SafeTransferLib.safeTransfer(d.destMarketParams.loanToken, d.referralFeeRecipient, referralFeeAssets);
+            SafeTransferLib.safeTransfer(destMarketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
 
-        TokenLib.forceApproveMax(d.sourceMarketParams.loanToken, BLUE);
+        TokenLib.forceApproveMax(sourceMarketParams.loanToken, BLUE);
     }
 
     /// @dev Reverts unless onBehalf's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.

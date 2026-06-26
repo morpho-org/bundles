@@ -15,7 +15,6 @@ interface IBlueBundles {
     error DeadlinePassed();
 
     /// STORAGE GETTERS ///
-    function PERMIT2() external view returns (address);
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///
