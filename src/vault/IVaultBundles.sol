@@ -10,7 +10,6 @@ interface IVaultBundles {
     error MarketNotPartOfAdapter();
     error MarketNotPartOfVault();
     error MorphoMismatch();
-    error NoMarketParams();
     error Unauthorized();
     error DeadlinePassed();
 

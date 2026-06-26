@@ -36,6 +36,7 @@ contract VaultBundles is IVaultBundles {
     /// @dev Requires the sender to have enough shares to withdraw ceil(assets *  penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to deallocatedAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields a position on the markets.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
+    /// @dev Call this function with markets for which the adapter has shares.
     function forceWithdrawIlliquidVaultV2(
         address vault,
         address adapter,
@@ -46,7 +47,8 @@ contract VaultBundles is IVaultBundles {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
-        require(marketParams.length > 0, NoMarketParams());
+
+        TokenLib.forceApproveMax(marketParams[0].loanToken, BLUE);
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
         uint256 remainingToDeallocate = forceWithdrawAssets * WAD / (WAD + penalty);
@@ -62,8 +64,6 @@ contract VaultBundles is IVaultBundles {
 
             // Markets for which the adapter has no shares are skipped.
             if (assets > 0) {
-                TokenLib.forceApproveMax(marketParams[i].loanToken, BLUE);
-
                 bytes memory data = abi.encode(vault, adapter, marketParams[i], msg.sender);
                 IMorpho(BLUE).supply(marketParams[i], assets, 0, msg.sender, data);
 
@@ -87,6 +87,7 @@ contract VaultBundles is IVaultBundles {
     /// @dev The deallocatedAssets amount is floor(forceWithdrawAssets * WAD / (WAD + penalty)).
     /// @dev Requires the vault to have more than the deallocated assets in liquidity.
     /// @dev Requires the sender to have enough shares to withdraw ceil(deallocatedAssets *  penalty / WAD) and then deallocatedAssets.
+    /// @dev Call this function with a market for which the adapter has shares.
     function forceWithdrawLiquidVaultV2(
         address vault,
         address adapter,
@@ -96,9 +97,6 @@ contract VaultBundles is IVaultBundles {
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
-        require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
-        bytes32 id = Id.unwrap(marketParams.id());
-        require(IMorphoMarketV1AdapterV2(adapter).supplyShares(id) > 0, MarketNotPartOfAdapter());
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
         uint256 deallocatedAssets = forceWithdrawAssets * WAD / (WAD + penalty);
@@ -112,7 +110,7 @@ contract VaultBundles is IVaultBundles {
     /// @dev Requires Morpho Blue to have more than the assets in liquidity.
     /// @dev Requires onBehalf to have enough shares to withdraw assets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields a position on the market.
-    /// @dev All markets should belong to the vault.
+    /// @dev Call this function with markets that belong to the vault.
     function forceWithdrawIlliquidVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
@@ -121,7 +119,7 @@ contract VaultBundles is IVaultBundles {
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
-        require(marketParamsList.length > 0, NoMarketParams());
+
         address loanToken = marketParamsList[0].loanToken;
         TokenLib.forceApproveMax(loanToken, BLUE);
 
@@ -138,7 +136,8 @@ contract VaultBundles is IVaultBundles {
         for (uint256 i = 0; remainingAssets > 0; i++) {
             MarketParams memory marketParams = marketParamsList[i];
             bytes32 id = Id.unwrap(marketParams.id());
-            require(IMetaMorpho(vault).config(MMId.wrap(id)).enabled, MarketNotPartOfVault());
+            // Markets not enabled in the vault are skipped.
+            if (!IMetaMorpho(vault).config(MMId.wrap(id)).enabled) continue;
 
             uint256 availableToWithdraw = MorphoBalancesLib.expectedSupplyAssets(IMorpho(BLUE), marketParams, vault);
             uint256 assetsToSupply = min(availableToWithdraw, remainingAssets);

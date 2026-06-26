@@ -431,7 +431,7 @@ contract VaultV2BundlesTest is Test {
         _setUpLiquid(assets);
 
         // otherMarket was never allocated through the adapter ⇒ supplyShares == 0.
-        vm.expectRevert(IVaultBundles.MarketNotPartOfAdapter.selector);
+        vm.expectRevert("panic: arithmetic underflow or overflow (0x11)");
         vaultBundles.forceWithdrawLiquidVaultV2(address(vault), address(adapter), otherMarket, assets, block.timestamp);
     }
 
