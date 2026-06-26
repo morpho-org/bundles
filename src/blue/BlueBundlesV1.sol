@@ -2,7 +2,7 @@
 // Copyright (c) 2025 Morpho Association
 pragma solidity 0.8.34;
 
-import {IBlueBundles} from "./IBlueBundles.sol";
+import {IBlueBundlesV1} from "./IBlueBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
@@ -18,21 +18,11 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are allowed.
 /// @dev Zero checks are not systematically performed.
-contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
+contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     using UtilsLib for uint256;
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
 
-    struct MigrateBorrowPositionData {
-        MarketParams sourceMarketParams;
-        MarketParams destMarketParams;
-        uint256 collateral;
-        address onBehalf;
-        uint256 referralFeePct;
-        address referralFeeRecipient;
-    }
-
-    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address public immutable BLUE;
 
     constructor(address _blue) {
@@ -49,7 +39,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// referralFeeRecipient.
     /// @dev Fee = borrowedAssets * referralFeePct / WAD; net = borrowedAssets - fee.
     /// @dev maxLtv caps onBehalf's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
-    function supplyCollateralAndBorrow(
+    function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAmount,
         uint256 borrowAssets,
@@ -86,7 +76,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
     /// @dev If withdrawCollateralAssets > 0, also withdraws that amount of collateral from onBehalf's position to receiver.
     /// @dev maxLtv caps onBehalf's resulting LTV after a withdrawal; skipped on a pure repay.
-    function repayAndWithdrawCollateral(
+    function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 maxRepayAssets,
@@ -129,7 +119,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev Pulls `assets` of `marketParams.loanToken` from msg.sender (optionally via ERC-2612 or Permit2).
     /// @dev The referral fee is deducted from `assets`; the remainder is supplied to the market for onBehalf.
     /// @dev Fee = assets * referralFeePct / WAD; supplied = assets - fee.
-    function supply(
+    function blueBundlesV1Supply(
         MarketParams memory marketParams,
         uint256 assets,
         address onBehalf,
@@ -161,7 +151,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// shares remain.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to receiver.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
-    function withdraw(
+    function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
         uint256 withdrawAssets,
         address onBehalf,
@@ -197,7 +187,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev Fee = repaidAssets * referralFeePct / (WAD - referralFeePct); total borrowed = repaidAssets + fee.
     /// @dev @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Use destination LLTV to disable.
     /// @dev Migrating a position without debt reverts on Blue.
-    function migrateBorrowPosition(
+    function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
         uint256 maxLtv,
@@ -218,41 +208,41 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), onBehalf);
 
         bytes memory data = abi.encode(
-            MigrateBorrowPositionData({
-                sourceMarketParams: sourceMarketParams,
-                destMarketParams: destMarketParams,
-                collateral: position.collateral,
-                onBehalf: onBehalf,
-                referralFeePct: referralFeePct,
-                referralFeeRecipient: referralFeeRecipient
-            })
+            sourceMarketParams, destMarketParams, position.collateral, onBehalf, referralFeePct, referralFeeRecipient
         );
         IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, onBehalf, data);
 
         requireMaxLtv(destMarketParams, onBehalf, maxLtv);
     }
 
-    /// @dev Blue's repay callback. Only reachable during migrateBorrowPosition: no other function passes non-empty
-    /// data to repay.
+    /// @dev Blue's repay callback. Only reachable during blueBundlesV1MigrateBorrowPosition: no other function passes
+    /// non-empty data to repay.
     /// @dev Blue pulls exactly `assets` of the loan token from this contract after this callback returns.
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
-        MigrateBorrowPositionData memory d = abi.decode(data, (MigrateBorrowPositionData));
+        (
+            MarketParams memory sourceMarketParams,
+            MarketParams memory destMarketParams,
+            uint256 collateral,
+            address onBehalf,
+            uint256 referralFeePct,
+            address referralFeeRecipient
+        ) = abi.decode(data, (MarketParams, MarketParams, uint256, address, uint256, address));
 
-        uint256 referralFeeAssets = assets.mulDivDown(d.referralFeePct, WAD - d.referralFeePct);
+        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD - referralFeePct);
         uint256 borrowAssets = assets + referralFeeAssets;
 
-        IMorpho(BLUE).withdrawCollateral(d.sourceMarketParams, d.collateral, d.onBehalf, address(this));
+        IMorpho(BLUE).withdrawCollateral(sourceMarketParams, collateral, onBehalf, address(this));
 
-        TokenLib.forceApproveMax(d.destMarketParams.collateralToken, BLUE);
-        IMorpho(BLUE).supplyCollateral(d.destMarketParams, d.collateral, d.onBehalf, "");
-        IMorpho(BLUE).borrow(d.destMarketParams, borrowAssets, 0, d.onBehalf, address(this));
+        TokenLib.forceApproveMax(destMarketParams.collateralToken, BLUE);
+        IMorpho(BLUE).supplyCollateral(destMarketParams, collateral, onBehalf, "");
+        IMorpho(BLUE).borrow(destMarketParams, borrowAssets, 0, onBehalf, address(this));
 
         if (referralFeeAssets > 0) {
-            SafeTransferLib.safeTransfer(d.destMarketParams.loanToken, d.referralFeeRecipient, referralFeeAssets);
+            SafeTransferLib.safeTransfer(destMarketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
 
-        TokenLib.forceApproveMax(d.sourceMarketParams.loanToken, BLUE);
+        TokenLib.forceApproveMax(sourceMarketParams.loanToken, BLUE);
     }
 
     /// @dev Reverts unless onBehalf's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.

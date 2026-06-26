@@ -3,7 +3,7 @@
 pragma solidity 0.8.34;
 
 import {IMidnight, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol";
-import {IMidnightBundles, Take, CollateralWithdrawal, CollateralSupply} from "./IMidnightBundles.sol";
+import {IMidnightBundlesV1, Take, CollateralWithdrawal, CollateralSupply} from "./IMidnightBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {IdLib} from "../../lib/midnight/src/libraries/IdLib.sol";
@@ -30,7 +30,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are allowed.
 /// @dev Zero checks are not systematically performed.
-contract MidnightBundles is IMidnightBundles {
+contract MidnightBundlesV1 is IMidnightBundlesV1 {
     using UtilsLib for uint256;
 
     address public immutable MIDNIGHT;
@@ -47,7 +47,7 @@ contract MidnightBundles is IMidnightBundles {
     /// filledBuyerAssets + filledBuyerAssets * referralFeePct / (WAD - referralFeePct).
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of
     /// collateralWithdrawals, etc.
-    function buyWithUnitsTargetAndWithdrawCollateral(
+    function midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
         uint256 targetUnits,
         uint256 maxBuyerAssets,
         address taker,
@@ -111,7 +111,7 @@ contract MidnightBundles is IMidnightBundles {
     /// @dev Total loan assets received by the receiver is
     /// filledSellerAssets - filledSellerAssets * referralFeePct / WAD.
     /// @dev msg.sender will pay collateralWithdrawals[0].assets of the first token of collateralSupplies etc.
-    function supplyCollateralAndSellWithUnitsTarget(
+    function midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
         uint256 targetUnits,
         uint256 minSellerAssets,
         address taker,
@@ -172,7 +172,7 @@ contract MidnightBundles is IMidnightBundles {
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of
     /// collateralWithdrawals etc.
-    function buyWithAssetsTargetAndWithdrawCollateral(
+    function midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral(
         uint256 targetBuyerAssets,
         uint256 minUnits,
         address taker,
@@ -240,7 +240,7 @@ contract MidnightBundles is IMidnightBundles {
     /// @dev The taker will lose at most maxUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev msg.sender will pay collateralWithdrawals[0].assets of the first token of collateralSupplies etc.
-    function supplyCollateralAndSellWithAssetsTarget(
+    function midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget(
         uint256 targetSellerAssets,
         uint256 maxUnits,
         address taker,
@@ -305,7 +305,7 @@ contract MidnightBundles is IMidnightBundles {
     /// @dev To fully repay a debt D, pass assets = floor(D * WAD / (WAD - pct)).
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of
     /// collateralWithdrawals etc.
-    function repayAndWithdrawCollateral(
+    function midnightBundlesV1RepayAndWithdrawCollateral(
         Market memory market,
         uint256 assets,
         address onBehalf,

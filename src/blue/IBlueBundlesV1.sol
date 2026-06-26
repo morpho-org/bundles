@@ -5,7 +5,7 @@ pragma solidity >=0.5.0;
 import {MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {TokenPermit} from "../libraries/TokenLib.sol";
 
-interface IBlueBundles {
+interface IBlueBundlesV1 {
     /// ERRORS ///
     error PctExceeded();
     error Unauthorized();
@@ -15,11 +15,10 @@ interface IBlueBundles {
     error DeadlinePassed();
 
     /// STORAGE GETTERS ///
-    function PERMIT2() external view returns (address);
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///
-    function supplyCollateralAndBorrow(
+    function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAmount,
         uint256 borrowAssets,
@@ -32,7 +31,7 @@ interface IBlueBundles {
         uint256 deadline
     ) external;
 
-    function repayAndWithdrawCollateral(
+    function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 maxRepayAssets,
@@ -46,7 +45,7 @@ interface IBlueBundles {
         uint256 deadline
     ) external;
 
-    function supply(
+    function blueBundlesV1Supply(
         MarketParams memory marketParams,
         uint256 assets,
         address onBehalf,
@@ -56,7 +55,7 @@ interface IBlueBundles {
         uint256 deadline
     ) external;
 
-    function withdraw(
+    function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
         uint256 withdrawAssets,
         address onBehalf,
@@ -66,7 +65,7 @@ interface IBlueBundles {
         uint256 deadline
     ) external;
 
-    function migrateBorrowPosition(
+    function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
         uint256 maxLtv,
