@@ -21,18 +21,10 @@ contract VaultBundles is IVaultBundles {
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
 
-    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     address public immutable BLUE;
 
     constructor(address _blue) {
         BLUE = _blue;
-    }
-
-    /// @dev Reverts if the transaction is executed after `deadline`.
-    modifier checkDeadline(uint256 deadline) {
-        // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp > deadline) revert DeadlinePassed();
-        _;
     }
 
     /// STRUCTS ///
@@ -65,7 +57,8 @@ contract VaultBundles is IVaultBundles {
         MarketParams[] memory marketParams,
         uint256 forceWithdrawAssets,
         uint256 deadline
-    ) external checkDeadline(deadline) {
+    ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
         require(marketParams.length > 0, NoMarketParams());
@@ -82,7 +75,7 @@ contract VaultBundles is IVaultBundles {
             uint256 availableToWithdraw = supplyShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
             uint256 assets = min(availableToWithdraw, remainingToDeallocate);
 
-            // Markets that are not part of the adapter are skipped.
+            // Markets for which the adapter has no shares are skipped.
             if (assets > 0) {
                 TokenLib.forceApproveMax(marketParams[i].loanToken, BLUE);
 
@@ -114,7 +107,8 @@ contract VaultBundles is IVaultBundles {
         MarketParams memory marketParams,
         uint256 forceWithdrawAssets,
         uint256 deadline
-    ) external checkDeadline(deadline) {
+    ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
         bytes32 id = Id.unwrap(marketParams.id());
@@ -138,7 +132,8 @@ contract VaultBundles is IVaultBundles {
         MarketParams[] memory marketParamsList,
         uint256 assets,
         uint256 deadline
-    ) external checkDeadline(deadline) {
+    ) external {
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
         require(marketParamsList.length > 0, NoMarketParams());
         address loanToken = marketParamsList[0].loanToken;
