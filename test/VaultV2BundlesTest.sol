@@ -134,6 +134,7 @@ contract VaultV2BundlesTest is Test {
         if (yield == 0) return;
         bytes32 slot = MorphoStorageLib.marketTotalSupplyAssetsAndSharesSlot(mp.id());
         uint256 packed = uint256(vm.load(address(morpho), slot));
+        // forge-lint:disable-next-line(unsafe-typecast) truncating on purpose.
         uint256 totalSupplyAssets = uint128(packed);
         uint256 totalSupplyShares = packed >> 128;
         vm.store(address(morpho), slot, bytes32((totalSupplyShares << 128) | (totalSupplyAssets + yield)));

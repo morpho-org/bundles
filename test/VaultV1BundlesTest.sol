@@ -138,6 +138,7 @@ contract VaultV1BundlesTest is Test {
         if (yield == 0) return;
         bytes32 slot = MorphoStorageLib.marketTotalSupplyAssetsAndSharesSlot(mp.id());
         uint256 packed = uint256(vm.load(address(morpho), slot));
+        // forge-lint:disable-next-line(unsafe-typecast) truncating on purpose.
         uint256 totalSupplyAssets = uint128(packed);
         uint256 totalSupplyShares = packed >> 128;
         vm.store(address(morpho), slot, bytes32((totalSupplyShares << 128) | (totalSupplyAssets + yield)));
@@ -160,6 +161,7 @@ contract VaultV1BundlesTest is Test {
     /// non-round share/asset ratios — and funds Morpho's global liquidity for the flash loan. Markets are left fully
     /// liquid; callers borrow out whatever they need.
     function _deployVaultTwoMarkets(uint256 assets1, uint256 assets2) internal {
+        assets1 = bound(assets1, 0, type(uint184).max);
         vault = IMetaMorpho(
             deployCode(
                 "MetaMorpho.sol:MetaMorpho", abi.encode(owner, address(morpho), 1 days, address(loanToken), "V1", "V1")
@@ -170,6 +172,7 @@ contract VaultV1BundlesTest is Test {
         queue[0] = marketParams.id();
         queue[1] = otherMarket.id();
         vm.startPrank(owner);
+        // forge-lint:disable-next-line(unsafe-typecast) safe because assets1 <= type(uint184).max.
         vault.submitCap(marketParams, uint184(assets1));
         vault.submitCap(otherMarket, type(uint184).max);
         vm.warp(block.timestamp + 1 days);
