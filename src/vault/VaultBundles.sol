@@ -27,21 +27,6 @@ contract VaultBundles is IVaultBundles {
         BLUE = _blue;
     }
 
-    /// STRUCTS ///
-
-    struct SupplyData {
-        address vault;
-        address adapter;
-        MarketParams marketParams;
-        address sender;
-    }
-
-    struct FlashLoanData {
-        address vault;
-        MarketParams[] marketParamsList;
-        address sender;
-    }
-
     /// FORCE WITHDRAW ILLIQUID VAULT V2 ///
 
     /// @dev The sender must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
@@ -79,7 +64,7 @@ contract VaultBundles is IVaultBundles {
             if (assets > 0) {
                 TokenLib.forceApproveMax(marketParams[i].loanToken, BLUE);
 
-                bytes memory data = abi.encode(SupplyData(vault, adapter, marketParams[i], msg.sender));
+                bytes memory data = abi.encode(vault, adapter, marketParams[i], msg.sender);
                 IMorpho(BLUE).supply(marketParams[i], assets, 0, msg.sender, data);
 
                 remainingToDeallocate -= assets;
@@ -89,10 +74,11 @@ contract VaultBundles is IVaultBundles {
 
     function onMorphoSupply(uint256 assets, bytes memory data) external {
         require(msg.sender == BLUE, Unauthorized());
-        SupplyData memory s = abi.decode(data, (SupplyData));
+        (address vault, address adapter, MarketParams memory marketParams, address sender) =
+            abi.decode(data, (address, address, MarketParams, address));
 
-        IVaultV2(s.vault).forceDeallocate(s.adapter, abi.encode(s.marketParams), assets, s.sender);
-        IVaultV2(s.vault).withdraw(assets, address(this), s.sender);
+        IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), assets, sender);
+        IVaultV2(vault).withdraw(assets, address(this), sender);
     }
 
     /// FORCE WITHDRAW LIQUID VAULT V2 ///
@@ -139,29 +125,29 @@ contract VaultBundles is IVaultBundles {
         address loanToken = marketParamsList[0].loanToken;
         TokenLib.forceApproveMax(loanToken, BLUE);
 
-        bytes memory data = abi.encode(FlashLoanData(vault, marketParamsList, msg.sender));
+        bytes memory data = abi.encode(vault, marketParamsList, msg.sender);
         IMorpho(BLUE).flashLoan(loanToken, assets, data);
     }
 
     function onMorphoFlashLoan(uint256 assets, bytes memory data) external {
         require(msg.sender == BLUE, Unauthorized());
+        (address vault, MarketParams[] memory marketParamsList, address sender) =
+            abi.decode(data, (address, MarketParams[], address));
 
         uint256 remainingAssets = assets;
-
-        FlashLoanData memory f = abi.decode(data, (FlashLoanData));
         for (uint256 i = 0; remainingAssets > 0; i++) {
-            MarketParams memory marketParams = f.marketParamsList[i];
+            MarketParams memory marketParams = marketParamsList[i];
             bytes32 id = Id.unwrap(marketParams.id());
-            require(IMetaMorpho(f.vault).config(MMId.wrap(id)).enabled, MarketNotPartOfVault());
+            require(IMetaMorpho(vault).config(MMId.wrap(id)).enabled, MarketNotPartOfVault());
 
-            uint256 availableToWithdraw = MorphoBalancesLib.expectedSupplyAssets(IMorpho(BLUE), marketParams, f.vault);
+            uint256 availableToWithdraw = MorphoBalancesLib.expectedSupplyAssets(IMorpho(BLUE), marketParams, vault);
             uint256 assetsToSupply = min(availableToWithdraw, remainingAssets);
 
-            IMorpho(BLUE).supply(marketParams, assetsToSupply, 0, f.sender, "");
+            IMorpho(BLUE).supply(marketParams, assetsToSupply, 0, sender, "");
             remainingAssets -= assetsToSupply;
         }
 
-        IMetaMorpho(f.vault).withdraw(assets, address(this), f.sender);
+        IMetaMorpho(vault).withdraw(assets, address(this), sender);
     }
 
     function min(uint256 a, uint256 b) internal pure returns (uint256) {
