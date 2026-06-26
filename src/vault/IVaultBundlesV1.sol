@@ -4,7 +4,7 @@ pragma solidity >=0.5.0;
 
 import {MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 
-interface IVaultBundles {
+interface IVaultBundlesV1 {
     /// ERRORS ///
     error AdapterNotPartOfVault();
     error MarketNotPartOfAdapter();
@@ -18,7 +18,7 @@ interface IVaultBundles {
 
     /// FUNCTIONS ///
 
-    function forceWithdrawIlliquidVaultV2(
+    function vaultBundlesV1ForceWithdrawIlliquidVaultV2(
         address vault,
         address adapter,
         MarketParams[] memory marketParams,
@@ -26,7 +26,7 @@ interface IVaultBundles {
         uint256 deadline
     ) external;
 
-    function forceWithdrawLiquidVaultV2(
+    function vaultBundlesV1ForceWithdrawLiquidVaultV2(
         address vault,
         address adapter,
         MarketParams memory marketParams,
@@ -34,7 +34,7 @@ interface IVaultBundles {
         uint256 deadline
     ) external;
 
-    function forceWithdrawIlliquidVaultV1(
+    function vaultBundlesV1ForceWithdrawIlliquidVaultV1(
         address vault,
         MarketParams[] memory marketParams,
         uint256 assets,

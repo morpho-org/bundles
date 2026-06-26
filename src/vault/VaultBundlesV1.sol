@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IVaultBundles} from "./IVaultBundles.sol";
+import {IVaultBundlesV1} from "./IVaultBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 import {IMetaMorpho, Id as MMId} from "../../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
@@ -17,7 +17,7 @@ import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.s
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are allowed.
 /// @dev Zero checks are not systematically performed.
-contract VaultBundles is IVaultBundles {
+contract VaultBundlesV1 is IVaultBundlesV1 {
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
 
@@ -37,7 +37,7 @@ contract VaultBundles is IVaultBundles {
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev Call this function with markets for which the adapter has shares.
-    function forceWithdrawIlliquidVaultV2(
+    function vaultBundlesV1ForceWithdrawIlliquidVaultV2(
         address vault,
         address adapter,
         MarketParams[] memory marketParams,
@@ -88,7 +88,7 @@ contract VaultBundles is IVaultBundles {
     /// @dev Requires the vault to have more than the deallocated assets in liquidity.
     /// @dev Requires the sender to have enough shares to withdraw ceil(deallocatedAssets *  penalty / WAD) and then deallocatedAssets.
     /// @dev Call this function with a market for which the adapter has shares.
-    function forceWithdrawLiquidVaultV2(
+    function vaultBundlesV1ForceWithdrawLiquidVaultV2(
         address vault,
         address adapter,
         MarketParams memory marketParams,
@@ -111,7 +111,7 @@ contract VaultBundles is IVaultBundles {
     /// @dev Requires onBehalf to have enough shares to withdraw assets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev Call this function with markets that belong to the vault.
-    function forceWithdrawIlliquidVaultV1(
+    function vaultBundlesV1ForceWithdrawIlliquidVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
         uint256 assets,

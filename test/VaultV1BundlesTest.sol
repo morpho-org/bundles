@@ -5,8 +5,8 @@ pragma solidity ^0.8.0;
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
-import {VaultBundles} from "../src/vault/VaultBundles.sol";
-import {IVaultBundles} from "../src/vault/IVaultBundles.sol";
+import {VaultBundlesV1} from "../src/vault/VaultBundlesV1.sol";
+import {IVaultBundlesV1} from "../src/vault/IVaultBundlesV1.sol";
 
 // Use the vault's own (nested) morpho-blue everywhere, so Morpho, MetaMorpho and this test share a single market type.
 import {IMetaMorpho} from "../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
@@ -19,7 +19,7 @@ import {ORACLE_PRICE_SCALE} from "../lib/metamorpho/lib/morpho-blue/src/librarie
 import {OracleMock} from "../lib/metamorpho/lib/morpho-blue/src/mocks/OracleMock.sol";
 
 // The bundler is compiled against the top-level morpho-blue (a different commit), so its MarketParams is a distinct
-// type: alias it just for the forceWithdrawIlliquidVaultV1 argument and convert at that single boundary.
+// type: alias it just for the vaultBundlesV1ForceWithdrawIlliquidVaultV1 argument and convert at that single boundary.
 import {MarketParams as BundlerMarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 
 contract VaultV1BundlesTest is Test {
@@ -35,7 +35,7 @@ contract VaultV1BundlesTest is Test {
 
     IMorpho internal morpho;
     IMetaMorpho internal vault;
-    VaultBundles internal vaultBundles;
+    VaultBundlesV1 internal vaultBundles;
 
     ERC20Mock internal loanToken;
     ERC20Mock internal collateralToken;
@@ -67,7 +67,7 @@ contract VaultV1BundlesTest is Test {
         morpho.createMarket(marketParams);
         morpho.createMarket(otherMarket);
 
-        vaultBundles = new VaultBundles(address(morpho));
+        vaultBundles = new VaultBundlesV1(address(morpho));
         assertEq(vaultBundles.BLUE(), address(morpho));
     }
 
@@ -78,7 +78,7 @@ contract VaultV1BundlesTest is Test {
         return BundlerMarketParams(mp.loanToken, mp.collateralToken, mp.oracle, mp.irm, mp.lltv);
     }
 
-    /// @dev Wraps a single market into the singleton list expected by forceWithdrawIlliquidVaultV1.
+    /// @dev Wraps a single market into the singleton list expected by vaultBundlesV1ForceWithdrawIlliquidVaultV1.
     function _singleton(MarketParams memory marketParams_) internal pure returns (BundlerMarketParams[] memory list) {
         list = new BundlerMarketParams[](1);
         list[0] = _toBundler(marketParams_);
@@ -212,7 +212,7 @@ contract VaultV1BundlesTest is Test {
     /// AUTHORIZATION & VALIDATION ///
 
     function testOnMorphoFlashLoanOnlyBlue() public {
-        vm.expectRevert(IVaultBundles.Unauthorized.selector);
+        vm.expectRevert(IVaultBundlesV1.Unauthorized.selector);
         vaultBundles.onMorphoFlashLoan(1, "");
     }
 
@@ -231,7 +231,7 @@ contract VaultV1BundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
-        vaultBundles.forceWithdrawIlliquidVaultV1(address(vault), _singleton(marketParams), assets, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(address(vault), _singleton(marketParams), assets, block.timestamp);
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
@@ -260,7 +260,7 @@ contract VaultV1BundlesTest is Test {
 
         // Withdraw more than the first market holds so the remainder spills into the second.
         uint256 forceWithdrawAssets = available1 + 20e18;
-        vaultBundles.forceWithdrawIlliquidVaultV1(address(vault), list, forceWithdrawAssets, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(address(vault), list, forceWithdrawAssets, block.timestamp);
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
@@ -287,7 +287,7 @@ contract VaultV1BundlesTest is Test {
 
         // More than the first market holds ⇒ in-kind redeemed across both.
         uint256 forceWithdrawAssets = available1 + 20e18;
-        vaultBundles.forceWithdrawIlliquidVaultV1(address(vault), list, forceWithdrawAssets, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(address(vault), list, forceWithdrawAssets, block.timestamp);
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
@@ -300,7 +300,7 @@ contract VaultV1BundlesTest is Test {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
-        vm.expectRevert(IVaultBundles.DeadlinePassed.selector);
-        vaultBundles.forceWithdrawIlliquidVaultV1(address(vault), _singleton(marketParams), assets, block.timestamp - 1);
+        vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
+        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(address(vault), _singleton(marketParams), assets, block.timestamp - 1);
     }
 }
