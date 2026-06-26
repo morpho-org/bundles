@@ -34,7 +34,7 @@ contract VaultBundles is IVaultBundles {
     /// @dev Reverts if the deallocatedAssets amount is 0.
     /// @dev Requires Morpho Blue to have more than the deallocated assets in liquidity.
     /// @dev Requires the sender to have enough shares to withdraw ceil(assets *  penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to deallocatedAssets.
-    /// @dev It may be the case that the vault became liquid, but calling this function still yields a position on the markets.
+    /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev Call this function with markets for which the adapter has shares.
     function forceWithdrawIlliquidVaultV2(
@@ -109,7 +109,7 @@ contract VaultBundles is IVaultBundles {
     /// @dev The sender must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
     /// @dev Requires Morpho Blue to have more than the assets in liquidity.
     /// @dev Requires onBehalf to have enough shares to withdraw assets.
-    /// @dev It may be the case that the vault became liquid, but calling this function still yields a position on the market.
+    /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev Call this function with markets that belong to the vault.
     function forceWithdrawIlliquidVaultV1(
         address vault,
