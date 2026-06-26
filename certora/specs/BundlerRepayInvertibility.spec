@@ -39,9 +39,9 @@ function summaryMulDivDown(uint256 a, uint256 b, uint256 d) returns uint256 {
 
 definition WAD() returns uint256 = 10 ^ 18;
 
-// End-to-end: for any target units U <= debtBefore, calling repayAndWithdrawCollateral
+// End-to-end: for any target units U <= debtBefore, calling midnightBundlesRepayAndWithdrawCollateral
 // with assets = floor(U * WAD / (WAD - pct)) repays exactly U units on Midnight.
-rule repayAndWithdrawCollateralRepaysTargetUnits(env e, Midnight.Market market, address onBehalf, address collateralReceiver, address referralFeeRecipient, uint256 referralFeePct, uint256 deadline, uint256 U) {
+rule midnightBundlesRepayAndWithdrawCollateralRepaysTargetUnits(env e, Midnight.Market market, address onBehalf, address collateralReceiver, address referralFeeRecipient, uint256 referralFeePct, uint256 deadline, uint256 U) {
     require referralFeePct < WAD(), "PctExceeded";
 
     bytes32 id = summaryToId(market);
@@ -57,7 +57,7 @@ rule repayAndWithdrawCollateralRepaysTargetUnits(env e, Midnight.Market market, 
     MidnightBundles.CollateralWithdrawal[] collateralWithdrawals;
     require collateralWithdrawals.length == 0, "isolate repay path from withdrawals";
 
-    repayAndWithdrawCollateral(e, market, assets, onBehalf, loanTokenPermit, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, deadline);
+    midnightBundlesRepayAndWithdrawCollateral(e, market, assets, onBehalf, loanTokenPermit, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, deadline);
 
     assert midnight.debt(id, onBehalf) == debtBefore - U;
 }

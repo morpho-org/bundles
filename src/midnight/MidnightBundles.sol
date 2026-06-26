@@ -47,7 +47,7 @@ contract MidnightBundles is IMidnightBundles {
     /// filledBuyerAssets + filledBuyerAssets * referralFeePct / (WAD - referralFeePct).
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of
     /// collateralWithdrawals, etc.
-    function buyWithUnitsTargetAndWithdrawCollateral(
+    function midnightBundlesBuyWithUnitsTargetAndWithdrawCollateral(
         uint256 targetUnits,
         uint256 maxBuyerAssets,
         address taker,
@@ -111,7 +111,7 @@ contract MidnightBundles is IMidnightBundles {
     /// @dev Total loan assets received by the receiver is
     /// filledSellerAssets - filledSellerAssets * referralFeePct / WAD.
     /// @dev msg.sender will pay collateralWithdrawals[0].assets of the first token of collateralSupplies etc.
-    function supplyCollateralAndSellWithUnitsTarget(
+    function midnightBundlesSupplyCollateralAndSellWithUnitsTarget(
         uint256 targetUnits,
         uint256 minSellerAssets,
         address taker,
@@ -172,7 +172,7 @@ contract MidnightBundles is IMidnightBundles {
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of
     /// collateralWithdrawals etc.
-    function buyWithAssetsTargetAndWithdrawCollateral(
+    function midnightBundlesBuyWithAssetsTargetAndWithdrawCollateral(
         uint256 targetBuyerAssets,
         uint256 minUnits,
         address taker,
@@ -240,7 +240,7 @@ contract MidnightBundles is IMidnightBundles {
     /// @dev The taker will lose at most maxUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev msg.sender will pay collateralWithdrawals[0].assets of the first token of collateralSupplies etc.
-    function supplyCollateralAndSellWithAssetsTarget(
+    function midnightBundlesSupplyCollateralAndSellWithAssetsTarget(
         uint256 targetSellerAssets,
         uint256 maxUnits,
         address taker,
@@ -305,7 +305,7 @@ contract MidnightBundles is IMidnightBundles {
     /// @dev To fully repay a debt D, pass assets = floor(D * WAD / (WAD - pct)).
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of
     /// collateralWithdrawals etc.
-    function repayAndWithdrawCollateral(
+    function midnightBundlesRepayAndWithdrawCollateral(
         Market memory market,
         uint256 assets,
         address onBehalf,

@@ -19,7 +19,7 @@ interface IBlueBundles {
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///
-    function supplyCollateralAndBorrow(
+    function blueBundlesSupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAmount,
         uint256 borrowAssets,
@@ -32,7 +32,7 @@ interface IBlueBundles {
         uint256 deadline
     ) external;
 
-    function repayAndWithdrawCollateral(
+    function blueBundlesRepayAndWithdrawCollateral(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 maxRepayAssets,
@@ -46,7 +46,7 @@ interface IBlueBundles {
         uint256 deadline
     ) external;
 
-    function supply(
+    function blueBundlesSupply(
         MarketParams memory marketParams,
         uint256 assets,
         address onBehalf,
@@ -56,7 +56,7 @@ interface IBlueBundles {
         uint256 deadline
     ) external;
 
-    function withdraw(
+    function blueBundlesWithdraw(
         MarketParams memory marketParams,
         uint256 withdrawAssets,
         address onBehalf,
@@ -66,7 +66,7 @@ interface IBlueBundles {
         uint256 deadline
     ) external;
 
-    function migrateBorrowPosition(
+    function blueBundlesMigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
         uint256 maxLtv,

@@ -49,7 +49,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// referralFeeRecipient.
     /// @dev Fee = borrowedAssets * referralFeePct / WAD; net = borrowedAssets - fee.
     /// @dev maxLtv caps onBehalf's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
-    function supplyCollateralAndBorrow(
+    function blueBundlesSupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAmount,
         uint256 borrowAssets,
@@ -86,7 +86,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
     /// @dev If withdrawCollateralAssets > 0, also withdraws that amount of collateral from onBehalf's position to receiver.
     /// @dev maxLtv caps onBehalf's resulting LTV after a withdrawal; skipped on a pure repay.
-    function repayAndWithdrawCollateral(
+    function blueBundlesRepayAndWithdrawCollateral(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 maxRepayAssets,
@@ -129,7 +129,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev Pulls `assets` of `marketParams.loanToken` from msg.sender (optionally via ERC-2612 or Permit2).
     /// @dev The referral fee is deducted from `assets`; the remainder is supplied to the market for onBehalf.
     /// @dev Fee = assets * referralFeePct / WAD; supplied = assets - fee.
-    function supply(
+    function blueBundlesSupply(
         MarketParams memory marketParams,
         uint256 assets,
         address onBehalf,
@@ -161,7 +161,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// shares remain.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to receiver.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
-    function withdraw(
+    function blueBundlesWithdraw(
         MarketParams memory marketParams,
         uint256 withdrawAssets,
         address onBehalf,
@@ -197,7 +197,7 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
     /// @dev Fee = repaidAssets * referralFeePct / (WAD - referralFeePct); total borrowed = repaidAssets + fee.
     /// @dev @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Use destination LLTV to disable.
     /// @dev Migrating a position without debt reverts on Blue.
-    function migrateBorrowPosition(
+    function blueBundlesMigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
         uint256 maxLtv,
@@ -232,8 +232,8 @@ contract BlueBundles is IBlueBundles, IMorphoRepayCallback {
         requireMaxLtv(destMarketParams, onBehalf, maxLtv);
     }
 
-    /// @dev Blue's repay callback. Only reachable during migrateBorrowPosition: no other function passes non-empty
-    /// data to repay.
+    /// @dev Blue's repay callback. Only reachable during blueBundlesMigrateBorrowPosition: no other function passes
+    /// non-empty data to repay.
     /// @dev Blue pulls exactly `assets` of the loan token from this contract after this callback returns.
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
