@@ -719,7 +719,9 @@ contract BlueBundlesTest is Test {
 
         vm.prank(user);
         vm.expectRevert(IBlueBundlesV1.InconsistentTokens.selector);
-        blueBundles.blueBundlesV1MigrateBorrowPosition(marketParams, wrongDest, WAD, user, 0, address(0), block.timestamp);
+        blueBundles.blueBundlesV1MigrateBorrowPosition(
+            marketParams, wrongDest, WAD, user, 0, address(0), block.timestamp
+        );
     }
 
     function testMigrateBorrowPositionLtvExceeded() public {
