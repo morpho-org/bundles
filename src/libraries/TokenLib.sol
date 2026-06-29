@@ -1,12 +1,22 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (c) 2026 Morpho Association
-pragma solidity ^0.8.0;
+pragma solidity >=0.8.0;
 
 import {IERC20} from "../../lib/midnight/src/interfaces/IERC20.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {IERC20Permit} from "../interfaces/IERC20Permit.sol";
 import {IPermit2} from "../interfaces/IPermit2.sol";
-import {TokenPermit, PermitKind} from "../interfaces/ITokenLib.sol";
+
+enum PermitKind {
+    None,
+    ERC2612,
+    Permit2
+}
+
+struct TokenPermit {
+    PermitKind kind;
+    bytes data;
+}
 
 /// @title TokenLib
 /// @notice Generic bundler token plumbing shared across bundles: Permit2/ERC-2612 token pulls and USDT-safe max
