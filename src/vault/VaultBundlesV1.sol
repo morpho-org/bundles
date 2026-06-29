@@ -62,7 +62,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
             uint256 availableToWithdraw = supplyShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
             uint256 assets = min(availableToWithdraw, remainingToDeallocate);
 
-            // Markets for which the adapter has no shares are skipped.
+            // Markets for which the adapter accounting reports no shares are skipped.
             if (assets > 0) {
                 bytes memory data = abi.encode(vault, adapter, marketParams[i], msg.sender);
                 IMorpho(BLUE).supply(marketParams[i], assets, 0, msg.sender, data);
