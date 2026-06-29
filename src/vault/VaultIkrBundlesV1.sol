@@ -37,6 +37,7 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1 {
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev Call this function with markets for which the adapter has shares.
+    /// @dev Calling this function with duplicate markets in the list can be used in case there is not enough "flashloanable" liquidity (this liquidity is provided when calling supply with a callback).
     function vaultBundlesV1ForceWithdrawIlliquidVaultV2(
         address vault,
         address adapter,
@@ -111,6 +112,7 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1 {
     /// @dev Requires onBehalf to have enough shares to withdraw assets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev Call this function with markets that belong to the vault.
+    /// @dev This function should not be called with duplicate markets in the list.
     function vaultBundlesV1ForceWithdrawIlliquidVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
