@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (c) 2026 Morpho Association
-pragma solidity 0.8.34;
+pragma solidity >=0.8.0;
 
 import {IERC20} from "../../lib/midnight/src/interfaces/IERC20.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
@@ -38,8 +38,8 @@ library TokenLib {
         require(returndata.length == 0 || abi.decode(returndata, (bool)), ApproveReturnedFalse());
     }
 
-    /// @dev Skips the approval entirely to save gas when the current allowance is already 2^95 - 1 (value chosen
-    /// because some tokens like COMP and UNI on Ethereum have a max allowance of type(uint96).max).
+    /// @dev Skips the approval entirely to save gas when the current allowance is already at least 2^95 - 1
+    /// (some tokens like COMP and UNI on Ethereum have a max allowance of type(uint96).max).
     /// @dev Resets to 0 before re-approving to support USDT like tokens.
     function forceApproveMax(address token, address spender) internal {
         if (IERC20(token).allowance(address(this), spender) >= type(uint96).max / 2) return;
