@@ -388,6 +388,97 @@ contract VaultV1BundlesTest is Test {
         emit log_named_uint("gas: per withdraw (avg)", g / 15);
     }
 
+    /// @dev Two withdraws behind distinct external selectors so the flamechart keeps them as separate frames
+    /// (identical call paths are otherwise folded into a single summed block). Also logs each call's gas.
+    function firstWithdraw() external returns (uint256) {
+        return vault.withdraw(withdrawAmount, address(this), address(this));
+    }
+
+    function secondWithdraw() external returns (uint256) {
+        return vault.withdraw(withdrawAmount, address(this), address(this));
+    }
+
+    /// @dev Single parent frame wrapping both withdraws, so the flamechart has one block to zoom into.
+    function bothWithdraws() external returns (uint256, uint256) {
+        return (this.firstWithdraw(), this.secondWithdraw());
+    }
+
+    function testGasVaultV1Withdraw2Times() public {
+        _setUp15MarketsLastLiquid();
+
+        (uint256 s1, uint256 s2) = this.bothWithdraws();
+
+        require(s1 > 0 && s2 > 0, "no withdraw");
+    }
+
+    /// @dev Number of distinct entries in `a` (O(n^2), fine for the small access lists here).
+    function _distinct(bytes32[] memory a) internal pure returns (uint256 n) {
+        for (uint256 i; i < a.length; ++i) {
+            bool seen;
+            for (uint256 j; j < i; ++j) {
+                if (a[j] == a[i]) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (!seen) ++n;
+        }
+    }
+
+    /// @dev Counts total vs distinct storage slots read (SLOAD) and written (SSTORE) during one withdraw, across
+    /// every contract the call touches. total = #opcodes executed; distinct = #unique slots (the cold candidates).
+    /// cold->warm gain ~= distinct_slots * (2100 - 100); warm floor ~= total_slots * 100.
+    function testCountSlotsVaultV1Withdraw() public {
+        _setUp15MarketsLastLiquid();
+
+        address[6] memory addrs =
+            [address(vault), address(morpho), address(loanToken), address(collateralToken), address(oracle), address(this)];
+
+        vm.record();
+        vault.withdraw(withdrawAmount, address(this), address(this));
+
+        uint256 totalReads;
+        uint256 distinctReads;
+        uint256 totalWrites;
+        uint256 distinctWrites;
+        for (uint256 k; k < addrs.length; ++k) {
+            (bytes32[] memory r, bytes32[] memory w) = vm.accesses(addrs[k]);
+            totalReads += r.length;
+            distinctReads += _distinct(r);
+            totalWrites += w.length;
+            distinctWrites += _distinct(w);
+        }
+        emit log_named_uint("SLOAD total (with repeats)", totalReads);
+        emit log_named_uint("SLOAD distinct slots       ", distinctReads);
+        emit log_named_uint("SSTORE total (with repeats)", totalWrites);
+        emit log_named_uint("SSTORE distinct slots      ", distinctWrites);
+    }
+
+    /// @dev Directly measures the cold->warm gain: forcibly cool every touched account, do an all-cold withdraw,
+    /// then a fully-warm one. The gap is the real EIP-2929 saving and should track distinct_slots * 2000.
+    function testColdWarmGainVaultV1Withdraw() public {
+        _setUp15MarketsLastLiquid();
+        address self = address(this);
+
+        vm.cool(address(vault));
+        vm.cool(address(morpho));
+        vm.cool(address(loanToken));
+        vm.cool(self);
+
+        uint256 g1 = gasleft();
+        uint256 s1 = vault.withdraw(withdrawAmount, self, self);
+        g1 = g1 - gasleft();
+
+        uint256 g2 = gasleft();
+        uint256 s2 = vault.withdraw(withdrawAmount, self, self);
+        g2 = g2 - gasleft();
+
+        require(s1 > 0 && s2 > 0, "no withdraw");
+        emit log_named_uint("withdraw all-cold", g1);
+        emit log_named_uint("withdraw all-warm", g2);
+        emit log_named_uint("cold->warm gain  ", g1 - g2);
+    }
+
     /// @dev A single withdraw over the same 15-market setup, for comparison.
     function testGasVaultV1WithdrawOnce() public {
         _setUp15MarketsLastLiquid();
