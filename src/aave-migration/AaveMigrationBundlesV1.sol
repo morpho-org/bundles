@@ -14,11 +14,7 @@ import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 /// @dev Zero checks are not systematically performed.
 contract AaveMigrationBundlesV1 is IAaveMigrationBundlesV1 {
     /// EXTERNAL ///
-
-    /// @dev Migration is permissionless on Vault V2, so no authorization of msg.sender over onBehalf is required.
-    /// @dev Pulls `amount` of `aToken` from msg.sender (optionally via ERC-2612 or Permit2), withdraws the whole
-    /// pulled balance from `aaveV3Pool` into this contract, then deposits the underlying into `vaultV2` for onBehalf.
-    /// @dev The underlying withdrawn from Aave is `vaultV2`'s asset.
+    /// @dev Pulls amount of aToken from msg.sender (optionally via ERC-2612 or Permit2), withdraws the whole pulled balance from aaveV3Pool into this contract, then deposits the underlying into vaultV2 for onBehalf.
     function aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
         address aaveV3Pool,
         address aToken,
@@ -28,9 +24,8 @@ contract AaveMigrationBundlesV1 is IAaveMigrationBundlesV1 {
         TokenPermit memory aTokenPermit,
         uint256 deadline
     ) external {
-        require(block.timestamp <= deadline, DeadlinePassed());
-
         address asset = IVaultV2(vaultV2).asset();
+        require(block.timestamp <= deadline, DeadlinePassed());
         require(asset == IAToken(aToken).UNDERLYING_ASSET_ADDRESS(), InconsistentTokens());
 
         TokenLib.pullToken(aToken, msg.sender, amount, aTokenPermit);
