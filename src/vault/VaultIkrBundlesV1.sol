@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IVaultBundlesV1} from "./IVaultBundlesV1.sol";
+import {IVaultIkrBundlesV1} from "./IVaultIkrBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 import {IMetaMorpho, Id as MMId} from "../../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
@@ -17,7 +17,7 @@ import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.s
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are allowed.
 /// @dev Zero checks are not systematically performed.
-contract VaultBundlesV1 is IVaultBundlesV1 {
+contract VaultIkrBundlesV1 is IVaultIkrBundlesV1 {
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
 

@@ -4,7 +4,7 @@ pragma solidity >=0.5.0;
 
 import {MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 
-interface IVaultBundlesV1 {
+interface IVaultIkrBundlesV1 {
     /// ERRORS ///
     error AdapterNotPartOfVault();
     error MarketNotPartOfAdapter();
