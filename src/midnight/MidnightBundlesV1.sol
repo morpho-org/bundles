@@ -47,6 +47,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
     /// filledBuyerAssets + filledBuyerAssets * referralFeePct / (WAD - referralFeePct).
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of
     /// collateralWithdrawals, etc.
+    /// @dev The current market continuous fee must be at most maxContinuousFee. Pass type(uint256).max to disable.
     function midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
         uint256 targetUnits,
         uint256 maxBuyerAssets,
@@ -57,6 +58,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
+        uint256 maxContinuousFee,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -65,6 +67,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         address loanToken = takes[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
+        requireMaxContinuousFee(id, maxContinuousFee);
 
         TokenLib.pullToken(loanToken, msg.sender, maxBuyerAssets, loanTokenPermit);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
@@ -111,6 +114,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
     /// @dev Total loan assets received by the receiver is
     /// filledSellerAssets - filledSellerAssets * referralFeePct / WAD.
     /// @dev msg.sender will pay collateralWithdrawals[0].assets of the first token of collateralSupplies etc.
+    /// @dev The current market continuous fee must be at most maxContinuousFee. Pass type(uint256).max to disable.
     function midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
         uint256 targetUnits,
         uint256 minSellerAssets,
@@ -120,6 +124,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         Take[] memory takes,
         uint256 referralFeePct,
         address referralFeeRecipient,
+        uint256 maxContinuousFee,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -128,6 +133,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         address loanToken = takes[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
+        requireMaxContinuousFee(id, maxContinuousFee);
 
         Market memory market = takes[0].offer.market;
         for (uint256 i; i < collateralSupplies.length; i++) {
@@ -172,6 +178,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of
     /// collateralWithdrawals etc.
+    /// @dev The current market continuous fee must be at most maxContinuousFee. Pass type(uint256).max to disable.
     function midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral(
         uint256 targetBuyerAssets,
         uint256 minUnits,
@@ -182,6 +189,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
+        uint256 maxContinuousFee,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -190,6 +198,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         address loanToken = takes[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
+        requireMaxContinuousFee(id, maxContinuousFee);
 
         TokenLib.pullToken(loanToken, msg.sender, targetBuyerAssets, loanTokenPermit);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
@@ -240,6 +249,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
     /// @dev The taker will lose at most maxUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev msg.sender will pay collateralWithdrawals[0].assets of the first token of collateralSupplies etc.
+    /// @dev The current market continuous fee must be at most maxContinuousFee. Pass type(uint256).max to disable.
     function midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget(
         uint256 targetSellerAssets,
         uint256 maxUnits,
@@ -249,6 +259,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         Take[] memory takes,
         uint256 referralFeePct,
         address referralFeeRecipient,
+        uint256 maxContinuousFee,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -257,6 +268,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         address loanToken = takes[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
+        requireMaxContinuousFee(id, maxContinuousFee);
 
         Market memory market = takes[0].offer.market;
         for (uint256 i; i < collateralSupplies.length; i++) {
@@ -340,6 +352,11 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         }
 
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
+    }
+
+    /// @dev Reverts unless the current market continuous fee is at or below maxContinuousFee.
+    function requireMaxContinuousFee(bytes32 id, uint256 maxContinuousFee) internal view {
+        require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
     }
 
     /// @dev Returns min(x, y, z).
