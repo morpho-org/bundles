@@ -31,10 +31,11 @@ contract TokenLibTest is Test {
         deal(address(token), holder, type(uint256).max);
     }
 
+    function _noPermit() internal pure returns (TokenPermit memory) {}
+
     function _permit(uint256 amount, uint256 nonce, uint256 deadline) internal view returns (TokenPermit memory) {
-        bytes32 structHash = keccak256(
-            abi.encode(token.PERMIT_TYPEHASH(), holder, address(harness), amount, nonce, deadline)
-        );
+        bytes32 structHash =
+            keccak256(abi.encode(token.PERMIT_TYPEHASH(), holder, address(harness), amount, nonce, deadline));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", token.DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(holderKey, digest);
         return TokenPermit({kind: PermitKind.ERC2612, data: abi.encode(deadline, v, r, s)});
@@ -59,6 +60,17 @@ contract TokenLibTest is Test {
         return TokenPermit({kind: PermitKind.Permit2, data: abi.encode(nonce, deadline, abi.encodePacked(r, s, v))});
     }
 
+    function testPullTokenNoPermit() public {
+        uint256 amount = 100e18;
+        vm.prank(holder);
+        token.approve(address(harness), amount);
+
+        harness.pullToken(address(token), holder, amount, _noPermit());
+
+        assertEq(token.allowance(holder, address(harness)), 0);
+        assertEq(token.balanceOf(address(harness)), amount);
+    }
+
     function testPullTokenPermit() public {
         uint256 amount = 100e18;
         TokenPermit memory permit = _permit(amount, 0, vm.getBlockTimestamp() + 1);
@@ -69,8 +81,7 @@ contract TokenLibTest is Test {
         assertEq(token.balanceOf(address(harness)), amount);
     }
 
-    /// @dev A third party may consume the permit before the pull; the stale permit is tolerated and the transfer
-    /// still goes through on the allowance it set.
+    /// @dev A third party may consume the permit before the pull; the stale permit is tolerated and the transfer still goes through on the allowance it set.
     function testPullTokenPermitAlreadyConsumed() public {
         uint256 amount = 100e18;
         TokenPermit memory permit = _permit(amount, 0, vm.getBlockTimestamp() + 1);
@@ -94,5 +105,18 @@ contract TokenLibTest is Test {
 
         assertEq(token.allowance(holder, PERMIT2), 0);
         assertEq(token.balanceOf(address(harness)), amount);
+    }
+
+    /// @dev Unlike ERC2612, the Permit2 path pulls atomically and does not tolerate a spent nonce: replaying the same permit reverts instead of silently transferring again.
+    function testPullTokenPermit2AlreadyConsumed() public {
+        uint256 amount = 100e18;
+        vm.prank(holder);
+        token.approve(PERMIT2, 2 * amount);
+
+        TokenPermit memory permit = _permit2(amount, 0, vm.getBlockTimestamp() + 1);
+        harness.pullToken(address(token), holder, amount, permit);
+
+        vm.expectRevert();
+        harness.pullToken(address(token), holder, amount, permit);
     }
 }
