@@ -432,7 +432,9 @@ contract VaultV2IkrBundlesTest is Test {
 
         // otherMarket was never allocated through the adapter ⇒ supplyShares == 0.
         vm.expectRevert("panic: arithmetic underflow or overflow (0x11)");
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(address(vault), address(adapter), otherMarket, assets, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), otherMarket, assets, block.timestamp
+        );
     }
 
     function testForceWithdrawLiquid(uint256 assets) public {
@@ -440,7 +442,9 @@ contract VaultV2IkrBundlesTest is Test {
         _setUpLiquid(assets);
         vm.assume(optimalDeallocateAssets(assets) > 0);
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(address(vault), address(adapter), marketParams, assets, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), marketParams, assets, block.timestamp
+        );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");

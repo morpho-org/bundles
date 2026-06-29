@@ -231,7 +231,9 @@ contract VaultV1IkrBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(address(vault), _singleton(marketParams), assets, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+            address(vault), _singleton(marketParams), assets, block.timestamp
+        );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
@@ -260,7 +262,9 @@ contract VaultV1IkrBundlesTest is Test {
 
         // Withdraw more than the first market holds so the remainder spills into the second.
         uint256 forceWithdrawAssets = available1 + 20e18;
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(address(vault), list, forceWithdrawAssets, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+            address(vault), list, forceWithdrawAssets, block.timestamp
+        );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
@@ -287,7 +291,9 @@ contract VaultV1IkrBundlesTest is Test {
 
         // More than the first market holds ⇒ in-kind redeemed across both.
         uint256 forceWithdrawAssets = available1 + 20e18;
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(address(vault), list, forceWithdrawAssets, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+            address(vault), list, forceWithdrawAssets, block.timestamp
+        );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
@@ -301,6 +307,8 @@ contract VaultV1IkrBundlesTest is Test {
         _setUpIlliquid(assets);
 
         vm.expectRevert(IVaultIkrBundlesV1.DeadlinePassed.selector);
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(address(vault), _singleton(marketParams), assets, block.timestamp - 1);
+        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+            address(vault), _singleton(marketParams), assets, block.timestamp - 1
+        );
     }
 }
