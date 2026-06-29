@@ -21,7 +21,7 @@ import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
 import {MidnightBundlesV1} from "../src/midnight/MidnightBundlesV1.sol";
 import {IMidnightBundlesV1, Take, CollateralWithdrawal, CollateralSupply} from "../src/midnight/IMidnightBundlesV1.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
-import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
+import {IEIP712} from "../lib/permit2/src/interfaces/IEIP712.sol";
 
 contract MidnightBundlesTest is Test {
     using UtilsLib for uint256;
@@ -194,7 +194,7 @@ contract MidnightBundlesTest is Test {
                 deadline
             )
         );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", VendorPermit2(PERMIT2).DOMAIN_SEPARATOR(), permitHash));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IEIP712(PERMIT2).DOMAIN_SEPARATOR(), permitHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey[owner], digest);
         return TokenPermit({kind: PermitKind.Permit2, data: abi.encode(nonce, deadline, abi.encodePacked(r, s, v))});
     }

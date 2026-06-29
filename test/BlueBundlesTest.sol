@@ -12,7 +12,8 @@ import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
-import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
+import {ISignatureTransfer} from "../lib/permit2/src/interfaces/ISignatureTransfer.sol";
+import {IEIP712} from "../lib/permit2/src/interfaces/IEIP712.sol";
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
 import {IBlueBundlesV1} from "../src/blue/IBlueBundlesV1.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
@@ -147,7 +148,7 @@ contract BlueBundlesTest is Test {
                 deadline
             )
         );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", VendorPermit2(PERMIT2).DOMAIN_SEPARATOR(), permitHash));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IEIP712(PERMIT2).DOMAIN_SEPARATOR(), permitHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey[holder], digest);
         return TokenPermit({kind: PermitKind.Permit2, data: abi.encode(nonce, deadline, abi.encodePacked(r, s, v))});
     }
