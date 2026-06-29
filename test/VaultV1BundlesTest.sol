@@ -44,6 +44,9 @@ contract VaultV1BundlesTest is Test {
     MarketParams internal marketParams; // vault market (made illiquid)
     MarketParams internal otherMarket; // same loan token, supplies Morpho's global liquidity
 
+    MarketParams[] internal markets; // 15-market setup for the gas benchmarks
+    uint256 internal withdrawAmount; // withdraw size, loaded from storage in the gas benchmarks
+
     address internal owner = makeAddr("owner");
     address internal borrower = makeAddr("borrower");
     address internal liquidityProvider = makeAddr("liquidityProvider");
@@ -302,5 +305,101 @@ contract VaultV1BundlesTest is Test {
 
         vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
         vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(address(vault), _singleton(marketParams), assets, block.timestamp - 1);
+    }
+
+    /// GAS: WITHDRAW LOOP LENGTH ///
+
+    /// @dev Deploys a MetaMorpho with `markets.length` markets, all in the supply and withdraw queues in order. The
+    /// vault gets a position in every market; markets [0, n-2] are then fully borrowed out (illiquid), only the last
+    /// one keeps liquidity. So every `withdraw` walks the whole withdraw queue: it reads each illiquid market (finding
+    /// nothing withdrawable) before pulling everything from the last market.
+    function _setUp15MarketsLastLiquid() internal {
+        uint256 n = 15;
+        uint256 perMarket = 10e18; // allocated to and borrowed out of each illiquid market
+        uint256 lastLiquidity = 100e18; // liquidity left in the last market to serve the withdraws
+
+        // 15 distinct markets sharing the loan/collateral/oracle, told apart by their LLTV.
+        for (uint256 i; i < n; ++i) {
+            uint256 lltv = (i + 1) * 0.05e18; // 0.05e18 .. 0.75e18, all distinct and < WAD
+            vm.prank(owner);
+            morpho.enableLltv(lltv);
+            MarketParams memory mp =
+                MarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), lltv);
+            morpho.createMarket(mp);
+            markets.push(mp);
+        }
+
+        vault = IMetaMorpho(
+            deployCode(
+                "MetaMorpho.sol:MetaMorpho", abi.encode(owner, address(morpho), 1 days, address(loanToken), "V1", "V1")
+            )
+        );
+
+        Id[] memory queue = new Id[](n);
+        vm.startPrank(owner);
+        for (uint256 i; i < n; ++i) {
+            // Last market uncapped (holds the remaining liquidity); the others capped at exactly `perMarket`.
+            uint184 cap = i == n - 1 ? type(uint184).max : uint184(perMarket);
+            vault.submitCap(markets[i], cap);
+            queue[i] = markets[i].id();
+        }
+        vm.warp(block.timestamp + 1 days);
+        for (uint256 i; i < n; ++i) {
+            vault.acceptCap(markets[i]); // acceptance order [0..n-1] => withdraw queue [0..n-1].
+        }
+        vault.setSupplyQueue(queue); // same order: deposit fills [0..n-2] to cap, the rest into the last market.
+        vm.stopPrank();
+
+        uint256 total = perMarket * (n - 1) + lastLiquidity;
+        deal(address(loanToken), address(this), total);
+        loanToken.approve(address(vault), type(uint256).max);
+        vault.deposit(total, address(this));
+
+        // Borrow everything out of the first n-1 markets so only the last one keeps liquidity. Collateral is sized at
+        // 100x the borrow so even the lowest-LLTV (0.05) market is over-collateralized.
+        for (uint256 i; i < n - 1; ++i) {
+            deal(address(collateralToken), borrower, 100 * perMarket);
+            vm.startPrank(borrower);
+            collateralToken.approve(address(morpho), type(uint256).max);
+            morpho.supplyCollateral(markets[i], 100 * perMarket, borrower, "");
+            morpho.borrow(markets[i], perMarket, 0, borrower, borrower);
+            vm.stopPrank();
+        }
+
+        withdrawAmount = 1e18; // 15 * 1e18 < lastLiquidity, so the last market serves them all.
+    }
+
+    /// @dev 15 sequential withdraws, each walking the full 15-market withdraw queue.
+    function testGasVaultV1Withdraw15Times() public {
+        _setUp15MarketsLastLiquid();
+
+        uint256 assets = withdrawAmount;
+        address self = address(this);
+        uint256 shares;
+
+        uint256 g = gasleft();
+        for (uint256 i; i < 15; ++i) {
+            shares += vault.withdraw(assets, self, self);
+        }
+        g = g - gasleft();
+
+        require(shares > 0, "no withdraw");
+        emit log_named_uint("gas: 15 withdraws (full 15-market loop each)", g);
+        emit log_named_uint("gas: per withdraw (avg)", g / 15);
+    }
+
+    /// @dev A single withdraw over the same 15-market setup, for comparison.
+    function testGasVaultV1WithdrawOnce() public {
+        _setUp15MarketsLastLiquid();
+
+        uint256 assets = withdrawAmount;
+        address self = address(this);
+
+        uint256 g = gasleft();
+        uint256 shares = vault.withdraw(assets, self, self);
+        g = g - gasleft();
+
+        require(shares > 0, "no withdraw");
+        emit log_named_uint("gas: 1 withdraw (full 15-market loop)", g);
     }
 }
