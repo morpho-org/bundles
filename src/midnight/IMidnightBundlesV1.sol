@@ -3,7 +3,7 @@
 pragma solidity >=0.5.0;
 
 import {Offer, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol";
-import {TokenPermit} from "../libraries/TokenLib.sol";
+import {TokenPermit} from "../interfaces/ITokenLib.sol";
 
 struct Take {
     Offer offer;
