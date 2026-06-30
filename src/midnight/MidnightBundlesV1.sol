@@ -157,7 +157,10 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
-            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).credit(id, taker), ReduceOnlyCrossed());
+            if (reduceOnly) {
+                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
+                require(unitsToTake <= takerCredit, ReduceOnlyCrossed());
+            }
             try IMidnight(MIDNIGHT)
                 .take(
                     takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(this), address(0), ""
@@ -299,7 +302,10 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
-            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).credit(id, taker), ReduceOnlyCrossed());
+            if (reduceOnly) {
+                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
+                require(unitsToTake <= takerCredit, ReduceOnlyCrossed());
+            }
             try IMidnight(MIDNIGHT)
                 .take(
                     takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(this), address(0), ""
