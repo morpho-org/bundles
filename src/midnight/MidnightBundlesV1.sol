@@ -84,6 +84,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, taker), ReduceOnlyCrossed());
             try IMidnight(MIDNIGHT)
                 .take(takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -94,7 +95,6 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         }
 
         require(filledUnits == targetUnits, OutOfOffers());
-        require(!reduceOnly || IMidnight(MIDNIGHT).credit(id, taker) == 0, TakerCreditOrDebtIncreased());
 
         Market memory market = takes[0].offer.market;
         for (uint256 i; i < collateralWithdrawals.length; i++) {
@@ -157,6 +157,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).credit(id, taker), ReduceOnlyCrossed());
             try IMidnight(MIDNIGHT)
                 .take(
                     takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(this), address(0), ""
@@ -169,7 +170,6 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         }
 
         require(filledUnits == targetUnits, OutOfOffers());
-        require(!reduceOnly || IMidnight(MIDNIGHT).debt(id, taker) == 0, TakerCreditOrDebtIncreased());
 
         uint256 referralFeeAssets = filledSellerAssets.mulDivDown(referralFeePct, WAD);
         require(filledSellerAssets - referralFeeAssets >= minSellerAssets, SellerAssetsTooLow());
@@ -222,6 +222,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, taker), ReduceOnlyCrossed());
             try IMidnight(MIDNIGHT)
                 .take(takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -233,7 +234,6 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
 
         require(filledBuyerAssets == targetFilledBuyerAssets, OutOfOffers());
         require(filledUnits >= minUnits, UnitsTooLow());
-        require(!reduceOnly || IMidnight(MIDNIGHT).credit(id, taker) == 0, TakerCreditOrDebtIncreased());
 
         Market memory market = takes[0].offer.market;
         for (uint256 i; i < collateralWithdrawals.length; i++) {
@@ -299,6 +299,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).credit(id, taker), ReduceOnlyCrossed());
             try IMidnight(MIDNIGHT)
                 .take(
                     takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(this), address(0), ""
@@ -312,7 +313,6 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
 
         require(filledSellerAssets == targetFilledSellerAssets, OutOfOffers());
         require(filledUnits <= maxUnits, UnitsTooHigh());
-        require(!reduceOnly || IMidnight(MIDNIGHT).debt(id, taker) == 0, TakerCreditOrDebtIncreased());
 
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
         SafeTransferLib.safeTransfer(loanToken, receiver, targetSellerAssets);
