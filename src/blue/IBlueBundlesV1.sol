@@ -1,69 +1,77 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (c) 2025 Morpho Association
-pragma solidity >=0.5.0;
+pragma solidity >=0.8.0;
 
 import {MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {TokenPermit} from "../libraries/TokenLib.sol";
 
-interface IBlueBundles {
+interface IBlueBundlesV1 {
     /// ERRORS ///
     error PctExceeded();
     error Unauthorized();
     error UnauthorizedCallback();
     error InconsistentTokens();
     error LtvExceeded();
+    error DeadlinePassed();
 
     /// STORAGE GETTERS ///
-    function PERMIT2() external view returns (address);
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///
-    function supplyCollateralAndBorrow(
+    function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAmount,
         uint256 borrowAssets,
+        uint256 maxLtv,
         address onBehalf,
         address receiver,
         TokenPermit memory collateralPermit,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 
-    function repayAndWithdrawCollateral(
+    function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
-        uint256 repayAssets,
+        uint256 assets,
+        uint256 maxRepayAssets,
         uint256 withdrawCollateralAssets,
+        uint256 maxLtv,
         address onBehalf,
         address receiver,
         TokenPermit memory loanTokenPermit,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 
-    function supply(
+    function blueBundlesV1Supply(
         MarketParams memory marketParams,
         uint256 assets,
         address onBehalf,
         TokenPermit memory loanTokenPermit,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 
-    function withdraw(
+    function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
         uint256 withdrawAssets,
         address onBehalf,
         address receiver,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 
-    function refinance(
+    function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
-        uint256 maxLtvPct,
+        uint256 maxLtv,
         address onBehalf,
         uint256 referralFeePct,
-        address referralFeeRecipient
+        address referralFeeRecipient,
+        uint256 deadline
     ) external;
 }
