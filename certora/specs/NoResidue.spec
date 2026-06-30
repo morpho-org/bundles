@@ -33,14 +33,14 @@ methods {
 
 // well-behaved ERC20: transfers move balances by the amount.
 function cvlTransferFrom(address token, address from, address to, uint256 amount) returns bool {
-    if (from == currentContract) bundlerBalance[token] = require_uint256(bundlerBalance[token] - amount);
+    if (from == currentContract) bundlerBalance[token] = bundlerBalance[token] - amount;
     if (to == currentContract) bundlerBalance[token] = bundlerBalance[token] + amount;
     return true;
 }
 
 function summarySupply(address token, uint256 assets, uint256 shares) returns (uint256, uint256) {
     assert shares == 0;
-    bundlerBalance[token] = require_uint256(bundlerBalance[token] - assets);
+    bundlerBalance[token] = bundlerBalance[token] - assets;
     uint256 returnedShares;
     return (assets, returnedShares);
 }
@@ -48,12 +48,12 @@ function summarySupply(address token, uint256 assets, uint256 shares) returns (u
 function summaryRepay(address token) returns (uint256, uint256) {
     uint256 assets;
     uint256 shares;
-    bundlerBalance[token] = require_uint256(bundlerBalance[token] - assets);
+    bundlerBalance[token] = bundlerBalance[token] - assets;
     return (assets, shares);
 }
 
 function summarySupplyCollateral(address token, uint256 assets) {
-    bundlerBalance[token] = require_uint256(bundlerBalance[token] - assets);
+    bundlerBalance[token] = bundlerBalance[token] - assets;
 }
 
 function summaryBorrow(address token, uint256 assets, uint256 shares, address receiver) returns (uint256, uint256) {
