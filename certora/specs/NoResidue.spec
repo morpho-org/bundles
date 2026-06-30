@@ -118,16 +118,7 @@ function cvlMorphoSendVoid(address token, uint256 assets, address receiver) {
 // feePct < WAD and onBehalf == msg.sender are omitted: the contract's own guards revert otherwise.
 
 // supply is permissionless: no authorization precondition.
-rule supplyPreservesBalance() {
-    env e;
-    BlueBundles.MarketParams mp;
-    uint256 assets;
-    address onBehalf;
-    TokenLib.TokenPermit permit;
-    uint256 feePct;
-    address recip;
-    address t;
-
+rule supplyPreservesBalance(env e, BlueBundles.MarketParams mp, uint256 assets, address onBehalf, TokenLib.TokenPermit permit, uint256 feePct, address recip, address t) {
     require permit.kind == TokenLib.PermitKind.None, "plain transferFrom pull path";
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require recip != currentContract, "no self-transfer of the fee";
@@ -137,16 +128,7 @@ rule supplyPreservesBalance() {
     assert bundlerBal[t] == before;
 }
 
-rule withdrawPreservesBalance() {
-    env e;
-    BlueBundles.MarketParams mp;
-    uint256 withdrawAssets;
-    address onBehalf;
-    address receiver;
-    uint256 feePct;
-    address recip;
-    address t;
-
+rule withdrawPreservesBalance(env e, BlueBundles.MarketParams mp, uint256 withdrawAssets, address onBehalf, address receiver, uint256 feePct, address recip, address t) {
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require receiver != currentContract, "no self-transfer of proceeds";
     require recip != currentContract, "no self-transfer of the fee";
@@ -156,18 +138,7 @@ rule withdrawPreservesBalance() {
     assert bundlerBal[t] == before;
 }
 
-rule supplyCollateralAndBorrowPreservesBalance() {
-    env e;
-    BlueBundles.MarketParams mp;
-    uint256 collateralAmount;
-    uint256 borrowAssets;
-    address onBehalf;
-    address receiver;
-    TokenLib.TokenPermit permit;
-    uint256 feePct;
-    address recip;
-    address t;
-
+rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundles.MarketParams mp, uint256 collateralAmount, uint256 borrowAssets, address onBehalf, address receiver, TokenLib.TokenPermit permit, uint256 feePct, address recip, address t) {
     require permit.kind == TokenLib.PermitKind.None, "plain transferFrom pull path";
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require receiver != currentContract, "no self-transfer of proceeds";
@@ -179,18 +150,7 @@ rule supplyCollateralAndBorrowPreservesBalance() {
 }
 
 // Covers both the finite-repay and the type(uint256).max full-close branches.
-rule repayAndWithdrawCollateralPreservesBalance() {
-    env e;
-    BlueBundles.MarketParams mp;
-    uint256 repayAssets;
-    uint256 withdrawCollateralAssets;
-    address onBehalf;
-    address receiver;
-    TokenLib.TokenPermit permit;
-    uint256 feePct;
-    address recip;
-    address t;
-
+rule repayAndWithdrawCollateralPreservesBalance(env e, BlueBundles.MarketParams mp, uint256 repayAssets, uint256 withdrawCollateralAssets, address onBehalf, address receiver, TokenLib.TokenPermit permit, uint256 feePct, address recip, address t) {
     require permit.kind == TokenLib.PermitKind.None, "plain transferFrom pull path";
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require receiver != currentContract, "no self-transfer of proceeds";
