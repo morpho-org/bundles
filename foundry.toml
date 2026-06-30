@@ -32,6 +32,11 @@ name = "paris-200"
 evm_version = "paris"
 optimizer_runs = 200
 
+[[profile.default.additional_compiler_profiles]]
+name = "london-1000000"
+evm_version = "london"
+optimizer_runs = 1000000
+
 [[profile.default.compilation_restrictions]]
 paths = "test/imports/BlueImport.sol"
 evm_version = "paris"
@@ -51,3 +56,8 @@ optimizer_runs = 100000
 paths = "test/imports/MetaMorphoImport.sol"
 evm_version = "paris"
 optimizer_runs = 200
+
+[[profile.default.compilation_restrictions]]
+paths = "test/imports/Permit2Import.sol"
+evm_version = "london"
+optimizer_runs = 1000000
