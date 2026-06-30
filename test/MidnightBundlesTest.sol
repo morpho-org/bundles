@@ -21,13 +21,10 @@ import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
 import {MidnightBundlesV1} from "../src/midnight/MidnightBundlesV1.sol";
 import {IMidnightBundlesV1, Take, CollateralWithdrawal, CollateralSupply} from "../src/midnight/IMidnightBundlesV1.sol";
-import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
-import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
+import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract MidnightBundlesTest is Test {
     using UtilsLib for uint256;
-
-    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     mapping(address => uint256) internal privateKey;
 
@@ -82,7 +79,6 @@ contract MidnightBundlesTest is Test {
 
         midnightBundles = new MidnightBundlesV1(address(midnight));
         assertEq(midnightBundles.MIDNIGHT(), address(midnight));
-        deployCodeTo("Permit2", PERMIT2);
 
         // Set settlement fees to max for all breakpoints.
         midnight.setFeeClaimer(makeAddr("feeClaimer"));
@@ -176,42 +172,6 @@ contract MidnightBundlesTest is Test {
     }
 
     function _noPermit() internal pure returns (TokenPermit memory) {}
-
-    function _permit2(address token, address owner, uint256 amount, uint256 nonce, uint256 deadline)
-        internal
-        view
-        returns (TokenPermit memory)
-    {
-        bytes32 tokenPermissionsHash =
-            keccak256(abi.encode(keccak256("TokenPermissions(address token,uint256 amount)"), token, amount));
-        bytes32 permitHash = keccak256(
-            abi.encode(
-                keccak256(
-                    "PermitTransferFrom(TokenPermissions permitted,address spender,uint256 nonce,uint256 deadline)TokenPermissions(address token,uint256 amount)"
-                ),
-                tokenPermissionsHash,
-                address(midnightBundles),
-                nonce,
-                deadline
-            )
-        );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", VendorPermit2(PERMIT2).DOMAIN_SEPARATOR(), permitHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey[owner], digest);
-        return TokenPermit({kind: PermitKind.Permit2, data: abi.encode(nonce, deadline, abi.encodePacked(r, s, v))});
-    }
-
-    function _erc2612(address token, address owner, uint256 amount, uint256 nonce, uint256 deadline)
-        internal
-        view
-        returns (TokenPermit memory)
-    {
-        bytes32 structHash = keccak256(
-            abi.encode(ERC20Permit(token).PERMIT_TYPEHASH(), owner, address(midnightBundles), amount, nonce, deadline)
-        );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", ERC20Permit(token).DOMAIN_SEPARATOR(), structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey[owner], digest);
-        return TokenPermit({kind: PermitKind.ERC2612, data: abi.encode(deadline, v, r, s)});
-    }
 
     function testUnauthorized() public {
         offers[0].buy = false;
