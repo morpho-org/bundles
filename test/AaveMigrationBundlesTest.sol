@@ -40,26 +40,10 @@ contract AaveMigrationBundlesTest is Test {
 
     function _noPermit() internal pure returns (TokenPermit memory) {}
 
-    /// @dev Mints `amount` of aTokens to `onBehalf` and funds the pool with the matching underlying liquidity.
-    function _openAavePosition(address onBehalf, uint256 amount) internal {
-        aToken.mint(onBehalf, amount);
-        asset.mint(address(pool), amount);
-    }
-
-    /// @dev Asserts the full pulled position landed in the vault for `onBehalf` and that nothing is left behind.
-    function _assertMigrated(address payer, address onBehalf, uint256 expectedShares, uint256 amount) internal view {
-        assertEq(aToken.balanceOf(payer), 0, "payer aToken balance");
-        assertEq(vault.balanceOf(onBehalf), expectedShares, "onBehalf vault shares");
-        assertEq(asset.balanceOf(address(vault)), amount, "vault assets");
-        assertEq(asset.balanceOf(address(bundles)), 0, "bundler asset residual");
-        assertEq(aToken.balanceOf(address(bundles)), 0, "bundler aToken residual");
-    }
-
-    /// WITHDRAW AND DEPOSIT IN VAULT V2 ///
-
     function testWithdrawAndDepositInVaultV2(uint256 amount) public {
         amount = bound(amount, 1, 1e30);
-        _openAavePosition(user, amount);
+        aToken.mint(user, amount);
+        asset.mint(address(pool), amount);
         uint256 expectedShares = vault.previewDeposit(amount);
 
         vm.startPrank(user);
@@ -69,10 +53,13 @@ contract AaveMigrationBundlesTest is Test {
         );
         vm.stopPrank();
 
-        _assertMigrated(user, user, expectedShares, amount);
+        assertEq(aToken.balanceOf(user), 0, "user aToken balance");
+        assertEq(vault.balanceOf(user), expectedShares, "user vault shares");
+        assertEq(asset.balanceOf(address(vault)), amount, "vault assets");
+        assertEq(asset.balanceOf(address(bundles)), 0, "bundler asset residual");
+        assertEq(aToken.balanceOf(address(bundles)), 0, "bundler aToken residual");
     }
 
-    /// @dev The vault's asset must match the aToken's underlying, otherwise the wrong token would be withdrawn.
     function testInconsistentTokens() public {
         TokenMock otherAsset = new TokenMock("other", "other");
         ATokenMock otherAToken = new ATokenMock("otherA", "otherA", address(otherAsset));
@@ -95,10 +82,11 @@ contract AaveMigrationBundlesTest is Test {
     }
 }
 
-/// @dev Minimal mintable/burnable token used for both the underlying and the aToken.
+// Minimal mintable/burnable token used for both the underlying and the aToken.
 contract TokenMock is ERC20 {
     constructor(string memory name_, string memory symbol_) ERC20(name_, symbol_) {}
 
+    // The vault constructor calls decimals().
     function decimals() external pure returns (uint8) {
         return 18;
     }
@@ -114,21 +102,16 @@ contract TokenMock is ERC20 {
     }
 }
 
-/// @dev Aave V3 aToken: tracks its underlying so the bundler can cross-check it against the vault's asset.
+// Aave V3 aToken: tracks its underlying so the bundler can cross-check it against the vault's asset.
 contract ATokenMock is TokenMock {
-    address public immutable UNDERLYING;
+    address public immutable UNDERLYING_ASSET_ADDRESS;
 
     constructor(string memory name_, string memory symbol_, address underlying) TokenMock(name_, symbol_) {
-        UNDERLYING = underlying;
-    }
-
-    // forge-lint: disable-next-line(mixed-case-function)
-    function UNDERLYING_ASSET_ADDRESS() external view returns (address) {
-        return UNDERLYING;
+        UNDERLYING_ASSET_ADDRESS = underlying;
     }
 }
 
-/// @dev Aave V3 pool: burns the caller's aTokens 1:1 and pays out the underlying it holds.
+// Aave V3 pool that burns the caller's aTokens and sends the underlying in equal proportions.
 contract AaveV3PoolMock {
     mapping(address => ATokenMock) public aToken;
 
