@@ -24,12 +24,12 @@ struct CollateralSupply {
 
 interface IMidnightBundlesV1 {
     /// ERRORS ///
+    error ContinuousFeeAboveMax();
     error DeadlinePassed();
     error InconsistentMarket();
     error InconsistentSide();
     error OutOfOffers();
     error PctExceeded();
-    error ContinuousFeeAboveMax();
     error SellerAssetsTooLow();
     error Unauthorized();
     error UnitsTooHigh();

@@ -68,7 +68,6 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         address loanToken = takes[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
-        require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
 
         TokenLib.pullToken(loanToken, msg.sender, maxBuyerAssets, loanTokenPermit);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
@@ -83,6 +82,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             try IMidnight(MIDNIGHT)
                 .take(takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -133,7 +133,6 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         address loanToken = takes[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
-        require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
 
         Market memory market = takes[0].offer.market;
         for (uint256 i; i < collateralSupplies.length; i++) {
@@ -154,6 +153,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             try IMidnight(MIDNIGHT)
                 .take(
                     takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(this), address(0), ""
@@ -197,7 +197,6 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         address loanToken = takes[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
-        require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
 
         TokenLib.pullToken(loanToken, msg.sender, targetBuyerAssets, loanTokenPermit);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
@@ -217,6 +216,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             try IMidnight(MIDNIGHT)
                 .take(takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -266,7 +266,6 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         address loanToken = takes[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
-        require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
 
         Market memory market = takes[0].offer.market;
         for (uint256 i; i < collateralSupplies.length; i++) {
@@ -292,6 +291,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             try IMidnight(MIDNIGHT)
                 .take(
                     takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(this), address(0), ""
