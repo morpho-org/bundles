@@ -5,7 +5,7 @@ pragma solidity >=0.8.0;
 import {IERC20} from "../../lib/midnight/src/interfaces/IERC20.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {IERC20Permit} from "../interfaces/IERC20Permit.sol";
-import {IPermit2} from "../interfaces/IPermit2.sol";
+import {IPermit2, ISignatureTransfer} from "../../lib/permit2/src/interfaces/IPermit2.sol";
 
 enum PermitKind {
     None,
@@ -60,8 +60,10 @@ library TokenLib {
                 abi.decode(permit.data, (uint256, uint256, bytes));
             IPermit2(PERMIT2)
                 .permitTransferFrom(
-                    IPermit2.PermitTransferFrom(IPermit2.TokenPermissions(token, amount), nonce, deadline),
-                    IPermit2.SignatureTransferDetails(address(this), amount),
+                    ISignatureTransfer.PermitTransferFrom(
+                        ISignatureTransfer.TokenPermissions(token, amount), nonce, deadline
+                    ),
+                    ISignatureTransfer.SignatureTransferDetails(address(this), amount),
                     from,
                     signature
                 );
