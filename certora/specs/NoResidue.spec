@@ -21,10 +21,8 @@ persistent ghost mathint gWithdrawShareAssets;
 
 methods {
     // ERC20: the bundler's own transfers move bundlerBal.
-    function _.transferFrom(address from, address to, uint256 amt) external
-        => cvlTransferFrom(calledContract, from, to, amt) expect bool;
-    function _.transfer(address to, uint256 amt) external with (env e)
-        => cvlTransfer(calledContract, e.msg.sender, to, amt) expect bool;
+    function _.transferFrom(address from, address to, uint256 amt) external => cvlTransferFrom(calledContract, from, to, amt) expect bool;
+    function _.transfer(address to, uint256 amt) external with (env e) => cvlTransfer(calledContract, e.msg.sender, to, amt) expect bool;
     function _.approve(address, uint256) external => cvlTrue() expect bool; // well-behaved ERC20: approve returns true
     function _.allowance(address, address) external => NONDET;              // conservative: arbitrary, moves no tokens
     function _.permit(address, address, uint256, uint256, uint8, bytes32, bytes32) external => NONDET; // sets allowance only
@@ -33,22 +31,15 @@ methods {
     function _.isAuthorized(address, address) external => NONDET; // conservative: arbitrary, moves no tokens
     function _.position(BlueBundles.Id, address) external => NONDET; // conservative: arbitrary shares/collateral
     function _.price() external => NONDET;                          // conservative: refinance-only, unreached here
-    function _.supply(BlueBundles.MarketParams mp, uint256 assets, uint256 shares, address onBehalf, bytes data) external
-        => cvlMorphoPull(mp.loanToken, assets) expect (uint256, uint256);
-    function _.supplyCollateral(BlueBundles.MarketParams mp, uint256 assets, address onBehalf, bytes data) external
-        => cvlMorphoPullVoid(mp.collateralToken, assets) expect void;
-    function _.repay(BlueBundles.MarketParams mp, uint256 assets, uint256 shares, address onBehalf, bytes data) external
-        => cvlMorphoRepay(mp.loanToken, assets, shares) expect (uint256, uint256);
-    function _.borrow(BlueBundles.MarketParams mp, uint256 assets, uint256 shares, address onBehalf, address receiver) external
-        => cvlMorphoSend(mp.loanToken, assets, receiver) expect (uint256, uint256);
-    function _.withdraw(BlueBundles.MarketParams mp, uint256 assets, uint256 shares, address onBehalf, address receiver) external
-        => cvlMorphoWithdraw(mp.loanToken, assets, shares, receiver) expect (uint256, uint256);
-    function _.withdrawCollateral(BlueBundles.MarketParams mp, uint256 assets, address onBehalf, address receiver) external
-        => cvlMorphoSendVoid(mp.collateralToken, assets, receiver) expect void;
+    function _.supply(BlueBundles.MarketParams mp, uint256 assets, uint256 shares, address onBehalf, bytes data) external => cvlMorphoPull(mp.loanToken, assets) expect (uint256, uint256);
+    function _.supplyCollateral(BlueBundles.MarketParams mp, uint256 assets, address onBehalf, bytes data) external => cvlMorphoPullVoid(mp.collateralToken, assets) expect void;
+    function _.repay(BlueBundles.MarketParams mp, uint256 assets, uint256 shares, address onBehalf, bytes data) external => cvlMorphoRepay(mp.loanToken, assets, shares) expect (uint256, uint256);
+    function _.borrow(BlueBundles.MarketParams mp, uint256 assets, uint256 shares, address onBehalf, address receiver) external => cvlMorphoSend(mp.loanToken, assets, receiver) expect (uint256, uint256);
+    function _.withdraw(BlueBundles.MarketParams mp, uint256 assets, uint256 shares, address onBehalf, address receiver) external => cvlMorphoWithdraw(mp.loanToken, assets, shares, receiver) expect (uint256, uint256);
+    function _.withdrawCollateral(BlueBundles.MarketParams mp, uint256 assets, address onBehalf, address receiver) external => cvlMorphoSendVoid(mp.collateralToken, assets, receiver) expect void;
 
     // Tie the full-close pull to the quote (accrual invariance).
-    function MorphoBalancesLib.expectedBorrowAssets(address, BlueBundles.MarketParams memory, address) internal returns (uint256)
-        => cvlExpectedBorrow();
+    function MorphoBalancesLib.expectedBorrowAssets(address, BlueBundles.MarketParams memory, address) internal returns (uint256) => cvlExpectedBorrow();
 }
 
 function cvlTrue() returns bool { return true; }
