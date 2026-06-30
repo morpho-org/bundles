@@ -19,12 +19,13 @@ methods {
     function _.transfer(address to, uint256 amt) external with(env e) => cvlTransferFrom(calledContract, e.msg.sender, to, amt) expect(bool);
 
     // Morpho: pull on supply/repay/supplyCollateral, send on borrow/withdraw/withdrawCollateral.
+    // Also assumes that the Morpho Blue address is different from the bundler's.
 
-    function _.supply(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(marketParams.loanToken, assets) expect(uint256, uint256);
-    function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(marketParams.loanToken, assets, shares) expect(uint256, uint256);
+    function _.supply(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(marketParams.loanToken, assets, shares) expect(uint256, uint256);
+    function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(marketParams.loanToken) expect(uint256, uint256);
     function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(marketParams.collateralToken, assets) expect void;
-    function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryBorrow(marketParams.loanToken, assets, receiver) expect(uint256, uint256);
-    function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryWithdraw(marketParams.loanToken, assets, shares, receiver) expect(uint256, uint256);
+    function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryBorrow(marketParams.loanToken, assets, shares, receiver) expect(uint256, uint256);
+    function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryWithdraw(marketParams.loanToken, receiver) expect(uint256, uint256);
     function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address receiver) external => summaryWithdrawCollateral(marketParams.collateralToken, assets, receiver) expect void;
 
     // Since calls are not summarized as havoc all by default, it is assumed that other calls don't change the bundler's balance of any token.
@@ -37,30 +38,36 @@ function cvlTransferFrom(address token, address from, address to, uint256 amount
     return true;
 }
 
-function summarySupply(address token, uint256 assets) returns (uint256, uint256) {
+function summarySupply(address token, uint256 assets, uint256 shares) returns (uint256, uint256) {
+    assert shares == 0;
     bundlerBalance[token] = require_uint256(bundlerBalance[token] - assets);
-    return (assets, 0);
+    uint256 returnedShares;
+    return (assets, returnedShares);
+}
+
+function summaryRepay(address token) returns (uint256, uint256) {
+    uint256 assets;
+    uint256 shares;
+    bundlerBalance[token] = require_uint256(bundlerBalance[token] - assets);
+    return (assets, shares);
 }
 
 function summarySupplyCollateral(address token, uint256 assets) {
     bundlerBalance[token] = require_uint256(bundlerBalance[token] - assets);
 }
 
-function summaryRepay(address token, uint256 assets, uint256 shares) returns (uint256, uint256) {
-    uint256 pulled;
-    bundlerBalance[token] = require_uint256(bundlerBalance[token] - pulled);
-    return (pulled, 0);
-}
-
-function summaryBorrow(address token, uint256 assets, address receiver) returns (uint256, uint256) {
+function summaryBorrow(address token, uint256 assets, uint256 shares, address receiver) returns (uint256, uint256) {
+    assert shares == 0;
     if (receiver == currentContract) bundlerBalance[token] = bundlerBalance[token] + assets;
-    return (assets, 0);
+    uint256 returnedShares;
+    return (assets, returnedShares);
 }
 
-function summaryWithdraw(address token, uint256 assets, uint256 shares, address receiver) returns (uint256, uint256) {
-    uint256 sent;
-    if (receiver == currentContract) bundlerBalance[token] = bundlerBalance[token] + sent;
-    return (sent, 0);
+function summaryWithdraw(address token, address receiver) returns (uint256, uint256) {
+    uint256 assets;
+    uint256 shares;
+    if (receiver == currentContract) bundlerBalance[token] = bundlerBalance[token] + assets;
+    return (assets, shares);
 }
 
 function summaryWithdrawCollateral(address token, uint256 assets, address receiver) {
