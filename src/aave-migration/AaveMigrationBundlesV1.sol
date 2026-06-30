@@ -24,8 +24,8 @@ contract AaveMigrationBundlesV1 is IAaveMigrationBundlesV1 {
         TokenPermit memory aTokenPermit,
         uint256 deadline
     ) external {
-        address asset = IVaultV2(vaultV2).asset();
         require(block.timestamp <= deadline, DeadlinePassed());
+        address asset = IVaultV2(vaultV2).asset();
         require(asset == IAToken(aToken).UNDERLYING_ASSET_ADDRESS(), InconsistentTokens());
 
         TokenLib.pullToken(aToken, msg.sender, amount, aTokenPermit);

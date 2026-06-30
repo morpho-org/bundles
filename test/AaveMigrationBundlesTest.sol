@@ -140,8 +140,8 @@ contract AaveV3PoolMock {
         ATokenMock _aToken = aToken[underlying];
         if (amount == type(uint256).max) amount = _aToken.balanceOf(msg.sender);
         _aToken.burn(msg.sender, amount);
-        // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        ERC20(underlying).transfer(to, amount);
+        bool success = ERC20(underlying).transfer(to, amount);
+        require(success, "transfer failed");
         return amount;
     }
 }
