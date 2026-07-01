@@ -597,6 +597,91 @@ contract MidnightBundlesTest is Test {
         );
     }
 
+    // reduceOnly.
+
+    function testBuyUnitsTargetReduceOnly(uint256 debtUnits, uint256 buyUnits) public {
+        debtUnits = bound(debtUnits, 1, uint256(type(uint128).max) / 4);
+        buyUnits = bound(buyUnits, 1, uint256(type(uint128).max) / 4);
+
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+
+        // Give the taker (borrower) existing debt to reduce.
+        offers[0].maxUnits = debtUnits;
+        collateralize(market, borrower, debtUnits);
+        Take[] memory sellTakes = new Take[](1);
+        sellTakes[0] = Take({offer: offers[0], units: debtUnits, ratifierData: hex""});
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
+            debtUnits,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            sellTakes,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+        assertEq(midnight.debt(id, borrower), debtUnits, "initial debt");
+
+        // Offer for the borrower to buy back units from, funded by the lender.
+        Offer memory sellOffer = offers[0];
+        sellOffer.buy = false;
+        sellOffer.maker = lender;
+        sellOffer.receiverIfMakerIsSeller = lender;
+        sellOffer.maxUnits = type(uint256).max;
+        sellOffer.group = bytes32(uint256(2));
+
+        Take[] memory buyTakes = new Take[](1);
+        buyTakes[0] = Take({offer: sellOffer, units: buyUnits, ratifierData: hex""});
+
+        uint256 price = TickLib.tickToPrice(MAX_TICK);
+        uint256 maxBuyerAssets = buyUnits.mulDivUp(price, WAD);
+        deal(address(loanToken), borrower, maxBuyerAssets);
+        vm.prank(borrower);
+        loanToken.approve(address(midnightBundles), maxBuyerAssets);
+
+        if (buyUnits > debtUnits) {
+            vm.prank(borrower);
+            vm.expectRevert(IMidnightBundlesV1.NotReduceOnly.selector);
+            midnightBundles.midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
+                buyUnits,
+                maxBuyerAssets,
+                borrower,
+                true,
+                _noPermit(),
+                buyTakes,
+                new CollateralWithdrawal[](0),
+                address(0),
+                0,
+                address(0),
+                type(uint256).max,
+                block.timestamp
+            );
+        } else {
+            vm.prank(borrower);
+            midnightBundles.midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
+                buyUnits,
+                maxBuyerAssets,
+                borrower,
+                true,
+                _noPermit(),
+                buyTakes,
+                new CollateralWithdrawal[](0),
+                address(0),
+                0,
+                address(0),
+                type(uint256).max,
+                block.timestamp
+            );
+            assertEq(midnight.debt(id, borrower), debtUnits - buyUnits, "debt reduced");
+        }
+    }
+
     // Referral fee.
 
     function testBuyUnitsTargetWithReferralFee(uint256 units, uint256 referralFeePct) public {

@@ -30,7 +30,7 @@ interface IMidnightBundlesV1 {
     error InconsistentSide();
     error OutOfOffers();
     error PctExceeded();
-    error ReduceOnlyCrossed();
+    error NotReduceOnly();
     error SellerAssetsTooLow();
     error Unauthorized();
     error UnitsTooHigh();

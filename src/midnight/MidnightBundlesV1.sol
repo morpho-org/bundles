@@ -84,7 +84,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
-            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, taker), ReduceOnlyCrossed());
+            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, taker), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -159,7 +159,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
-                require(unitsToTake <= takerCredit, ReduceOnlyCrossed());
+                require(unitsToTake <= takerCredit, NotReduceOnly());
             }
             try IMidnight(MIDNIGHT)
                 .take(
@@ -225,7 +225,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
-            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, taker), ReduceOnlyCrossed());
+            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, taker), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -304,7 +304,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
-                require(unitsToTake <= takerCredit, ReduceOnlyCrossed());
+                require(unitsToTake <= takerCredit, NotReduceOnly());
             }
             try IMidnight(MIDNIGHT)
                 .take(
