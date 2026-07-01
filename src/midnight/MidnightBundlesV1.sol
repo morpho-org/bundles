@@ -53,6 +53,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetUnits,
         uint256 maxBuyerAssets,
         address taker,
+        bool reduceOnly,
         TokenPermit memory loanTokenPermit,
         Take[] memory takes,
         CollateralWithdrawal[] memory collateralWithdrawals,
@@ -83,6 +84,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, taker), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -119,6 +121,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetUnits,
         uint256 minSellerAssets,
         address taker,
+        bool reduceOnly,
         address receiver,
         CollateralSupply[] memory collateralSupplies,
         Take[] memory takes,
@@ -154,6 +157,10 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            if (reduceOnly) {
+                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
+                require(unitsToTake <= takerCredit, NotReduceOnly());
+            }
             try IMidnight(MIDNIGHT)
                 .take(
                     takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(this), address(0), ""
@@ -182,6 +189,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetBuyerAssets,
         uint256 minUnits,
         address taker,
+        bool reduceOnly,
         TokenPermit memory loanTokenPermit,
         Take[] memory takes,
         CollateralWithdrawal[] memory collateralWithdrawals,
@@ -217,6 +225,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, taker), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -252,6 +261,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetSellerAssets,
         uint256 maxUnits,
         address taker,
+        bool reduceOnly,
         address receiver,
         CollateralSupply[] memory collateralSupplies,
         Take[] memory takes,
@@ -292,6 +302,10 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            if (reduceOnly) {
+                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
+                require(unitsToTake <= takerCredit, NotReduceOnly());
+            }
             try IMidnight(MIDNIGHT)
                 .take(
                     takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(this), address(0), ""
