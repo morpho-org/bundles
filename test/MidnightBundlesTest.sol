@@ -5,11 +5,13 @@ pragma solidity ^0.8.0;
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {Market, Offer, CollateralParams} from "../lib/midnight/src/interfaces/IMidnight.sol";
 import {UtilsLib} from "../lib/midnight/src/libraries/UtilsLib.sol";
+import {IdLib} from "../lib/midnight/src/libraries/IdLib.sol";
 import {TickLib, MAX_TICK} from "../lib/midnight/src/libraries/TickLib.sol";
 import {
     WAD,
     ORACLE_PRICE_SCALE,
     DEFAULT_TICK_SPACING,
+    MAX_CONTINUOUS_FEE,
     maxSettlementFee,
     maxLif
 } from "../lib/midnight/src/libraries/ConstantsLib.sol";
@@ -20,13 +22,10 @@ import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
 import {MidnightBundlesV1} from "../src/midnight/MidnightBundlesV1.sol";
 import {IMidnightBundlesV1, Take, CollateralWithdrawal, CollateralSupply} from "../src/midnight/IMidnightBundlesV1.sol";
-import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
-import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
+import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract MidnightBundlesTest is Test {
     using UtilsLib for uint256;
-
-    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     mapping(address => uint256) internal privateKey;
 
@@ -81,7 +80,6 @@ contract MidnightBundlesTest is Test {
 
         midnightBundles = new MidnightBundlesV1(address(midnight));
         assertEq(midnightBundles.MIDNIGHT(), address(midnight));
-        deployCodeTo("Permit2", PERMIT2);
 
         // Set settlement fees to max for all breakpoints.
         midnight.setFeeClaimer(makeAddr("feeClaimer"));
@@ -176,42 +174,6 @@ contract MidnightBundlesTest is Test {
 
     function _noPermit() internal pure returns (TokenPermit memory) {}
 
-    function _permit2(address token, address owner, uint256 amount, uint256 nonce, uint256 deadline)
-        internal
-        view
-        returns (TokenPermit memory)
-    {
-        bytes32 tokenPermissionsHash =
-            keccak256(abi.encode(keccak256("TokenPermissions(address token,uint256 amount)"), token, amount));
-        bytes32 permitHash = keccak256(
-            abi.encode(
-                keccak256(
-                    "PermitTransferFrom(TokenPermissions permitted,address spender,uint256 nonce,uint256 deadline)TokenPermissions(address token,uint256 amount)"
-                ),
-                tokenPermissionsHash,
-                address(midnightBundles),
-                nonce,
-                deadline
-            )
-        );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", VendorPermit2(PERMIT2).DOMAIN_SEPARATOR(), permitHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey[owner], digest);
-        return TokenPermit({kind: PermitKind.Permit2, data: abi.encode(nonce, deadline, abi.encodePacked(r, s, v))});
-    }
-
-    function _erc2612(address token, address owner, uint256 amount, uint256 nonce, uint256 deadline)
-        internal
-        view
-        returns (TokenPermit memory)
-    {
-        bytes32 structHash = keccak256(
-            abi.encode(ERC20Permit(token).PERMIT_TYPEHASH(), owner, address(midnightBundles), amount, nonce, deadline)
-        );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", ERC20Permit(token).DOMAIN_SEPARATOR(), structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey[owner], digest);
-        return TokenPermit({kind: PermitKind.ERC2612, data: abi.encode(deadline, v, r, s)});
-    }
-
     function testUnauthorized() public {
         offers[0].buy = false;
         offers[0].maker = borrower;
@@ -225,12 +187,90 @@ contract MidnightBundlesTest is Test {
             100,
             0,
             lender,
+            false,
             _noPermit(),
             takes,
             new CollateralWithdrawal[](0),
             address(0),
             0,
             address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+    }
+
+    function testBuyUnitsTargetRevertsAboveMaxContinuousFee() public {
+        uint256 units = 100e18;
+        uint256 continuousFee = MAX_CONTINUOUS_FEE;
+        midnight.setMarketContinuousFee(id, continuousFee);
+
+        offers[0].buy = false;
+        offers[0].maker = borrower;
+        offers[0].receiverIfMakerIsSeller = borrower;
+        offers[0].maxUnits = units;
+        offers[0].continuousFeeCap = continuousFee;
+        collateralize(market, borrower, units);
+
+        Take[] memory takes = new Take[](1);
+        takes[0] = Take({offer: offers[0], units: units, ratifierData: hex""});
+
+        vm.prank(lender);
+        vm.expectRevert(IMidnightBundlesV1.ContinuousFeeAboveMax.selector);
+        midnightBundles.midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
+            units,
+            type(uint256).max,
+            lender,
+            false,
+            _noPermit(),
+            takes,
+            new CollateralWithdrawal[](0),
+            address(0),
+            0,
+            address(0),
+            continuousFee - 1,
+            block.timestamp
+        );
+    }
+
+    function testSellUnitsTargetRevertsWhenCallbackRaisesContinuousFeeBeforeNextTake() public {
+        uint256 firstUnits = 40e18;
+        uint256 secondUnits = 60e18;
+        uint256 targetUnits = firstUnits + secondUnits;
+        ContinuousFeeChangingMidnightFake fakeMidnight = new ContinuousFeeChangingMidnightFake();
+        MidnightBundlesV1 fakeBundles = new MidnightBundlesV1(address(fakeMidnight));
+
+        Market memory fakeMarket;
+        fakeMarket.chainId = block.chainid;
+        fakeMarket.midnight = address(fakeMidnight);
+        fakeMarket.loanToken = address(loanToken);
+        fakeMarket.maturity = block.timestamp + 100;
+
+        Offer memory firstOffer;
+        firstOffer.buy = true;
+        firstOffer.maker = lender;
+        firstOffer.market = fakeMarket;
+        firstOffer.maxUnits = firstUnits;
+        Offer memory secondOffer = firstOffer;
+        secondOffer.group = bytes32(uint256(1));
+        secondOffer.maxUnits = secondUnits;
+
+        Take[] memory takes = new Take[](2);
+        takes[0] = Take({offer: firstOffer, units: firstUnits, ratifierData: hex""});
+        takes[1] = Take({offer: secondOffer, units: secondUnits, ratifierData: hex""});
+
+        vm.prank(borrower);
+        vm.expectRevert(IMidnightBundlesV1.ContinuousFeeAboveMax.selector);
+        fakeBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
+            targetUnits,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            takes,
+            0,
+            address(0),
+            MAX_CONTINUOUS_FEE - 1,
             block.timestamp
         );
     }
@@ -250,7 +290,17 @@ contract MidnightBundlesTest is Test {
         if (offerUnits1 >= units - fromOffer0) {
             vm.prank(borrower);
             midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-                units, 0, borrower, borrower, new CollateralSupply[](0), takes, 0, address(0), block.timestamp
+                units,
+                0,
+                borrower,
+                false,
+                borrower,
+                new CollateralSupply[](0),
+                takes,
+                0,
+                address(0),
+                type(uint256).max,
+                block.timestamp
             );
 
             uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
@@ -262,7 +312,17 @@ contract MidnightBundlesTest is Test {
             vm.prank(borrower);
             vm.expectRevert(IMidnightBundlesV1.OutOfOffers.selector);
             midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-                units, 0, borrower, borrower, new CollateralSupply[](0), takes, 0, address(0), block.timestamp
+                units,
+                0,
+                borrower,
+                false,
+                borrower,
+                new CollateralSupply[](0),
+                takes,
+                0,
+                address(0),
+                type(uint256).max,
+                block.timestamp
             );
         }
     }
@@ -301,12 +361,14 @@ contract MidnightBundlesTest is Test {
                 targetBuyerAssets,
                 0,
                 lender,
+                false,
                 _noPermit(),
                 takes,
                 new CollateralWithdrawal[](0),
                 address(0),
                 0,
                 address(0),
+                type(uint256).max,
                 block.timestamp
             );
 
@@ -322,145 +384,17 @@ contract MidnightBundlesTest is Test {
                 targetBuyerAssets,
                 0,
                 lender,
+                false,
                 _noPermit(),
                 takes,
                 new CollateralWithdrawal[](0),
                 address(0),
                 0,
                 address(0),
+                type(uint256).max,
                 block.timestamp
             );
         }
-    }
-
-    function testBuyBuyerAssetsTargetPermit2() public {
-        uint256 targetBuyerAssets = 100e18;
-        vm.prank(lender);
-        loanToken.approve(address(midnightBundles), 0);
-
-        uint256 price = TickLib.tickToPrice(MAX_TICK);
-        uint256 units = targetBuyerAssets.mulDivUp(WAD, price);
-        for (uint256 i; i <= 6; i++) {
-            midnight.setMarketSettlementFee(id, i, 0);
-        }
-
-        offers[0].buy = false;
-        offers[0].maker = borrower;
-        offers[0].receiverIfMakerIsSeller = borrower;
-        offers[0].maxUnits = units;
-        collateralize(market, borrower, units);
-
-        Take[] memory takes = new Take[](1);
-        takes[0] = Take({offer: offers[0], units: units, ratifierData: hex""});
-
-        vm.startPrank(lender);
-        loanToken.approve(PERMIT2, targetBuyerAssets);
-        vm.stopPrank();
-
-        TokenPermit memory permit =
-            _permit2(address(loanToken), lender, targetBuyerAssets, 0, vm.getBlockTimestamp() + 1);
-        vm.prank(lender);
-        midnightBundles.midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral(
-            targetBuyerAssets,
-            0,
-            lender,
-            permit,
-            takes,
-            new CollateralWithdrawal[](0),
-            address(0),
-            0,
-            address(0),
-            block.timestamp
-        );
-
-        assertEq(loanToken.allowance(lender, address(midnightBundles)), 0);
-        assertEq(loanToken.allowance(lender, PERMIT2), 0);
-        assertEq(loanToken.balanceOf(lender), type(uint256).max - targetBuyerAssets);
-        assertEq(midnight.credit(id, lender), units);
-    }
-
-    function testBuyBuyerAssetsTargetPermit() public {
-        uint256 targetBuyerAssets = 100e18;
-        vm.prank(lender);
-        loanToken.approve(address(midnightBundles), 0);
-
-        uint256 price = TickLib.tickToPrice(MAX_TICK);
-        uint256 units = targetBuyerAssets.mulDivUp(WAD, price);
-        for (uint256 i; i <= 6; i++) {
-            midnight.setMarketSettlementFee(id, i, 0);
-        }
-
-        offers[0].buy = false;
-        offers[0].maker = borrower;
-        offers[0].receiverIfMakerIsSeller = borrower;
-        offers[0].maxUnits = units;
-        collateralize(market, borrower, units);
-
-        Take[] memory takes = new Take[](1);
-        takes[0] = Take({offer: offers[0], units: units, ratifierData: hex""});
-
-        TokenPermit memory permit =
-            _erc2612(address(loanToken), lender, targetBuyerAssets, 0, vm.getBlockTimestamp() + 1);
-        vm.prank(lender);
-        midnightBundles.midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral(
-            targetBuyerAssets,
-            0,
-            lender,
-            permit,
-            takes,
-            new CollateralWithdrawal[](0),
-            address(0),
-            0,
-            address(0),
-            block.timestamp
-        );
-
-        assertEq(loanToken.allowance(lender, address(midnightBundles)), 0);
-        assertEq(loanToken.balanceOf(lender), type(uint256).max - targetBuyerAssets);
-        assertEq(midnight.credit(id, lender), units);
-    }
-
-    function testBuyUnitsTargetPermit2() public {
-        uint256 units = 100e18;
-        uint256 price = TickLib.tickToPrice(MAX_TICK);
-        uint256 maxBuyerAssets = units.mulDivUp(price, WAD);
-        for (uint256 i; i <= 6; i++) {
-            midnight.setMarketSettlementFee(id, i, 0);
-        }
-
-        offers[0].buy = false;
-        offers[0].maker = borrower;
-        offers[0].receiverIfMakerIsSeller = borrower;
-        offers[0].maxUnits = units;
-        collateralize(market, borrower, units);
-
-        Take[] memory takes = new Take[](1);
-        takes[0] = Take({offer: offers[0], units: units, ratifierData: hex""});
-
-        vm.startPrank(lender);
-        loanToken.approve(address(midnightBundles), 0);
-        loanToken.approve(PERMIT2, maxBuyerAssets);
-        vm.stopPrank();
-
-        TokenPermit memory permit = _permit2(address(loanToken), lender, maxBuyerAssets, 0, vm.getBlockTimestamp() + 1);
-        vm.prank(lender);
-        midnightBundles.midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
-            units,
-            maxBuyerAssets,
-            lender,
-            permit,
-            takes,
-            new CollateralWithdrawal[](0),
-            address(0),
-            0,
-            address(0),
-            block.timestamp
-        );
-
-        assertEq(loanToken.allowance(lender, address(midnightBundles)), 0);
-        assertEq(loanToken.allowance(lender, PERMIT2), 0);
-        assertEq(loanToken.balanceOf(lender), type(uint256).max - maxBuyerAssets);
-        assertEq(midnight.credit(id, lender), units);
     }
 
     function testBuyUnitsTargetInconsistentMarket() public {
@@ -487,12 +421,14 @@ contract MidnightBundlesTest is Test {
             2,
             type(uint256).max,
             lender,
+            false,
             _noPermit(),
             takes,
             new CollateralWithdrawal[](0),
             address(0),
             0,
             address(0),
+            type(uint256).max,
             block.timestamp
         );
     }
@@ -512,7 +448,17 @@ contract MidnightBundlesTest is Test {
         vm.prank(borrower);
         vm.expectRevert(IMidnightBundlesV1.InconsistentMarket.selector);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-            2, 0, borrower, borrower, new CollateralSupply[](0), takes, 0, address(0), block.timestamp
+            2,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            takes,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
         );
     }
 
@@ -544,12 +490,14 @@ contract MidnightBundlesTest is Test {
             1000,
             0,
             lender,
+            false,
             _noPermit(),
             takes,
             new CollateralWithdrawal[](0),
             address(0),
             0,
             address(0),
+            type(uint256).max,
             block.timestamp
         );
     }
@@ -586,11 +534,13 @@ contract MidnightBundlesTest is Test {
                 targetSellerAssets,
                 type(uint256).max,
                 borrower,
+                false,
                 borrower,
                 new CollateralSupply[](0),
                 takes,
                 0,
                 address(0),
+                type(uint256).max,
                 block.timestamp
             );
 
@@ -606,11 +556,13 @@ contract MidnightBundlesTest is Test {
                 targetSellerAssets,
                 type(uint256).max,
                 borrower,
+                false,
                 borrower,
                 new CollateralSupply[](0),
                 takes,
                 0,
                 address(0),
+                type(uint256).max,
                 block.timestamp
             );
         }
@@ -634,13 +586,100 @@ contract MidnightBundlesTest is Test {
             1000,
             type(uint256).max,
             borrower,
+            false,
             borrower,
             new CollateralSupply[](0),
             takes,
             0,
             address(0),
+            type(uint256).max,
             block.timestamp
         );
+    }
+
+    // reduceOnly.
+
+    function testBuyUnitsTargetReduceOnly(uint256 debtUnits, uint256 buyUnits) public {
+        debtUnits = bound(debtUnits, 1, uint256(type(uint128).max) / 4);
+        buyUnits = bound(buyUnits, 1, uint256(type(uint128).max) / 4);
+
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+
+        // Give the taker (borrower) existing debt to reduce.
+        offers[0].maxUnits = debtUnits;
+        collateralize(market, borrower, debtUnits);
+        Take[] memory sellTakes = new Take[](1);
+        sellTakes[0] = Take({offer: offers[0], units: debtUnits, ratifierData: hex""});
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
+            debtUnits,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            sellTakes,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+        assertEq(midnight.debt(id, borrower), debtUnits, "initial debt");
+
+        // Offer for the borrower to buy back units from, funded by the lender.
+        Offer memory sellOffer = offers[0];
+        sellOffer.buy = false;
+        sellOffer.maker = lender;
+        sellOffer.receiverIfMakerIsSeller = lender;
+        sellOffer.maxUnits = type(uint256).max;
+        sellOffer.group = bytes32(uint256(2));
+
+        Take[] memory buyTakes = new Take[](1);
+        buyTakes[0] = Take({offer: sellOffer, units: buyUnits, ratifierData: hex""});
+
+        uint256 price = TickLib.tickToPrice(MAX_TICK);
+        uint256 maxBuyerAssets = buyUnits.mulDivUp(price, WAD);
+        deal(address(loanToken), borrower, maxBuyerAssets);
+        vm.prank(borrower);
+        loanToken.approve(address(midnightBundles), maxBuyerAssets);
+
+        if (buyUnits > debtUnits) {
+            vm.prank(borrower);
+            vm.expectRevert(IMidnightBundlesV1.NotReduceOnly.selector);
+            midnightBundles.midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
+                buyUnits,
+                maxBuyerAssets,
+                borrower,
+                true,
+                _noPermit(),
+                buyTakes,
+                new CollateralWithdrawal[](0),
+                address(0),
+                0,
+                address(0),
+                type(uint256).max,
+                block.timestamp
+            );
+        } else {
+            vm.prank(borrower);
+            midnightBundles.midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
+                buyUnits,
+                maxBuyerAssets,
+                borrower,
+                true,
+                _noPermit(),
+                buyTakes,
+                new CollateralWithdrawal[](0),
+                address(0),
+                0,
+                address(0),
+                type(uint256).max,
+                block.timestamp
+            );
+            assertEq(midnight.debt(id, borrower), debtUnits - buyUnits, "debt reduced");
+        }
     }
 
     // Referral fee.
@@ -673,12 +712,14 @@ contract MidnightBundlesTest is Test {
             units,
             type(uint256).max,
             lender,
+            false,
             _noPermit(),
             takes,
             new CollateralWithdrawal[](0),
             address(0),
             referralFeePct,
             referrer,
+            type(uint256).max,
             block.timestamp
         );
 
@@ -713,7 +754,17 @@ contract MidnightBundlesTest is Test {
 
         vm.prank(borrower);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-            units, 0, borrower, receiver, new CollateralSupply[](0), takes, referralFeePct, referrer, block.timestamp
+            units,
+            0,
+            borrower,
+            false,
+            receiver,
+            new CollateralSupply[](0),
+            takes,
+            referralFeePct,
+            referrer,
+            type(uint256).max,
+            block.timestamp
         );
 
         assertEq(midnight.debt(id, borrower), units, "units sold");
@@ -752,12 +803,14 @@ contract MidnightBundlesTest is Test {
             targetBuyerAssets,
             0,
             lender,
+            false,
             _noPermit(),
             takes,
             new CollateralWithdrawal[](0),
             address(0),
             referralFeePct,
             referrer,
+            type(uint256).max,
             block.timestamp
         );
 
@@ -796,11 +849,13 @@ contract MidnightBundlesTest is Test {
             targetSellerAssets,
             type(uint256).max,
             borrower,
+            false,
             receiver,
             new CollateralSupply[](0),
             takes,
             referralFeePct,
             referrer,
+            type(uint256).max,
             block.timestamp
         );
 
@@ -826,7 +881,17 @@ contract MidnightBundlesTest is Test {
         collateralize(market, borrower, units);
         vm.prank(borrower);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-            units, 0, borrower, borrower, new CollateralSupply[](0), sellTakes, 0, address(0), block.timestamp
+            units,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            sellTakes,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
         );
 
         // Bound assets so the derived units never exceed outstanding debt.
@@ -876,7 +941,17 @@ contract MidnightBundlesTest is Test {
         collateralize(market, borrower, debt);
         vm.prank(borrower);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-            debt, 0, borrower, borrower, new CollateralSupply[](0), sellTakes, 0, address(0), block.timestamp
+            debt,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            sellTakes,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
         );
 
         uint256 assets = debt.mulDivDown(WAD, WAD - referralFeePct);
@@ -919,12 +994,14 @@ contract MidnightBundlesTest is Test {
             1,
             0,
             lender,
+            false,
             _noPermit(),
             buyTakes,
             new CollateralWithdrawal[](0),
             address(0),
             WAD,
             address(0),
+            type(uint256).max,
             block.timestamp
         );
         vm.expectRevert(IMidnightBundlesV1.PctExceeded.selector);
@@ -932,12 +1009,14 @@ contract MidnightBundlesTest is Test {
             1,
             0,
             lender,
+            false,
             _noPermit(),
             buyTakes,
             new CollateralWithdrawal[](0),
             address(0),
             WAD,
             address(0),
+            type(uint256).max,
             block.timestamp
         );
         vm.stopPrank();
@@ -945,11 +1024,31 @@ contract MidnightBundlesTest is Test {
         vm.startPrank(borrower);
         vm.expectRevert(IMidnightBundlesV1.PctExceeded.selector);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-            1, 0, borrower, borrower, new CollateralSupply[](0), takes, WAD, address(0), block.timestamp
+            1,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            takes,
+            WAD,
+            address(0),
+            type(uint256).max,
+            block.timestamp
         );
         vm.expectRevert(IMidnightBundlesV1.PctExceeded.selector);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget(
-            1, type(uint256).max, borrower, borrower, new CollateralSupply[](0), takes, WAD, address(0), block.timestamp
+            1,
+            type(uint256).max,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            takes,
+            WAD,
+            address(0),
+            type(uint256).max,
+            block.timestamp
         );
         vm.expectRevert(IMidnightBundlesV1.PctExceeded.selector);
         midnightBundles.midnightBundlesV1RepayAndWithdrawCollateral(
@@ -974,22 +1073,54 @@ contract MidnightBundlesTest is Test {
         vm.startPrank(lender);
         vm.expectRevert(IMidnightBundlesV1.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
-            1, 0, lender, _noPermit(), takes, new CollateralWithdrawal[](0), address(0), 0, address(0), past
+            1,
+            0,
+            lender,
+            false,
+            _noPermit(),
+            takes,
+            new CollateralWithdrawal[](0),
+            address(0),
+            0,
+            address(0),
+            type(uint256).max,
+            past
         );
         vm.expectRevert(IMidnightBundlesV1.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral(
-            1, 0, lender, _noPermit(), takes, new CollateralWithdrawal[](0), address(0), 0, address(0), past
+            1,
+            0,
+            lender,
+            false,
+            _noPermit(),
+            takes,
+            new CollateralWithdrawal[](0),
+            address(0),
+            0,
+            address(0),
+            type(uint256).max,
+            past
         );
         vm.stopPrank();
 
         vm.startPrank(borrower);
         vm.expectRevert(IMidnightBundlesV1.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-            1, 0, borrower, borrower, new CollateralSupply[](0), takes, 0, address(0), past
+            1, 0, borrower, false, borrower, new CollateralSupply[](0), takes, 0, address(0), type(uint256).max, past
         );
         vm.expectRevert(IMidnightBundlesV1.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget(
-            1, type(uint256).max, borrower, borrower, new CollateralSupply[](0), takes, 0, address(0), past
+            1,
+            type(uint256).max,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            takes,
+            0,
+            address(0),
+            type(uint256).max,
+            past
         );
         vm.expectRevert(IMidnightBundlesV1.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV1RepayAndWithdrawCollateral(
@@ -1051,7 +1182,18 @@ contract MidnightBundlesTest is Test {
 
         vm.prank(lender);
         midnightBundles.midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
-            units, maxBuyerAssets, lender, _noPermit(), takes, withdrawals, receiver, 0, address(0), block.timestamp
+            units,
+            maxBuyerAssets,
+            lender,
+            false,
+            _noPermit(),
+            takes,
+            withdrawals,
+            receiver,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -1090,7 +1232,18 @@ contract MidnightBundlesTest is Test {
 
         vm.prank(lender);
         midnightBundles.midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral(
-            targetBuyerAssets, 0, lender, _noPermit(), takes, withdrawals, receiver, 0, address(0), block.timestamp
+            targetBuyerAssets,
+            0,
+            lender,
+            false,
+            _noPermit(),
+            takes,
+            withdrawals,
+            receiver,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -1119,45 +1272,12 @@ contract MidnightBundlesTest is Test {
 
         vm.prank(borrower);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-            units, 0, borrower, borrower, supplies, takes, 0, address(0), block.timestamp
+            units, 0, borrower, false, borrower, supplies, takes, 0, address(0), type(uint256).max, block.timestamp
         );
 
         for (uint256 i; i < numCollaterals; i++) {
             assertEq(midnight.collateral(id, borrower, i), supplies[i].assets);
         }
-        assertEq(midnight.debt(id, borrower), units);
-    }
-
-    function testSellUnitsTargetPermit2() public {
-        uint256 units = 100e18;
-        offers[0].maxUnits = units;
-
-        uint256 amount = _collateralAmount(0, units);
-        deal(market.collateralParams[0].token, borrower, amount);
-
-        Take[] memory takes = new Take[](1);
-        takes[0] = Take({offer: offers[0], units: units, ratifierData: hex""});
-
-        address collateralToken = market.collateralParams[0].token;
-        vm.startPrank(borrower);
-        ERC20(collateralToken).approve(address(midnightBundles), 0);
-        ERC20(collateralToken).approve(PERMIT2, amount);
-        vm.stopPrank();
-
-        CollateralSupply[] memory supplies = new CollateralSupply[](1);
-        supplies[0] = CollateralSupply({
-            collateralIndex: 0,
-            assets: amount,
-            permit: _permit2(collateralToken, borrower, amount, 0, vm.getBlockTimestamp() + 1)
-        });
-        vm.prank(borrower);
-        midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-            units, 0, borrower, borrower, supplies, takes, 0, address(0), block.timestamp
-        );
-
-        assertEq(ERC20(collateralToken).allowance(borrower, address(midnightBundles)), 0);
-        assertEq(ERC20(collateralToken).allowance(borrower, PERMIT2), 0);
-        assertEq(midnight.collateral(id, borrower, 0), amount);
         assertEq(midnight.debt(id, borrower), units);
     }
 
@@ -1180,7 +1300,17 @@ contract MidnightBundlesTest is Test {
         uint256 collateralAmount = midnight.collateral(id, borrower, 0);
         vm.prank(borrower);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-            units, 0, borrower, borrower, new CollateralSupply[](0), sellTakes, 0, address(0), block.timestamp
+            units,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            sellTakes,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
         );
 
         uint256 maxWithdrawable = collateralAmount - _collateralAmount(0, units - repayUnits);
@@ -1236,52 +1366,22 @@ contract MidnightBundlesTest is Test {
 
         vm.prank(borrower);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget(
-            targetSellerAssets, type(uint256).max, borrower, borrower, supplies, takes, 0, address(0), block.timestamp
+            targetSellerAssets,
+            type(uint256).max,
+            borrower,
+            false,
+            borrower,
+            supplies,
+            takes,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
         );
 
         for (uint256 i; i < numCollaterals; i++) {
             assertEq(midnight.collateral(id, borrower, i), supplies[i].assets);
         }
-        assertEq(loanToken.balanceOf(borrower), targetSellerAssets);
-    }
-
-    function testSellSellerAssetsTargetPermit2() public {
-        deal(address(loanToken), address(midnightBundles), 0);
-
-        uint256 units = 100e18;
-        offers[0].maxUnits = units;
-
-        uint256 price = TickLib.tickToPrice(MAX_TICK);
-        midnight.touchMarket(market);
-        uint256 _settlementFee = midnight.settlementFee(id, market.maturity - vm.getBlockTimestamp());
-        uint256 targetSellerAssets = units.mulDivDown(price - _settlementFee, WAD);
-
-        uint256 amount = _collateralAmount(0, units);
-        deal(market.collateralParams[0].token, borrower, amount);
-
-        Take[] memory takes = new Take[](1);
-        takes[0] = Take({offer: offers[0], units: units, ratifierData: hex""});
-
-        address collateralToken = market.collateralParams[0].token;
-        vm.startPrank(borrower);
-        ERC20(collateralToken).approve(address(midnightBundles), 0);
-        ERC20(collateralToken).approve(PERMIT2, amount);
-        vm.stopPrank();
-
-        CollateralSupply[] memory supplies = new CollateralSupply[](1);
-        supplies[0] = CollateralSupply({
-            collateralIndex: 0,
-            assets: amount,
-            permit: _permit2(collateralToken, borrower, amount, 0, vm.getBlockTimestamp() + 1)
-        });
-        vm.prank(borrower);
-        midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget(
-            targetSellerAssets, type(uint256).max, borrower, borrower, supplies, takes, 0, address(0), block.timestamp
-        );
-
-        assertEq(ERC20(collateralToken).allowance(borrower, address(midnightBundles)), 0);
-        assertEq(ERC20(collateralToken).allowance(borrower, PERMIT2), 0);
-        assertEq(midnight.collateral(id, borrower, 0), amount);
         assertEq(loanToken.balanceOf(borrower), targetSellerAssets);
     }
 
@@ -1312,12 +1412,14 @@ contract MidnightBundlesTest is Test {
             units,
             price - 1,
             lender,
+            false,
             _noPermit(),
             takes,
             new CollateralWithdrawal[](0),
             address(0),
             0,
             address(0),
+            type(uint256).max,
             block.timestamp
         );
     }
@@ -1342,7 +1444,17 @@ contract MidnightBundlesTest is Test {
         vm.prank(borrower);
         vm.expectRevert(IMidnightBundlesV1.SellerAssetsTooLow.selector);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-            units, minSellerAssets, borrower, borrower, new CollateralSupply[](0), takes, 0, address(0), block.timestamp
+            units,
+            minSellerAssets,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            takes,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
         );
     }
 
@@ -1371,12 +1483,14 @@ contract MidnightBundlesTest is Test {
             units.mulDivUp(price, WAD),
             units + 2,
             lender,
+            false,
             _noPermit(),
             takes,
             new CollateralWithdrawal[](0),
             address(0),
             0,
             address(0),
+            type(uint256).max,
             block.timestamp
         );
     }
@@ -1404,11 +1518,13 @@ contract MidnightBundlesTest is Test {
             targetSellerAssets,
             price + 1,
             borrower,
+            false,
             borrower,
             new CollateralSupply[](0),
             takes,
             0,
             address(0),
+            type(uint256).max,
             block.timestamp
         );
     }
@@ -1432,7 +1548,17 @@ contract MidnightBundlesTest is Test {
         // Offer 0 has 70 available; bundler caps and fills 30 from offer 1.
         vm.prank(borrower);
         midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
-            100, 0, borrower, borrower, new CollateralSupply[](0), takes, 0, address(0), block.timestamp
+            100,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            takes,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
         );
 
         assertEq(midnight.consumed(offers[0].maker, offers[0].group), 100, "consumed offer 0");
@@ -1466,11 +1592,13 @@ contract MidnightBundlesTest is Test {
             targetSellerAssets,
             type(uint256).max,
             borrower,
+            false,
             borrower,
             new CollateralSupply[](0),
             takes,
             0,
             address(0),
+            type(uint256).max,
             block.timestamp
         );
 
@@ -1516,12 +1644,14 @@ contract MidnightBundlesTest is Test {
             100,
             maxBuyerAssets,
             lender,
+            false,
             _noPermit(),
             takes,
             new CollateralWithdrawal[](0),
             address(0),
             0,
             address(0),
+            type(uint256).max,
             block.timestamp
         );
 
@@ -1563,12 +1693,14 @@ contract MidnightBundlesTest is Test {
             targetBuyerAssets,
             0,
             lender,
+            false,
             _noPermit(),
             takes,
             new CollateralWithdrawal[](0),
             address(0),
             0,
             address(0),
+            type(uint256).max,
             block.timestamp
         );
 
@@ -1576,5 +1708,31 @@ contract MidnightBundlesTest is Test {
         uint256 consumed1 = midnight.consumed(offers[1].maker, offers[1].group);
         assertEq(consumed0, 100, "consumed offer 0");
         assertEq(consumed0 - 30 + consumed1, midnight.debt(id, borrower), "total consumed");
+    }
+}
+
+contract ContinuousFeeChangingMidnightFake {
+    uint256 internal continuousFeeValue;
+    uint256 internal takeCalls;
+
+    function touchMarket(Market memory market) external pure returns (bytes32) {
+        return IdLib.toId(market);
+    }
+
+    function continuousFee(bytes32) external view returns (uint256) {
+        return continuousFeeValue;
+    }
+
+    function consumed(address, bytes32) external pure returns (uint256) {
+        return 0;
+    }
+
+    function take(Offer memory, bytes memory, uint256, address, address, address, bytes memory)
+        external
+        returns (uint256, uint256)
+    {
+        takeCalls++;
+        if (takeCalls == 1) continuousFeeValue = MAX_CONTINUOUS_FEE;
+        return (0, 0);
     }
 }

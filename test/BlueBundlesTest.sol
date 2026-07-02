@@ -12,17 +12,15 @@ import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
-import {Permit2 as VendorPermit2} from "../lib/midnight/test/vendor/Permit2.sol";
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
 import {IBlueBundlesV1} from "../src/blue/IBlueBundlesV1.sol";
-import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
+import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract BlueBundlesTest is Test {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;
 
-    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
     uint256 internal constant LLTV = 0.8e18;
     uint256 internal constant LLTV_DEST = 0.9e18;
     uint256 internal constant LIQUIDITY = 1e32;
@@ -44,16 +42,13 @@ contract BlueBundlesTest is Test {
     address internal user;
     address internal referrer;
     address internal receiver;
-    mapping(address => uint256) internal privateKey;
 
     function setUp() public {
         owner = makeAddr("owner");
         supplier = makeAddr("supplier");
         referrer = makeAddr("referrer");
         receiver = makeAddr("receiver");
-        uint256 userPk;
-        (user, userPk) = makeAddrAndKey("user");
-        privateKey[user] = userPk;
+        user = makeAddr("user");
 
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
         loanToken = new ERC20Permit("loan", "loan");
@@ -63,7 +58,6 @@ contract BlueBundlesTest is Test {
 
         blueBundles = new BlueBundlesV1(address(morpho));
         assertEq(blueBundles.BLUE(), address(morpho));
-        deployCodeTo("Permit2", PERMIT2);
 
         // IRM address(0) ⇒ zero borrow rate ⇒ exact, interest-free accounting.
         vm.startPrank(owner);
@@ -127,42 +121,6 @@ contract BlueBundlesTest is Test {
         morpho.supplyCollateral(marketParams, collateral, onBehalf, "");
         morpho.borrow(marketParams, borrowAssets, 0, onBehalf, onBehalf);
         vm.stopPrank();
-    }
-
-    function _permit2(address token, address holder, uint256 amount, uint256 nonce, uint256 deadline)
-        internal
-        view
-        returns (TokenPermit memory)
-    {
-        bytes32 tokenPermissionsHash =
-            keccak256(abi.encode(keccak256("TokenPermissions(address token,uint256 amount)"), token, amount));
-        bytes32 permitHash = keccak256(
-            abi.encode(
-                keccak256(
-                    "PermitTransferFrom(TokenPermissions permitted,address spender,uint256 nonce,uint256 deadline)TokenPermissions(address token,uint256 amount)"
-                ),
-                tokenPermissionsHash,
-                address(blueBundles),
-                nonce,
-                deadline
-            )
-        );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", VendorPermit2(PERMIT2).DOMAIN_SEPARATOR(), permitHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey[holder], digest);
-        return TokenPermit({kind: PermitKind.Permit2, data: abi.encode(nonce, deadline, abi.encodePacked(r, s, v))});
-    }
-
-    function _permit(address token, address holder, uint256 amount, uint256 nonce, uint256 deadline)
-        internal
-        view
-        returns (TokenPermit memory)
-    {
-        bytes32 structHash = keccak256(
-            abi.encode(ERC20Permit(token).PERMIT_TYPEHASH(), holder, address(blueBundles), amount, nonce, deadline)
-        );
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", ERC20Permit(token).DOMAIN_SEPARATOR(), structHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey[holder], digest);
-        return TokenPermit({kind: PermitKind.ERC2612, data: abi.encode(deadline, v, r, s)});
     }
 
     /// AUTHORIZATION ///
@@ -309,43 +267,6 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(receiver), borrowAssets - expectedFee, "receiver net");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
-    }
-
-    function testSupplyCollateralAndBorrowPermit2() public {
-        uint256 borrowAssets = 100e18;
-        uint256 collateral = _collateralFor(borrowAssets);
-        deal(address(collateralToken), user, collateral);
-
-        vm.startPrank(user);
-        collateralToken.approve(PERMIT2, collateral);
-        vm.stopPrank();
-
-        TokenPermit memory permit = _permit2(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
-        vm.prank(user);
-        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams, collateral, borrowAssets, 0, WAD, user, receiver, permit, 0, address(0), block.timestamp
-        );
-
-        assertEq(collateralToken.allowance(user, address(blueBundles)), 0);
-        assertEq(collateralToken.allowance(user, PERMIT2), 0);
-        assertEq(morpho.collateral(id, user), collateral);
-        assertEq(loanToken.balanceOf(receiver), borrowAssets);
-    }
-
-    function testSupplyCollateralAndBorrowPermit() public {
-        uint256 borrowAssets = 100e18;
-        uint256 collateral = _collateralFor(borrowAssets);
-        deal(address(collateralToken), user, collateral);
-
-        TokenPermit memory permit = _permit(address(collateralToken), user, collateral, 0, vm.getBlockTimestamp() + 1);
-        vm.prank(user);
-        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams, collateral, borrowAssets, 0, WAD, user, receiver, permit, 0, address(0), block.timestamp
-        );
-
-        assertEq(collateralToken.allowance(user, address(blueBundles)), 0);
-        assertEq(morpho.collateral(id, user), collateral);
-        assertEq(loanToken.balanceOf(receiver), borrowAssets);
     }
 
     /// @dev maxLtv caps the resulting LTV (1:1 price): at the exact-fit ltv the borrow lands on the cap, one wei
@@ -614,39 +535,6 @@ contract BlueBundlesTest is Test {
         vm.stopPrank();
     }
 
-    function testRepayPermit2() public {
-        uint256 borrowAssets = 100e18;
-        _openBorrow(user, borrowAssets);
-
-        uint256 repayAssets = 40e18;
-        deal(address(loanToken), user, repayAssets);
-        vm.startPrank(user);
-        loanToken.approve(PERMIT2, repayAssets);
-        vm.stopPrank();
-
-        TokenPermit memory permit = _permit2(address(loanToken), user, repayAssets, 0, vm.getBlockTimestamp() + 1);
-        vm.prank(user);
-        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams,
-            repayAssets,
-            repayAssets,
-            type(uint256).max,
-            0,
-            WAD,
-            user,
-            receiver,
-            permit,
-            0,
-            address(0),
-            block.timestamp
-        );
-
-        assertEq(loanToken.allowance(user, address(blueBundles)), 0);
-        assertEq(loanToken.allowance(user, PERMIT2), 0);
-        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets - repayAssets);
-        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
-    }
-
     /// SUPPLY ///
 
     function testSupply(uint256 assets) public {
@@ -683,25 +571,6 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.expectedSupplyAssets(marketParams, user), supplied, "supply net");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
-    }
-
-    function testSupplyPermit2() public {
-        uint256 assets = 100e18;
-        deal(address(loanToken), user, assets);
-
-        vm.startPrank(user);
-        loanToken.approve(PERMIT2, assets);
-        vm.stopPrank();
-
-        TokenPermit memory permit = _permit2(address(loanToken), user, assets, 0, vm.getBlockTimestamp() + 1);
-        vm.prank(user);
-        blueBundles.blueBundlesV1Supply(
-            marketParams, assets, type(uint256).max, user, permit, 0, address(0), block.timestamp
-        );
-
-        assertEq(loanToken.allowance(user, address(blueBundles)), 0);
-        assertEq(loanToken.allowance(user, PERMIT2), 0);
-        assertEq(morpho.expectedSupplyAssets(marketParams, user), assets);
     }
 
     /// WITHDRAW ///

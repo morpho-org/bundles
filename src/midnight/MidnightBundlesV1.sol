@@ -30,6 +30,8 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are allowed.
 /// @dev Zero checks are not systematically performed.
+/// @dev For buy/sell functions, the current market continuous fee must be at most maxContinuousFee. Pass
+/// type(uint256).max to disable.
 contract MidnightBundlesV1 is IMidnightBundlesV1 {
     using UtilsLib for uint256;
 
@@ -51,12 +53,14 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetUnits,
         uint256 maxBuyerAssets,
         address taker,
+        bool reduceOnly,
         TokenPermit memory loanTokenPermit,
         Take[] memory takes,
         CollateralWithdrawal[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
+        uint256 maxContinuousFee,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -74,11 +78,13 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         for (uint256 i; i < takes.length && filledUnits < targetUnits; i++) {
             require(!takes[i].offer.buy, InconsistentSide());
             require(IdLib.toId(takes[i].offer.market) == id, InconsistentMarket());
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, taker), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -115,11 +121,13 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetUnits,
         uint256 minSellerAssets,
         address taker,
+        bool reduceOnly,
         address receiver,
         CollateralSupply[] memory collateralSupplies,
         Take[] memory takes,
         uint256 referralFeePct,
         address referralFeeRecipient,
+        uint256 maxContinuousFee,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -143,11 +151,16 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         for (uint256 i; i < takes.length && filledUnits < targetUnits; i++) {
             require(takes[i].offer.buy, InconsistentSide());
             require(IdLib.toId(takes[i].offer.market) == id, InconsistentMarket());
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            if (reduceOnly) {
+                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
+                require(unitsToTake <= takerCredit, NotReduceOnly());
+            }
             try IMidnight(MIDNIGHT)
                 .take(
                     takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(this), address(0), ""
@@ -176,12 +189,14 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetBuyerAssets,
         uint256 minUnits,
         address taker,
+        bool reduceOnly,
         TokenPermit memory loanTokenPermit,
         Take[] memory takes,
         CollateralWithdrawal[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
+        uint256 maxContinuousFee,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -202,6 +217,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         for (uint256 i; i < takes.length && filledBuyerAssets < targetFilledBuyerAssets; i++) {
             require(!takes[i].offer.buy, InconsistentSide());
             require(IdLib.toId(takes[i].offer.market) == id, InconsistentMarket());
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 TakeAmountsLib.buyerAssetsToUnits(
                     MIDNIGHT, id, takes[i].offer, targetFilledBuyerAssets - filledBuyerAssets
@@ -209,6 +225,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, taker), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -244,11 +261,13 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 targetSellerAssets,
         uint256 maxUnits,
         address taker,
+        bool reduceOnly,
         address receiver,
         CollateralSupply[] memory collateralSupplies,
         Take[] memory takes,
         uint256 referralFeePct,
         address referralFeeRecipient,
+        uint256 maxContinuousFee,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -275,6 +294,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         for (uint256 i; i < takes.length && filledSellerAssets < targetFilledSellerAssets; i++) {
             require(takes[i].offer.buy, InconsistentSide());
             require(IdLib.toId(takes[i].offer.market) == id, InconsistentMarket());
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 TakeAmountsLib.sellerAssetsToUnits(
                     MIDNIGHT, id, takes[i].offer, targetFilledSellerAssets - filledSellerAssets
@@ -282,6 +302,10 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 takes[i].units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, takes[i].offer)
             );
+            if (reduceOnly) {
+                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
+                require(unitsToTake <= takerCredit, NotReduceOnly());
+            }
             try IMidnight(MIDNIGHT)
                 .take(
                     takes[i].offer, takes[i].ratifierData, unitsToTake, taker, address(this), address(0), ""
