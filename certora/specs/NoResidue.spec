@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // No token residue: every entry point preserves the bundler's balance of every token (delta 0).
-// Stated as preservation, not "== 0", because donations could increase the balance of the bundler.
 // Scope: all entry points, excluding migrate borrow position.
 // Two assumptions shared with that suite:
 //   - no bundler donations: the receiver and the recipient are different from the bundler.
