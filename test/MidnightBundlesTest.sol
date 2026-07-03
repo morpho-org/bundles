@@ -12,8 +12,7 @@ import {
     ORACLE_PRICE_SCALE,
     DEFAULT_TICK_SPACING,
     MAX_CONTINUOUS_FEE,
-    maxSettlementFee,
-    maxLif
+    maxSettlementFee
 } from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
@@ -50,7 +49,8 @@ contract MidnightBundlesTest is Test {
 
         midnight.setFeeSetter(address(this));
         midnight.setTickSpacingSetter(address(this));
-        midnight.addLltv(0.77e18);
+        midnight.enableLltv(0.77e18);
+        midnight.enableLiquidationCursor(0.25e18);
 
         uint256 key;
         (borrower, key) = makeAddrAndKey("borrower");
@@ -96,7 +96,7 @@ contract MidnightBundlesTest is Test {
                 CollateralParams({
                     token: address(collateralToken1),
                     lltv: 0.77e18,
-                    maxLif: maxLif(0.77e18, 0.25e18),
+                    liquidationCursor: 0.25e18,
                     oracle: address(oracle1)
                 })
             );
@@ -105,7 +105,7 @@ contract MidnightBundlesTest is Test {
                 CollateralParams({
                     token: address(collateralToken2),
                     lltv: 0.77e18,
-                    maxLif: maxLif(0.77e18, 0.25e18),
+                    liquidationCursor: 0.25e18,
                     oracle: address(oracle2)
                 })
             );
@@ -207,7 +207,7 @@ contract MidnightBundlesTest is Test {
         offers[0].buy = false;
         offers[0].maker = borrower;
         offers[0].receiverIfMakerIsSeller = borrower;
-        offers[0].maxUnits = units;
+        offers[0].maxUnits = units.toUint128();
         offers[0].continuousFeeCap = continuousFee;
         collateralize(market, borrower, units);
 
@@ -249,10 +249,10 @@ contract MidnightBundlesTest is Test {
         firstOffer.buy = true;
         firstOffer.maker = lender;
         firstOffer.market = fakeMarket;
-        firstOffer.maxUnits = firstUnits;
+        firstOffer.maxUnits = firstUnits.toUint128();
         Offer memory secondOffer = firstOffer;
         secondOffer.group = bytes32(uint256(1));
-        secondOffer.maxUnits = secondUnits;
+        secondOffer.maxUnits = secondUnits.toUint128();
 
         Take[] memory takes = new Take[](2);
         takes[0] = Take({offer: firstOffer, units: firstUnits, ratifierData: hex""});
@@ -276,9 +276,11 @@ contract MidnightBundlesTest is Test {
     }
 
     function testSellUnitsTarget(uint256 offerUnits0, uint256 offerUnits1, uint256 units) public {
+        offerUnits0 = bound(offerUnits0, 0, type(uint128).max);
+        offerUnits1 = bound(offerUnits1, 0, type(uint128).max);
         units = bound(units, 0, uint256(type(uint128).max) * 3 / 4);
-        offers[0].maxUnits = offerUnits0;
-        offers[1].maxUnits = offerUnits1;
+        offers[0].maxUnits = offerUnits0.toUint128();
+        offers[1].maxUnits = offerUnits1.toUint128();
         uint256 fromOffer0 = UtilsLib.min(units, offerUnits0);
 
         collateralize(market, borrower, units);
@@ -328,16 +330,18 @@ contract MidnightBundlesTest is Test {
     }
 
     function testBuyBuyerAssetsTarget(uint256 offerUnits0, uint256 offerUnits1, uint256 targetBuyerAssets) public {
+        offerUnits0 = bound(offerUnits0, 0, type(uint128).max);
+        offerUnits1 = bound(offerUnits1, 0, type(uint128).max);
         targetBuyerAssets = bound(targetBuyerAssets, 1, uint256(type(uint128).max) / 2);
 
         offers[0].buy = false;
         offers[0].maker = borrower;
         offers[0].receiverIfMakerIsSeller = borrower;
-        offers[0].maxUnits = offerUnits0;
+        offers[0].maxUnits = offerUnits0.toUint128();
         offers[1].buy = false;
         offers[1].maker = borrower;
         offers[1].receiverIfMakerIsSeller = borrower;
-        offers[1].maxUnits = offerUnits1;
+        offers[1].maxUnits = offerUnits1.toUint128();
 
         // Reset settlement fees so buyerPrice = price <= WAD at MAX_TICK.
         for (uint256 i; i <= 6; i++) {
@@ -503,9 +507,11 @@ contract MidnightBundlesTest is Test {
     }
 
     function testSellSellerAssetsTarget(uint256 offerUnits0, uint256 offerUnits1, uint256 targetSellerAssets) public {
+        offerUnits0 = bound(offerUnits0, 0, type(uint128).max);
+        offerUnits1 = bound(offerUnits1, 0, type(uint128).max);
         targetSellerAssets = bound(targetSellerAssets, 1, uint256(type(uint128).max) / 2);
-        offers[0].maxUnits = offerUnits0;
-        offers[1].maxUnits = offerUnits1;
+        offers[0].maxUnits = offerUnits0.toUint128();
+        offers[1].maxUnits = offerUnits1.toUint128();
 
         uint256 fromOffer0;
         uint256 neededFromOffer1;
@@ -608,7 +614,7 @@ contract MidnightBundlesTest is Test {
         }
 
         // Give the taker (borrower) existing debt to reduce.
-        offers[0].maxUnits = debtUnits;
+        offers[0].maxUnits = debtUnits.toUint128();
         collateralize(market, borrower, debtUnits);
         Take[] memory sellTakes = new Take[](1);
         sellTakes[0] = Take({offer: offers[0], units: debtUnits, ratifierData: hex""});
@@ -633,7 +639,7 @@ contract MidnightBundlesTest is Test {
         sellOffer.buy = false;
         sellOffer.maker = lender;
         sellOffer.receiverIfMakerIsSeller = lender;
-        sellOffer.maxUnits = type(uint256).max;
+        sellOffer.maxUnits = type(uint128).max;
         sellOffer.group = bytes32(uint256(2));
 
         Take[] memory buyTakes = new Take[](1);
@@ -692,7 +698,7 @@ contract MidnightBundlesTest is Test {
         offers[0].buy = false;
         offers[0].maker = borrower;
         offers[0].receiverIfMakerIsSeller = borrower;
-        offers[0].maxUnits = type(uint256).max;
+        offers[0].maxUnits = type(uint128).max;
 
         for (uint256 i; i <= 6; i++) {
             midnight.setMarketSettlementFee(id, i, 0);
@@ -738,7 +744,7 @@ contract MidnightBundlesTest is Test {
         address referrer = makeAddr("referrer");
         address receiver = makeAddr("receiver");
 
-        offers[0].maxUnits = type(uint256).max;
+        offers[0].maxUnits = type(uint128).max;
 
         uint256 price = TickLib.tickToPrice(MAX_TICK);
         midnight.touchMarket(market);
@@ -781,7 +787,7 @@ contract MidnightBundlesTest is Test {
         offers[0].buy = false;
         offers[0].maker = borrower;
         offers[0].receiverIfMakerIsSeller = borrower;
-        offers[0].maxUnits = type(uint256).max;
+        offers[0].maxUnits = type(uint128).max;
 
         for (uint256 i; i <= 6; i++) {
             midnight.setMarketSettlementFee(id, i, 0);
@@ -827,7 +833,7 @@ contract MidnightBundlesTest is Test {
         address referrer = makeAddr("referrer");
         address receiver = makeAddr("receiver");
 
-        offers[0].maxUnits = type(uint256).max;
+        offers[0].maxUnits = type(uint128).max;
 
         uint256 expectedFee = targetSellerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
         uint256 preFeeTarget = targetSellerAssets + expectedFee;
@@ -869,7 +875,7 @@ contract MidnightBundlesTest is Test {
         referralFeePct = bound(referralFeePct, 0, WAD - 1);
         address referrer = makeAddr("referrer");
 
-        offers[0].maxUnits = units;
+        offers[0].maxUnits = units.toUint128();
 
         // Zero settlement fees so the borrower receives exactly units loan tokens for the sale.
         for (uint256 i; i <= 6; i++) {
@@ -930,7 +936,7 @@ contract MidnightBundlesTest is Test {
         referralFeePct = bound(referralFeePct, 0, WAD - 1);
         address referrer = makeAddr("referrer");
 
-        offers[0].maxUnits = debt;
+        offers[0].maxUnits = debt.toUint128();
 
         for (uint256 i; i <= 6; i++) {
             midnight.setMarketSettlementFee(id, i, 0);
@@ -1159,7 +1165,7 @@ contract MidnightBundlesTest is Test {
         offers[0].buy = false;
         offers[0].maker = borrower;
         offers[0].receiverIfMakerIsSeller = borrower;
-        offers[0].maxUnits = units;
+        offers[0].maxUnits = units.toUint128();
 
         for (uint256 i; i <= 6; i++) {
             midnight.setMarketSettlementFee(id, i, 0);
@@ -1209,7 +1215,7 @@ contract MidnightBundlesTest is Test {
         offers[0].buy = false;
         offers[0].maker = borrower;
         offers[0].receiverIfMakerIsSeller = borrower;
-        offers[0].maxUnits = units;
+        offers[0].maxUnits = units.toUint128();
 
         for (uint256 i; i <= 6; i++) {
             midnight.setMarketSettlementFee(id, i, 0);
@@ -1256,7 +1262,7 @@ contract MidnightBundlesTest is Test {
         numCollaterals = bound(numCollaterals, 1, 2);
         uint256 units = 100e18;
 
-        offers[0].maxUnits = units;
+        offers[0].maxUnits = units.toUint128();
 
         CollateralSupply[] memory supplies = new CollateralSupply[](numCollaterals);
         for (uint256 i; i < numCollaterals; i++) {
@@ -1285,7 +1291,7 @@ contract MidnightBundlesTest is Test {
         units = bound(units, 1, uint256(type(uint128).max) * 3 / 4);
         repayUnits = bound(repayUnits, 0, units);
 
-        offers[0].maxUnits = units;
+        offers[0].maxUnits = units.toUint128();
 
         // Zero settlement fees so the borrower receives exactly `units` loan tokens for the sale,
         // covering any `repayUnits <= units`.
@@ -1344,7 +1350,7 @@ contract MidnightBundlesTest is Test {
         numCollaterals = bound(numCollaterals, 1, 2);
         uint256 units = 100e18;
 
-        offers[0].maxUnits = units;
+        offers[0].maxUnits = units.toUint128();
 
         uint256 price = TickLib.tickToPrice(MAX_TICK);
         midnight.touchMarket(market);
@@ -1394,7 +1400,7 @@ contract MidnightBundlesTest is Test {
         offers[0].buy = false;
         offers[0].maker = borrower;
         offers[0].receiverIfMakerIsSeller = borrower;
-        offers[0].maxUnits = units;
+        offers[0].maxUnits = units.toUint128();
         offers[0].tick = tick;
         for (uint256 i; i <= 6; i++) {
             midnight.setMarketSettlementFee(id, i, 0);
@@ -1428,7 +1434,7 @@ contract MidnightBundlesTest is Test {
         tick = bound(tick, 1, MAX_TICK / DEFAULT_TICK_SPACING) * DEFAULT_TICK_SPACING;
         uint256 units = 100e18;
 
-        offers[0].maxUnits = units;
+        offers[0].maxUnits = units.toUint128();
         offers[0].tick = tick;
         for (uint256 i; i <= 6; i++) {
             midnight.setMarketSettlementFee(id, i, 0);
@@ -1465,7 +1471,7 @@ contract MidnightBundlesTest is Test {
         offers[0].buy = false;
         offers[0].maker = borrower;
         offers[0].receiverIfMakerIsSeller = borrower;
-        offers[0].maxUnits = units;
+        offers[0].maxUnits = units.toUint128();
         offers[0].tick = tick;
         for (uint256 i; i <= 6; i++) {
             midnight.setMarketSettlementFee(id, i, 0);
@@ -1499,7 +1505,7 @@ contract MidnightBundlesTest is Test {
         tick = bound(tick, 1, MAX_TICK / DEFAULT_TICK_SPACING) * DEFAULT_TICK_SPACING;
         uint256 units = 100e18;
 
-        offers[0].maxUnits = units;
+        offers[0].maxUnits = units.toUint128();
         offers[0].tick = tick;
         for (uint256 i; i <= 6; i++) {
             midnight.setMarketSettlementFee(id, i, 0);

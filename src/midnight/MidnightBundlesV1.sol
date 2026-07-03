@@ -133,7 +133,6 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
-        address loanToken = takes[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
 
@@ -176,8 +175,10 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
 
         uint256 referralFeeAssets = filledSellerAssets.mulDivDown(referralFeePct, WAD);
         require(filledSellerAssets - referralFeeAssets >= minSellerAssets, SellerAssetsTooLow());
-        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
-        SafeTransferLib.safeTransfer(loanToken, receiver, filledSellerAssets - referralFeeAssets);
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(market.loanToken, referralFeeRecipient, referralFeeAssets);
+        }
+        SafeTransferLib.safeTransfer(market.loanToken, receiver, filledSellerAssets - referralFeeAssets);
     }
 
     /// @dev Total loan assets transferred from msg.sender is targetBuyerAssets.
@@ -273,7 +274,6 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
-        address loanToken = takes[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(takes[0].offer.market);
 
@@ -320,8 +320,10 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(filledSellerAssets == targetFilledSellerAssets, OutOfOffers());
         require(filledUnits <= maxUnits, UnitsTooHigh());
 
-        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
-        SafeTransferLib.safeTransfer(loanToken, receiver, targetSellerAssets);
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(market.loanToken, referralFeeRecipient, referralFeeAssets);
+        }
+        SafeTransferLib.safeTransfer(market.loanToken, receiver, targetSellerAssets);
     }
 
     /// @dev The msg.sender must have approved the contract to transfer assets of the market's loan token.
