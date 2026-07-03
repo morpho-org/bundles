@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity >=0.8.0;
 
-import {IERC20} from "../interfaces/IERC20.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {IERC20Permit} from "../interfaces/IERC20Permit.sol";
 import {IPermit2, ISignatureTransfer} from "../../lib/permit2/src/interfaces/IPermit2.sol";
@@ -29,7 +28,7 @@ library TokenLib {
 
     /// @dev Not checking the code size because a transfer will do it in the same call.
     function safeApprove(address token, address spender, uint256 value) internal {
-        (bool success, bytes memory returndata) = token.call(abi.encodeCall(IERC20.approve, (spender, value)));
+        (bool success, bytes memory returndata) = token.call(abi.encodeCall(IERC20Permit.approve, (spender, value)));
         if (!success) {
             assembly ("memory-safe") {
                 revert(add(returndata, 0x20), mload(returndata))
@@ -42,7 +41,7 @@ library TokenLib {
     /// (some tokens like COMP and UNI on Ethereum have a max allowance of type(uint96).max).
     /// @dev Resets to 0 before re-approving to support USDT like tokens.
     function forceApproveMax(address token, address spender) internal {
-        if (IERC20(token).allowance(address(this), spender) >= type(uint96).max / 2) return;
+        if (IERC20Permit(token).allowance(address(this), spender) >= type(uint96).max / 2) return;
         safeApprove(token, spender, 0);
         safeApprove(token, spender, type(uint256).max);
     }
