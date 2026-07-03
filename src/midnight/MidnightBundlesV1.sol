@@ -66,10 +66,10 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
-        address loanToken = offerFills[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(offerFills[0].offer.market);
 
+        address loanToken = offerFills[0].offer.market.loanToken;
         TokenLib.pullToken(loanToken, msg.sender, maxBuyerAssets, loanTokenPermit);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
@@ -204,10 +204,10 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
-        address loanToken = offerFills[0].offer.market.loanToken;
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(offerFills[0].offer.market);
 
+        address loanToken = offerFills[0].offer.market.loanToken;
         TokenLib.pullToken(loanToken, msg.sender, targetBuyerAssets, loanTokenPermit);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
@@ -348,9 +348,9 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(onBehalf == msg.sender || IMidnight(MIDNIGHT).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
-        address loanToken = market.loanToken;
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
         uint256 units = assets - referralFeeAssets;
+        address loanToken = market.loanToken;
         TokenLib.pullToken(loanToken, msg.sender, assets, loanTokenPermit);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
