@@ -18,9 +18,9 @@ evm_version = "paris"
 optimizer_runs = 999999
 
 [[profile.default.additional_compiler_profiles]]
-name = "osaka-800"
+name = "osaka-466"
 evm_version = "osaka"
-optimizer_runs = 800
+optimizer_runs = 466
 
 [[profile.default.additional_compiler_profiles]]
 name = "london-1000000"
@@ -35,7 +35,7 @@ optimizer_runs = 999999
 [[profile.default.compilation_restrictions]]
 paths = "test/imports/MidnightImport.sol"
 evm_version = "osaka"
-optimizer_runs = 800
+optimizer_runs = 466
 
 [[profile.default.compilation_restrictions]]
 paths = "test/imports/Permit2Import.sol"
