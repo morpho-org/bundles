@@ -7,7 +7,7 @@ import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
 import {IVaultV2Factory} from "../lib/vault-v2/src/interfaces/IVaultV2Factory.sol";
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {AaveMigrationBundlesV1} from "../src/aave-migration/AaveMigrationBundlesV1.sol";
-import {IAaveMigrationBundlesV1} from "../src/aave-migration/IAaveMigrationBundlesV1.sol";
+import {IAaveMigrationBundlesV1} from "../src/aave-migration/interfaces/IAaveMigrationBundlesV1.sol";
 import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract AaveMigrationBundlesTest is Test {

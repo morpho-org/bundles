@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IAaveMigrationBundlesV1} from "./IAaveMigrationBundlesV1.sol";
-import {IAaveV3} from "./IAaveV3.sol";
-import {IAToken} from "./IAToken.sol";
+import {IAaveMigrationBundlesV1} from "./interfaces/IAaveMigrationBundlesV1.sol";
+import {IAaveV3} from "./interfaces/IAaveV3.sol";
+import {IAToken} from "./interfaces/IAToken.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 
