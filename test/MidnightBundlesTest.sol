@@ -25,7 +25,7 @@ import {
     OfferFill,
     CollateralWithdrawal,
     CollateralSupply
-} from "../src/midnight/IMidnightBundlesV1.sol";
+} from "../src/interfaces/midnight/IMidnightBundlesV1.sol";
 import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract MidnightBundlesTest is Test {
