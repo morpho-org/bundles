@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity >=0.8.0;
 
-import {MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
-import {TokenPermit} from "../libraries/TokenLib.sol";
+import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {TokenPermit} from "../../libraries/TokenLib.sol";
 
 interface IBlueBundlesV1 {
     /// ERRORS ///

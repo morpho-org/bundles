@@ -14,7 +14,7 @@ import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
 import {VaultIkrBundlesV1} from "../src/vault/VaultIkrBundlesV1.sol";
-import {IVaultIkrBundlesV1} from "../src/vault/IVaultIkrBundlesV1.sol";
+import {IVaultIkrBundlesV1} from "../src/vault/interfaces/IVaultIkrBundlesV1.sol";
 
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IVaultV2Factory} from "../lib/vault-v2/src/interfaces/IVaultV2Factory.sol";

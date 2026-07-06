@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IVaultIkrBundlesV1} from "./IVaultIkrBundlesV1.sol";
+import {IVaultIkrBundlesV1} from "./interfaces/IVaultIkrBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 import {IMetaMorpho, Id as MMId} from "../../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";

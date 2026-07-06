@@ -19,7 +19,12 @@ import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
 import {MidnightBundlesV1} from "../src/midnight/MidnightBundlesV1.sol";
-import {IMidnightBundlesV1, Take, CollateralWithdrawal, CollateralSupply} from "../src/midnight/IMidnightBundlesV1.sol";
+import {
+    IMidnightBundlesV1,
+    Take,
+    CollateralWithdrawal,
+    CollateralSupply
+} from "../src/midnight/interfaces/IMidnightBundlesV1.sol";
 import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract MidnightBundlesTest is Test {
