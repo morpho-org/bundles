@@ -8,7 +8,7 @@ import {
     OfferFill,
     CollateralWithdrawal,
     CollateralSupply
-} from "../interfaces/midnight/IMidnightBundlesV1.sol";
+} from "./interfaces/IMidnightBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {IdLib} from "../../lib/midnight/src/libraries/IdLib.sol";

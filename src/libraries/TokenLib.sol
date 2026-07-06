@@ -3,7 +3,7 @@
 pragma solidity >=0.8.0;
 
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
-import {IERC20Permit} from "../interfaces/IERC20Permit.sol";
+import {IERC20Permit} from "./interfaces/IERC20Permit.sol";
 import {IPermit2, ISignatureTransfer} from "../../lib/permit2/src/interfaces/IPermit2.sol";
 
 enum PermitKind {

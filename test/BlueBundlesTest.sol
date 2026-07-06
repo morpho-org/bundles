@@ -13,7 +13,7 @@ import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
-import {IBlueBundlesV1} from "../src/interfaces/blue/IBlueBundlesV1.sol";
+import {IBlueBundlesV1} from "../src/blue/interfaces/IBlueBundlesV1.sol";
 import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract BlueBundlesTest is Test {
