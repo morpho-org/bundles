@@ -5,8 +5,8 @@ pragma solidity ^0.8.0;
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
-import {VaultIkrBundlesV1} from "../src/vault/VaultIkrBundlesV1.sol";
-import {IVaultIkrBundlesV1} from "../src/vault/interfaces/IVaultIkrBundlesV1.sol";
+import {VaultIkrBundlesV1} from "../src/vault-ikr/VaultIkrBundlesV1.sol";
+import {IVaultIkrBundlesV1} from "../src/vault-ikr/interfaces/IVaultIkrBundlesV1.sol";
 
 // Use the vault's own (nested) morpho-blue everywhere, so Morpho, MetaMorpho and this test share a single market type.
 import {IMetaMorpho} from "../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
