@@ -4,19 +4,19 @@ pragma solidity 0.8.34;
 
 import {IVaultIkrBundlesV1} from "./interfaces/IVaultIkrBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
-import {IMetaMorpho, Id as MMId} from "../../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {WAD} from "../../lib/vault-v2/src/libraries/ConstantsLib.sol";
 import {IMorphoMarketV1AdapterV2} from "../../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2.sol";
-import {IMorpho, MarketParams, Id} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {IMetaMorpho} from "../../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
+import {IMorpho, MarketParams, Id} from "../../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {
     IMorphoSupplyCallback,
     IMorphoFlashLoanCallback
-} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
-import {MorphoBalancesLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
-import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
-import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
-import {UtilsLib} from "../../lib/morpho-blue/src/libraries/UtilsLib.sol";
+} from "../../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
+import {MorphoBalancesLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
+import {MarketParamsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/MarketParamsLib.sol";
+import {SharesMathLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/SharesMathLib.sol";
+import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/UtilsLib.sol";
 
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
@@ -77,7 +77,7 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1, IMorphoSupplyCallback, IMorpho
         }
     }
 
-    function onMorphoSupply(uint256 assets, bytes memory data) external {
+    function onMorphoSupply(uint256 assets, bytes calldata data) external {
         require(msg.sender == BLUE, Unauthorized());
         (address vault, address adapter, MarketParams memory marketParams, address sender) =
             abi.decode(data, (address, address, MarketParams, address));
@@ -133,7 +133,7 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1, IMorphoSupplyCallback, IMorpho
         IMorpho(BLUE).flashLoan(loanToken, assets, data);
     }
 
-    function onMorphoFlashLoan(uint256 assets, bytes memory data) external {
+    function onMorphoFlashLoan(uint256 assets, bytes calldata data) external {
         require(msg.sender == BLUE, Unauthorized());
         (address vault, MarketParams[] memory marketParamsList, address sender) =
             abi.decode(data, (address, MarketParams[], address));
@@ -141,15 +141,16 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1, IMorphoSupplyCallback, IMorpho
         uint256 remainingAssets = assets;
         for (uint256 i = 0; remainingAssets > 0; i++) {
             MarketParams memory marketParams = marketParamsList[i];
-            bytes32 id = Id.unwrap(marketParams.id());
             // Markets not enabled in the vault are skipped.
-            if (!IMetaMorpho(vault).config(MMId.wrap(id)).enabled) continue;
+            if (!IMetaMorpho(vault).config(marketParams.id()).enabled) continue;
 
             uint256 availableToWithdraw = MorphoBalancesLib.expectedSupplyAssets(IMorpho(BLUE), marketParams, vault);
             uint256 assetsToSupply = UtilsLib.min(availableToWithdraw, remainingAssets);
 
-            IMorpho(BLUE).supply(marketParams, assetsToSupply, 0, sender, "");
-            remainingAssets -= assetsToSupply;
+            if (assetsToSupply > 0) {
+                IMorpho(BLUE).supply(marketParams, assetsToSupply, 0, sender, "");
+                remainingAssets -= assetsToSupply;
+            }
         }
 
         IMetaMorpho(vault).withdraw(assets, address(this), sender);
