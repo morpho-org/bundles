@@ -34,7 +34,7 @@ contract VaultV2IkrBundlesTest is Test {
     uint256 internal constant LLTV_2 = 0.9e18;
     uint256 internal constant PENALTY = 0.01e18;
 
-    uint256 internal constant MIN_ASSETS = 2;
+    uint256 internal constant MIN_ASSETS = 2; // assets == 1 ⇒ deallocatedAssets == 0 (see testForceWithdrawIlliquidTooSmallNoOp).
     uint256 internal constant MAX_ASSETS = 1e24;
 
     IMorpho internal morpho;
