@@ -143,8 +143,10 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1 {
             uint256 availableToWithdraw = MorphoBalancesLib.expectedSupplyAssets(IMorpho(BLUE), marketParams, vault);
             uint256 assetsToSupply = min(availableToWithdraw, remainingAssets);
 
-            IMorpho(BLUE).supply(marketParams, assetsToSupply, 0, sender, "");
-            remainingAssets -= assetsToSupply;
+            if (assetsToSupply > 0) {
+                IMorpho(BLUE).supply(marketParams, assetsToSupply, 0, sender, "");
+                remainingAssets -= assetsToSupply;
+            }
         }
 
         IMetaMorpho(vault).withdraw(assets, address(this), sender);
