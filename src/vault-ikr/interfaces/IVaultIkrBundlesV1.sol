@@ -7,8 +7,6 @@ import {MarketParams} from "../../../lib/metamorpho/lib/morpho-blue/src/interfac
 interface IVaultIkrBundlesV1 {
     /// ERRORS ///
     error AdapterNotPartOfVault();
-    error MarketNotPartOfAdapter();
-    error MarketNotPartOfVault();
     error MorphoMismatch();
     error Unauthorized();
     error DeadlinePassed();
