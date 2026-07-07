@@ -8,7 +8,6 @@ import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 import {VaultIkrBundlesV1} from "../src/vault-ikr/VaultIkrBundlesV1.sol";
 import {IVaultIkrBundlesV1} from "../src/vault-ikr/interfaces/IVaultIkrBundlesV1.sol";
 
-// Use the vault's own (nested) morpho-blue everywhere, so Morpho, MetaMorpho and this test share a single market type.
 import {IMetaMorpho} from "../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
 import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "../lib/metamorpho/lib/morpho-blue/src/libraries/MarketParamsLib.sol";
@@ -18,8 +17,6 @@ import {MorphoStorageLib} from "../lib/metamorpho/lib/morpho-blue/src/libraries/
 import {ORACLE_PRICE_SCALE} from "../lib/metamorpho/lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/metamorpho/lib/morpho-blue/src/mocks/OracleMock.sol";
 
-// The bundler is compiled against the top-level morpho-blue (a different commit), so its MarketParams is a distinct
-// type: alias it just for the vaultBundlesV1ForceWithdrawIlliquidVaultV1 argument and convert at that single boundary.
 import {MarketParams as BundlerMarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 
 contract VaultV1IkrBundlesTest is Test {
