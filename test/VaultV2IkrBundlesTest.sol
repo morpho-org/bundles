@@ -373,6 +373,26 @@ contract VaultV2IkrBundlesTest is Test {
         );
     }
 
+    function testForceWithdrawSkipsEmptyAdapterMarket() public {
+        uint256 assets = 100e18;
+        _setUpIlliquid(assets);
+        assertEq(adapter.supplyShares(Id.unwrap(otherMarket.id())), 0, "otherMarket empty in adapter");
+
+        MarketParams[] memory list = new MarketParams[](2);
+        list[0] = otherMarket;
+        list[1] = marketParams;
+
+        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+            address(vault), address(adapter), list, assets, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
+        assertEq(
+            morpho.expectedSupplyAssets(marketParams, address(this)), optimalDeallocateAssets(assets), "supply position"
+        );
+    }
+
     /// @dev Reverts once `deadline` is in the past (checkDeadline runs before the body).
     function testForceWithdrawIlliquidDeadlinePassed() public {
         uint256 assets = 100e18;

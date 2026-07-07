@@ -291,6 +291,65 @@ contract VaultV1IkrBundlesTest is Test {
         assertApproxEqAbs(morpho.expectedSupplyAssets(otherMarket, address(this)), 20e18, 3, "second market");
     }
 
+    /// @dev A market can be enabled in the vault yet hold no vault supply. When such a market is reached by the
+    /// redemption loop it must be skipped, not cause a revert: supplying 0 to Morpho Blue reverts INCONSISTENT_INPUT.
+    function testForceWithdrawSkipsEnabledEmptyMarket() public {
+        uint256 assets = 60e18;
+
+        vault = IMetaMorpho(
+            deployCode(
+                "MetaMorpho.sol:MetaMorpho", abi.encode(owner, address(morpho), 1 days, address(loanToken), "V1", "V1")
+            )
+        );
+
+        // Both markets enabled, but the supply queue routes every deposit to otherMarket, leaving marketParams empty.
+        Id[] memory supplyQueue = new Id[](1);
+        supplyQueue[0] = otherMarket.id();
+        vm.startPrank(owner);
+        vault.submitCap(marketParams, type(uint184).max);
+        vault.submitCap(otherMarket, type(uint184).max);
+        vm.warp(block.timestamp + 1 days);
+        vault.acceptCap(marketParams);
+        vault.acceptCap(otherMarket);
+        vault.setSupplyQueue(supplyQueue);
+        vm.stopPrank();
+
+        deal(address(loanToken), address(this), assets);
+        loanToken.approve(address(vault), type(uint256).max);
+        vault.deposit(assets, address(this));
+        assertEq(morpho.supplyShares(marketParams.id(), address(vault)), 0, "marketParams empty");
+        assertGt(morpho.supplyShares(otherMarket.id(), address(vault)), 0, "otherMarket funded");
+
+        // otherMarket fully borrowed out ⇒ illiquid.
+        _borrowOut(otherMarket, morpho.expectedSupplyAssets(otherMarket, address(vault)));
+
+        // Morpho global liquidity to fund the flash loan, from a third market sharing the loan token.
+        vm.prank(owner);
+        morpho.enableLltv(0.5e18);
+        MarketParams memory liquidityMarket =
+            MarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), 0.5e18);
+        morpho.createMarket(liquidityMarket);
+        deal(address(loanToken), liquidityProvider, 4 * assets);
+        vm.startPrank(liquidityProvider);
+        loanToken.approve(address(morpho), type(uint256).max);
+        morpho.supply(liquidityMarket, 4 * assets, 0, liquidityProvider, "");
+        vm.stopPrank();
+
+        vault.approve(address(vaultBundles), type(uint256).max);
+        deal(address(loanToken), address(this), 0);
+
+        // The enabled-but-empty marketParams comes first in the list; it must be skipped rather than revert.
+        MarketParams[] memory list = new MarketParams[](2);
+        list[0] = marketParams;
+        list[1] = otherMarket;
+
+        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(address(vault), list, assets, block.timestamp);
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
+        assertApproxEqAbs(morpho.expectedSupplyAssets(otherMarket, address(this)), assets, 2, "in-kind position");
+    }
+
     /// @dev Reverts once `deadline` is in the past (checkDeadline runs before the body).
     function testForceWithdrawIlliquidDeadlinePassed() public {
         uint256 assets = 100e18;
