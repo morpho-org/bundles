@@ -17,8 +17,6 @@ import {MorphoStorageLib} from "../lib/metamorpho/lib/morpho-blue/src/libraries/
 import {ORACLE_PRICE_SCALE} from "../lib/metamorpho/lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/metamorpho/lib/morpho-blue/src/mocks/OracleMock.sol";
 
-import {MarketParams as BundlerMarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
-
 contract VaultV1IkrBundlesTest is Test {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
@@ -70,15 +68,10 @@ contract VaultV1IkrBundlesTest is Test {
 
     /// HELPERS ///
 
-    /// @dev Converts a market to the bundler's (top-level morpho-blue) MarketParams type.
-    function _toBundler(MarketParams memory mp) internal pure returns (BundlerMarketParams memory) {
-        return BundlerMarketParams(mp.loanToken, mp.collateralToken, mp.oracle, mp.irm, mp.lltv);
-    }
-
     /// @dev Wraps a single market into the singleton list expected by vaultBundlesV1ForceWithdrawIlliquidVaultV1.
-    function _singleton(MarketParams memory marketParams_) internal pure returns (BundlerMarketParams[] memory list) {
-        list = new BundlerMarketParams[](1);
-        list[0] = _toBundler(marketParams_);
+    function _singleton(MarketParams memory marketParams_) internal pure returns (MarketParams[] memory list) {
+        list = new MarketParams[](1);
+        list[0] = marketParams_;
     }
 
     /// @dev Deploys a MetaMorpho (Vault V1) over the loan token, deposits `assets` for address(this) which get
@@ -253,9 +246,9 @@ contract VaultV1IkrBundlesTest is Test {
         _borrowOut(marketParams, available1 / 2);
         _borrowOut(otherMarket, available2 / 2);
 
-        BundlerMarketParams[] memory list = new BundlerMarketParams[](2);
-        list[0] = _toBundler(marketParams);
-        list[1] = _toBundler(otherMarket);
+        MarketParams[] memory list = new MarketParams[](2);
+        list[0] = marketParams;
+        list[1] = otherMarket;
 
         // Withdraw more than the first market holds so the remainder spills into the second.
         uint256 forceWithdrawAssets = available1 + 20e18;
@@ -282,9 +275,9 @@ contract VaultV1IkrBundlesTest is Test {
         _borrowOut(marketParams, available1);
         _borrowOut(otherMarket, available2);
 
-        BundlerMarketParams[] memory list = new BundlerMarketParams[](2);
-        list[0] = _toBundler(marketParams);
-        list[1] = _toBundler(otherMarket);
+        MarketParams[] memory list = new MarketParams[](2);
+        list[0] = marketParams;
+        list[1] = otherMarket;
 
         // More than the first market holds ⇒ in-kind redeemed across both.
         uint256 forceWithdrawAssets = available1 + 20e18;
