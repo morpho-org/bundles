@@ -9,15 +9,20 @@ import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {WAD} from "../../lib/vault-v2/src/libraries/ConstantsLib.sol";
 import {IMorphoMarketV1AdapterV2} from "../../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2.sol";
 import {IMorpho, MarketParams, Id} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {
+    IMorphoSupplyCallback,
+    IMorphoFlashLoanCallback
+} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
 import {MorphoBalancesLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
+import {UtilsLib} from "../../lib/morpho-blue/src/libraries/UtilsLib.sol";
 
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are allowed.
 /// @dev Zero checks are not systematically performed.
-contract VaultIkrBundlesV1 is IVaultIkrBundlesV1 {
+contract VaultIkrBundlesV1 is IVaultIkrBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
 
@@ -30,8 +35,7 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1 {
     /// FORCE WITHDRAW ILLIQUID VAULT V2 ///
 
     /// @dev The sender must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
-    /// @dev The deallocatedAssets amount is floor(assets * WAD / (WAD + penalty)).
-    /// @dev Reverts if the deallocatedAssets amount is 0.
+    /// @dev The deallocatedAssets amount is floor(forceWithdrawAssets * WAD / (WAD + penalty)).
     /// @dev Requires Morpho Blue to have more than the deallocated assets in liquidity.
     /// @dev Requires the sender to have enough shares to withdraw ceil(assets *  penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to deallocatedAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
@@ -61,7 +65,7 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1 {
             (uint256 totalSupplyAssets, uint256 totalSupplyShares,,) =
                 MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParams[i]);
             uint256 availableToWithdraw = supplyShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
-            uint256 assets = min(availableToWithdraw, remainingToDeallocate);
+            uint256 assets = UtilsLib.min(availableToWithdraw, remainingToDeallocate);
 
             // Markets for which the adapter accounting reports no shares are skipped.
             if (assets > 0) {
@@ -109,7 +113,7 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1 {
 
     /// @dev The sender must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
     /// @dev Requires Morpho Blue to have more than the assets in liquidity.
-    /// @dev Requires onBehalf to have enough shares to withdraw assets.
+    /// @dev Requires the sender to have enough shares to withdraw assets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev Call this function with markets that belong to the vault.
     /// @dev This function should not be called with duplicate markets in the list.
@@ -142,16 +146,12 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1 {
             if (!IMetaMorpho(vault).config(MMId.wrap(id)).enabled) continue;
 
             uint256 availableToWithdraw = MorphoBalancesLib.expectedSupplyAssets(IMorpho(BLUE), marketParams, vault);
-            uint256 assetsToSupply = min(availableToWithdraw, remainingAssets);
+            uint256 assetsToSupply = UtilsLib.min(availableToWithdraw, remainingAssets);
 
             IMorpho(BLUE).supply(marketParams, assetsToSupply, 0, sender, "");
             remainingAssets -= assetsToSupply;
         }
 
         IMetaMorpho(vault).withdraw(assets, address(this), sender);
-    }
-
-    function min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a < b ? a : b;
     }
 }

@@ -10,7 +10,6 @@ import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/Morp
 import {MorphoStorageLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoStorageLib.sol";
 import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
-import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
 import {VaultIkrBundlesV1} from "../src/vault-ikr/VaultIkrBundlesV1.sol";
@@ -18,6 +17,7 @@ import {IVaultIkrBundlesV1} from "../src/vault-ikr/interfaces/IVaultIkrBundlesV1
 
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IVaultV2Factory} from "../lib/vault-v2/src/interfaces/IVaultV2Factory.sol";
+import {MAX_MAX_RATE, WAD} from "../lib/vault-v2/src/libraries/ConstantsLib.sol";
 import {IMorphoMarketV1AdapterV2} from "../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2.sol";
 import {
     IMorphoMarketV1AdapterV2Factory
@@ -31,9 +31,8 @@ contract VaultV2IkrBundlesTest is Test {
     uint256 internal constant LLTV_1 = 0.8e18;
     uint256 internal constant LLTV_2 = 0.9e18;
     uint256 internal constant PENALTY = 0.01e18;
-    uint256 internal constant MAX_MAX_RATE = 200e16 / uint256(365 days);
 
-    uint256 internal constant MIN_ASSETS = 2; // assets == 1 ⇒ deallocatedAssets == 0 (see testTooSmallReverts).
+    uint256 internal constant MIN_ASSETS = 2;
     uint256 internal constant MAX_ASSETS = 1e24;
 
     IMorpho internal morpho;
@@ -253,7 +252,7 @@ contract VaultV2IkrBundlesTest is Test {
 
     /// @dev A market not allocated through the adapter (supplyShares == 0) is skipped; with no further market in the
     /// list to cover the requested assets, the loop runs past the list and reverts.
-    function testForceWithdrawMarketNotPartOfAdapter() public {
+    function testForceWithdrawMarketWithoutAdapterShares() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
@@ -317,7 +316,6 @@ contract VaultV2IkrBundlesTest is Test {
     function testForceWithdrawIlliquid(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
-        vm.assume(optimalDeallocateAssets(assets) > 0);
 
         vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
             address(vault), address(adapter), _singleton(marketParams), assets, block.timestamp
@@ -426,7 +424,7 @@ contract VaultV2IkrBundlesTest is Test {
         );
     }
 
-    function testForceWithdrawLiquidMarketNotPartOfAdapter() public {
+    function testForceWithdrawLiquidMarketWithoutAdapterShares() public {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
 
@@ -440,7 +438,6 @@ contract VaultV2IkrBundlesTest is Test {
     function testForceWithdrawLiquid(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpLiquid(assets);
-        vm.assume(optimalDeallocateAssets(assets) > 0);
 
         vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
             address(vault), address(adapter), marketParams, assets, block.timestamp
