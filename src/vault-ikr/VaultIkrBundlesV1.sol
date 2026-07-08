@@ -60,7 +60,6 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1, IMorphoSupplyCallback, IMorpho
 
         for (uint256 i = 0; remainingToDeallocate > 0; i++) {
             bytes32 id = Id.unwrap(marketParams[i].id());
-            // Use the shares accounted in the adapter to compute the available to withdraw.
             uint256 supplyShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(id);
             (uint256 totalSupplyAssets, uint256 totalSupplyShares,,) =
                 MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParams[i]);
@@ -92,6 +91,7 @@ contract VaultIkrBundlesV1 is IVaultIkrBundlesV1, IMorphoSupplyCallback, IMorpho
     /// @dev The deallocatedAssets amount is floor(forceWithdrawAssets * WAD / (WAD + penalty)).
     /// @dev Requires the vault to have more than the deallocated assets in liquidity.
     /// @dev Requires the sender to have enough shares to withdraw ceil(deallocatedAssets *  penalty / WAD) and then deallocatedAssets.
+    /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev Call this function with a market for which the adapter has shares.
     function vaultBundlesV1ForceWithdrawLiquidVaultV2(
         address vault,

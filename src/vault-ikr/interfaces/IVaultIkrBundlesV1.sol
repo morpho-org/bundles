@@ -15,7 +15,6 @@ interface IVaultIkrBundlesV1 {
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///
-
     function vaultBundlesV1ForceWithdrawIlliquidVaultV2(
         address vault,
         address adapter,
