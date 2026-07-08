@@ -7,9 +7,10 @@ import {MarketParams} from "../../../lib/metamorpho/lib/morpho-blue/src/interfac
 interface IVaultIkrBundlesV1 {
     /// ERRORS ///
     error AdapterNotPartOfVault();
+    error DeadlinePassed();
+    error LiquidityAdapterMismatch();
     error MorphoMismatch();
     error Unauthorized();
-    error DeadlinePassed();
 
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);
@@ -26,7 +27,6 @@ interface IVaultIkrBundlesV1 {
     function vaultBundlesV1ForceWithdrawLiquidVaultV2(
         address vault,
         address adapter,
-        MarketParams memory marketParams,
         uint256 forceWithdrawAssets,
         uint256 deadline
     ) external;
