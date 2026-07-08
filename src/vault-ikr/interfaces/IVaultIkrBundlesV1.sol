@@ -19,7 +19,7 @@ interface IVaultIkrBundlesV1 {
         address vault,
         address adapter,
         MarketParams[] memory marketParams,
-        uint256 assets,
+        uint256 forceWithdrawAssets,
         uint256 deadline
     ) external;
 
@@ -27,14 +27,14 @@ interface IVaultIkrBundlesV1 {
         address vault,
         address adapter,
         MarketParams memory marketParams,
-        uint256 assets,
+        uint256 forceWithdrawAssets,
         uint256 deadline
     ) external;
 
     function vaultBundlesV1ForceWithdrawIlliquidVaultV1(
         address vault,
         MarketParams[] memory marketParams,
-        uint256 assets,
+        uint256 forceWithdrawAssets,
         uint256 deadline
     ) external;
 }
