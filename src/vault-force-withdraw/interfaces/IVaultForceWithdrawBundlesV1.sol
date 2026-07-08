@@ -4,7 +4,7 @@ pragma solidity >=0.8.0;
 
 import {MarketParams} from "../../../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
 
-interface IVaultIkrBundlesV1 {
+interface IVaultForceWithdrawBundlesV1 {
     /// ERRORS ///
     error AdapterNotPartOfVault();
     error DeadlinePassed();

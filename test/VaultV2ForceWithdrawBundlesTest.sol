@@ -5,8 +5,8 @@ pragma solidity ^0.8.0;
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
-import {VaultIkrBundlesV1} from "../src/vault-ikr/VaultIkrBundlesV1.sol";
-import {IVaultIkrBundlesV1} from "../src/vault-ikr/interfaces/IVaultIkrBundlesV1.sol";
+import {VaultForceWithdrawBundlesV1} from "../src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol";
+import {IVaultForceWithdrawBundlesV1} from "../src/vault-force-withdraw/interfaces/IVaultForceWithdrawBundlesV1.sol";
 
 // Import from metamorpho/lib/morpho-blue to avoid duplicate types.
 import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -25,7 +25,7 @@ import {
     IMorphoMarketV1AdapterV2Factory
 } from "../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2Factory.sol";
 
-contract VaultV2IkrBundlesTest is Test {
+contract VaultV2ForceWithdrawBundlesTest is Test {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;
@@ -40,7 +40,7 @@ contract VaultV2IkrBundlesTest is Test {
     IMorpho internal morpho;
     IVaultV2 internal vault;
     IMorphoMarketV1AdapterV2 internal adapter;
-    VaultIkrBundlesV1 internal vaultBundles;
+    VaultForceWithdrawBundlesV1 internal vaultBundles;
 
     ERC20Mock internal loanToken;
     ERC20Mock internal collateralToken;
@@ -102,7 +102,7 @@ contract VaultV2IkrBundlesTest is Test {
 
         _submitAndExec(abi.encodeCall(IVaultV2.setForceDeallocatePenalty, (address(adapter), PENALTY)));
 
-        vaultBundles = new VaultIkrBundlesV1(address(morpho));
+        vaultBundles = new VaultForceWithdrawBundlesV1(address(morpho));
         assertEq(vaultBundles.BLUE(), address(morpho));
     }
 
@@ -287,7 +287,7 @@ contract VaultV2IkrBundlesTest is Test {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
-        vm.expectRevert(IVaultIkrBundlesV1.AdapterNotPartOfVault.selector);
+        vm.expectRevert(IVaultForceWithdrawBundlesV1.AdapterNotPartOfVault.selector);
         vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
             address(vault), makeAddr("notAdapter"), _singleton(marketParams), assets, block.timestamp
         );
@@ -323,7 +323,7 @@ contract VaultV2IkrBundlesTest is Test {
     }
 
     function testOnMorphoSupplyOnlyBlue() public {
-        vm.expectRevert(IVaultIkrBundlesV1.Unauthorized.selector);
+        vm.expectRevert(IVaultForceWithdrawBundlesV1.Unauthorized.selector);
         vaultBundles.onMorphoSupply(1, "");
     }
 
@@ -437,7 +437,7 @@ contract VaultV2IkrBundlesTest is Test {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
-        vm.expectRevert(IVaultIkrBundlesV1.DeadlinePassed.selector);
+        vm.expectRevert(IVaultForceWithdrawBundlesV1.DeadlinePassed.selector);
         vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
             address(vault), address(adapter), _singleton(marketParams), assets, block.timestamp - 1
         );
@@ -481,7 +481,7 @@ contract VaultV2IkrBundlesTest is Test {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
 
-        vm.expectRevert(IVaultIkrBundlesV1.AdapterNotPartOfVault.selector);
+        vm.expectRevert(IVaultForceWithdrawBundlesV1.AdapterNotPartOfVault.selector);
         vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
             address(vault), makeAddr("notAdapter"), assets, block.timestamp
         );
@@ -619,7 +619,7 @@ contract VaultV2IkrBundlesTest is Test {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
 
-        vm.expectRevert(IVaultIkrBundlesV1.DeadlinePassed.selector);
+        vm.expectRevert(IVaultForceWithdrawBundlesV1.DeadlinePassed.selector);
         vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
             address(vault), address(adapter), assets, block.timestamp - 1
         );
