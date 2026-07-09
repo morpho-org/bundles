@@ -187,6 +187,26 @@ contract VaultBundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(user), 0, 1, "user shares");
     }
 
+    function testWithdrawAllV1(uint256 assets) public {
+        _testWithdrawAll(vaultV1, assets);
+    }
+
+    function testWithdrawAllV2(uint256 assets) public {
+        _testWithdrawAll(vaultV2, assets);
+    }
+
+    // A max-uint amount redeems the sender's entire share balance.
+    function _testWithdrawAll(IERC4626 vault, uint256 assets) internal {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        _deposited(vault, assets);
+
+        bundles.vaultBundlesV1Withdraw(address(vault), type(uint256).max, 0, receiver, block.timestamp);
+
+        assertApproxEqAbs(loanToken.balanceOf(receiver), assets, 1, "receiver loan token");
+        assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
+        assertEq(vault.balanceOf(user), 0, "user shares");
+    }
+
     function testWithdrawRequiresApprovalV1() public {
         _testWithdrawRequiresApproval(vaultV1);
     }
@@ -255,6 +275,37 @@ contract VaultBundlesTest is Test {
 
         assertApproxEqAbs(source.balanceOf(user), 0, 1, "source shares");
         assertApproxEqAbs(dest.convertToAssets(dest.balanceOf(onBehalf)), assets, 1, "dest position");
+        assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
+        assertEq(loanToken.balanceOf(user), 0, "user loan token");
+    }
+
+    function testMigrateAllV1toV2(uint256 assets) public {
+        _testMigrateAll(vaultV1, vaultV2, assets);
+    }
+
+    function testMigrateAllV2toV1(uint256 assets) public {
+        _testMigrateAll(vaultV2, vaultV1, assets);
+    }
+
+    function testMigrateAllV1toV1(uint256 assets) public {
+        _testMigrateAll(vaultV1, vaultV1b, assets);
+    }
+
+    function testMigrateAllV2toV2(uint256 assets) public {
+        _testMigrateAll(vaultV2, vaultV2b, assets);
+    }
+
+    // A max-uint amount redeems the sender's entire sourceVault share balance before depositing into destVault.
+    function _testMigrateAll(IERC4626 source, IERC4626 dest, uint256 assets) internal {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        _deposited(source, assets);
+
+        bundles.vaultBundlesV1Migrate(
+            address(source), address(dest), type(uint256).max, 0, RAY, onBehalf, block.timestamp
+        );
+
+        assertEq(source.balanceOf(user), 0, "source shares");
+        assertApproxEqAbs(dest.convertToAssets(dest.balanceOf(onBehalf)), assets, 2, "dest position");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
         assertEq(loanToken.balanceOf(user), 0, "user loan token");
     }
