@@ -38,7 +38,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         require(assets.mulDivUp(1e27, shares) <= maxSharePriceE27, SlippageExceeded());
     }
 
-    /// @dev Withdraws `assets` of the vault asset from msg.sender's position in `vault` to receiver.
+    /// @dev Withdraws from msg.sender's position in the vault and sends the withdrawn assets to receiver.
     /// @dev Requires the sender to have given enough allowance over its vault shares to this contract. Using max allowance makes sure that this condition is met.
     /// @dev If assets is type(uint256).max, the sender's entire position in the vault is withdrawn.
     /// @dev minSharePriceE27 lower-bounds the realized withdraw share price (withdrawn assets per share, scaled by 1e27).
@@ -52,18 +52,18 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         require(block.timestamp <= deadline, DeadlinePassed());
 
         uint256 assetsWithdrawn;
-        uint256 sharesWithdrawn;
+        uint256 sharesRedeemed;
         if (assets == type(uint256).max) {
-            sharesWithdrawn = IERC4626(vault).balanceOf(msg.sender);
-            assetsWithdrawn = IERC4626(vault).redeem(sharesWithdrawn, receiver, msg.sender);
+            sharesRedeemed = IERC4626(vault).balanceOf(msg.sender);
+            assetsWithdrawn = IERC4626(vault).redeem(sharesRedeemed, receiver, msg.sender);
         } else {
-            sharesWithdrawn = IERC4626(vault).withdraw(assets, receiver, msg.sender);
+            sharesRedeemed = IERC4626(vault).withdraw(assets, receiver, msg.sender);
             assetsWithdrawn = assets;
         }
-        require(assetsWithdrawn.mulDivDown(1e27, sharesWithdrawn) >= minSharePriceE27, SlippageExceeded());
+        require(assetsWithdrawn.mulDivDown(1e27, sharesRedeemed) >= minSharePriceE27, SlippageExceeded());
     }
 
-    /// @dev Migrates `assets` from msg.sender's position in sourceVault to a position in destVault for onBehalf, by withdrawing them from sourceVault (routed via this contract) then depositing them into destVault.
+    /// @dev Migrates msg.sender's position in sourceVault to a position in destVault for onBehalf, by withdrawing them from sourceVault (routed via this contract) then depositing them into destVault.
     /// @dev sourceVault and destVault can each be a Vault V1 or a Vault V2. Migrating from a Vault V2 to a Vault V1 is not prevented, even though it is not expected to be useful.
     /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract. Using max allowance makes sure that this condition is met.
     /// @dev The two vaults must share the same asset.
@@ -84,18 +84,18 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         require(asset == IERC4626(destVault).asset(), InconsistentAssets());
 
         uint256 assetsWithdrawn;
-        uint256 sharesWithdrawn;
+        uint256 sharesRedeemed;
         if (assets == type(uint256).max) {
-            sharesWithdrawn = IERC4626(sourceVault).balanceOf(msg.sender);
-            assetsWithdrawn = IERC4626(sourceVault).redeem(sharesWithdrawn, address(this), msg.sender);
+            sharesRedeemed = IERC4626(sourceVault).balanceOf(msg.sender);
+            assetsWithdrawn = IERC4626(sourceVault).redeem(sharesRedeemed, address(this), msg.sender);
         } else {
-            sharesWithdrawn = IERC4626(sourceVault).withdraw(assets, address(this), msg.sender);
+            sharesRedeemed = IERC4626(sourceVault).withdraw(assets, address(this), msg.sender);
             assetsWithdrawn = assets;
         }
-        require(assetsWithdrawn.mulDivDown(1e27, sharesWithdrawn) >= minSharePriceE27, SlippageExceeded());
+        require(assetsWithdrawn.mulDivDown(1e27, sharesRedeemed) >= minSharePriceE27, SlippageExceeded());
 
         TokenLib.forceApproveMax(asset, destVault);
-        uint256 depositedShares = IERC4626(destVault).deposit(assetsWithdrawn, onBehalf);
-        require(assetsWithdrawn.mulDivUp(1e27, depositedShares) <= maxSharePriceE27, SlippageExceeded());
+        uint256 sharesMinted = IERC4626(destVault).deposit(assetsWithdrawn, onBehalf);
+        require(assetsWithdrawn.mulDivUp(1e27, sharesMinted) <= maxSharePriceE27, SlippageExceeded());
     }
 }
