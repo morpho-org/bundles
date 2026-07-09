@@ -49,7 +49,14 @@ contract AaveMigrationBundlesTest is Test {
         vm.startPrank(user);
         aToken.approve(address(bundles), amount);
         bundles.aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
-            address(pool), address(aToken), amount, address(vault), type(uint256).max, user, _noPermit(), block.timestamp
+            address(pool),
+            address(aToken),
+            amount,
+            address(vault),
+            type(uint256).max,
+            user,
+            _noPermit(),
+            block.timestamp
         );
         vm.stopPrank();
 
@@ -67,7 +74,14 @@ contract AaveMigrationBundlesTest is Test {
         vm.prank(user);
         vm.expectRevert(IAaveMigrationBundlesV1.InconsistentTokens.selector);
         bundles.aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
-            address(pool), address(otherAToken), 1, address(vault), type(uint256).max, user, _noPermit(), block.timestamp
+            address(pool),
+            address(otherAToken),
+            1,
+            address(vault),
+            type(uint256).max,
+            user,
+            _noPermit(),
+            block.timestamp
         );
     }
 
