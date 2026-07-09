@@ -1,13 +1,8 @@
-This folder contains the verification of the Midnight protocol using CVL, Certora's Verification Language.
+This folder contains the verification of the bundle contracts using CVL, Certora's Verification Language.
+
+Each spec verifies a bundler against its underlying protocol; see the repository [`README`](../README.md) and the individual bundler sources under [`src/`](../src) for the contracts themselves.
 
 # Verified properties
 
-## Core state and invariants
-
-# Verification setup
-
-# Getting started
-
-Install the `certora-cli` package with `pip install certora-cli`.
-To verify a spec, pass its configuration file in the [`certora/confs`](confs) folder to `certoraRun`.
-It requires having set the `CERTORAKEY` environment variable to a valid Certora key, and to have `solc-0.8.34` in the PATH.
+- [`BundlerRepayInvertibility.spec`](specs/BundlerRepayInvertibility.spec) checks the bundler's repay formula.
+  `midnightBundlesV1RepayAndWithdrawCollateralRepaysTargetUnits` proves the end-to-end property: calling `midnightBundlesV1RepayAndWithdrawCollateral` with `assets = floor(U * WAD / (WAD - pct))` decreases the on-chain debt by exactly `U`.

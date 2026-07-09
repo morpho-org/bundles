@@ -9,15 +9,23 @@ optimizer_runs = 4294967295
 evm_version = "osaka"
 bytecode_hash = "none"
 
+[lint]
+exclude_lints = ["block-timestamp"]
+
 [[profile.default.additional_compiler_profiles]]
 name = "paris-999999"
 evm_version = "paris"
 optimizer_runs = 999999
 
 [[profile.default.additional_compiler_profiles]]
-name = "osaka-800"
+name = "osaka-466"
 evm_version = "osaka"
-optimizer_runs = 800
+optimizer_runs = 466
+
+[[profile.default.additional_compiler_profiles]]
+name = "london-1000000"
+evm_version = "london"
+optimizer_runs = 1000000
 
 [[profile.default.compilation_restrictions]]
 paths = "test/imports/BlueImport.sol"
@@ -27,4 +35,9 @@ optimizer_runs = 999999
 [[profile.default.compilation_restrictions]]
 paths = "test/imports/MidnightImport.sol"
 evm_version = "osaka"
-optimizer_runs = 800
+optimizer_runs = 466
+
+[[profile.default.compilation_restrictions]]
+paths = "test/imports/Permit2Import.sol"
+evm_version = "london"
+optimizer_runs = 1000000
