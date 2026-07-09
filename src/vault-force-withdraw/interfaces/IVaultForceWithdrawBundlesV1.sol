@@ -16,6 +16,13 @@ interface IVaultForceWithdrawBundlesV1 {
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///
+    function vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+        address vault,
+        MarketParams[] memory marketParams,
+        uint256 forceWithdrawAssets,
+        uint256 deadline
+    ) external;
+
     function vaultBundlesV1ForceWithdrawIlliquidVaultV2(
         address vault,
         address adapter,
@@ -27,13 +34,6 @@ interface IVaultForceWithdrawBundlesV1 {
     function vaultBundlesV1ForceWithdrawLiquidVaultV2(
         address vault,
         address adapter,
-        uint256 forceWithdrawAssets,
-        uint256 deadline
-    ) external;
-
-    function vaultBundlesV1ForceWithdrawIlliquidVaultV1(
-        address vault,
-        MarketParams[] memory marketParams,
         uint256 forceWithdrawAssets,
         uint256 deadline
     ) external;
