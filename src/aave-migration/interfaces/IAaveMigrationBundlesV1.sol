@@ -7,6 +7,7 @@ import {TokenPermit} from "../../libraries/TokenLib.sol";
 interface IAaveMigrationBundlesV1 {
     /// ERRORS ///
     error InconsistentTokens();
+    error SlippageExceeded();
     error DeadlinePassed();
 
     /// FUNCTIONS ///
@@ -15,6 +16,7 @@ interface IAaveMigrationBundlesV1 {
         address aToken,
         uint256 amount,
         address vaultV2,
+        uint256 maxSharePriceE27,
         address onBehalf,
         TokenPermit memory aTokenPermit,
         uint256 deadline

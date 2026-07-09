@@ -49,7 +49,7 @@ contract AaveMigrationBundlesTest is Test {
         vm.startPrank(user);
         aToken.approve(address(bundles), amount);
         bundles.aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
-            address(pool), address(aToken), amount, address(vault), user, _noPermit(), block.timestamp
+            address(pool), address(aToken), amount, address(vault), type(uint256).max, user, _noPermit(), block.timestamp
         );
         vm.stopPrank();
 
@@ -67,8 +67,23 @@ contract AaveMigrationBundlesTest is Test {
         vm.prank(user);
         vm.expectRevert(IAaveMigrationBundlesV1.InconsistentTokens.selector);
         bundles.aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
-            address(pool), address(otherAToken), 1, address(vault), user, _noPermit(), block.timestamp
+            address(pool), address(otherAToken), 1, address(vault), type(uint256).max, user, _noPermit(), block.timestamp
         );
+    }
+
+    /// @dev A maxSharePriceE27 below the realized deposit share price reverts.
+    function testWithdrawAndDepositSlippageExceeded(uint256 amount) public {
+        amount = bound(amount, 1, 1e30);
+        aToken.mint(user, amount);
+        asset.mint(address(pool), amount);
+
+        vm.startPrank(user);
+        aToken.approve(address(bundles), amount);
+        vm.expectRevert(IAaveMigrationBundlesV1.SlippageExceeded.selector);
+        bundles.aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
+            address(pool), address(aToken), amount, address(vault), 1, user, _noPermit(), block.timestamp
+        );
+        vm.stopPrank();
     }
 
     function testDeadlinePassed() public {
@@ -77,7 +92,7 @@ contract AaveMigrationBundlesTest is Test {
         vm.prank(user);
         vm.expectRevert(IAaveMigrationBundlesV1.DeadlinePassed.selector);
         bundles.aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
-            address(pool), address(aToken), 1, address(vault), user, _noPermit(), past
+            address(pool), address(aToken), 1, address(vault), type(uint256).max, user, _noPermit(), past
         );
     }
 }
