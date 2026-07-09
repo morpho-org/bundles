@@ -28,7 +28,7 @@ contract VaultBundlesTest is Test {
     uint256 internal constant TIMELOCK = 1 days;
     uint256 internal constant RAY = 1e27;
 
-    uint256 internal constant MIN_ASSETS = 2;
+    uint256 internal constant MIN_ASSETS = 1;
     uint256 internal constant MAX_ASSETS = 1e24;
 
     IMorpho internal morpho;
