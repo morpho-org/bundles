@@ -50,8 +50,6 @@ contract VaultBundlesTest is Test {
     IERC4626 internal vaultOther; // Vault V2 over a different asset, for the asset-consistency check.
 
     address internal owner = makeAddr("owner");
-    address internal receiver = makeAddr("receiver");
-    address internal onBehalf = makeAddr("onBehalf");
 
     // This contract is the user: it owns positions and grants the bundler its allowances.
     address internal user = address(this);
@@ -135,12 +133,11 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         deal(address(loanToken), user, assets);
 
-        bundles.vaultBundlesV1Deposit(address(vault), assets, RAY, onBehalf, noPermit, block.timestamp);
+        bundles.vaultBundlesV1Deposit(address(vault), assets, RAY, noPermit, block.timestamp);
 
         assertEq(loanToken.balanceOf(user), 0, "user loan token");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
-        assertEq(vault.balanceOf(user), 0, "user shares");
-        assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(onBehalf)), assets, 1, "onBehalf position");
+        assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(user)), assets, 1, "user position");
     }
 
     function testDepositSlippageV1() public {
@@ -157,13 +154,13 @@ contract VaultBundlesTest is Test {
 
         // Realized share price is ~1e27, so a 1 wei-per-share cap is always exceeded.
         vm.expectRevert(IVaultBundlesV1.SlippageExceeded.selector);
-        bundles.vaultBundlesV1Deposit(address(vault), assets, 1, onBehalf, noPermit, block.timestamp);
+        bundles.vaultBundlesV1Deposit(address(vault), assets, 1, noPermit, block.timestamp);
     }
 
     function testDepositDeadline() public {
         deal(address(loanToken), user, 1e18);
         vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
-        bundles.vaultBundlesV1Deposit(address(vaultV1), 1e18, RAY, onBehalf, noPermit, block.timestamp - 1);
+        bundles.vaultBundlesV1Deposit(address(vaultV1), 1e18, RAY, noPermit, block.timestamp - 1);
     }
 
     /// WITHDRAW ///
@@ -180,9 +177,9 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _deposited(vault, assets);
 
-        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, receiver, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, block.timestamp);
 
-        assertEq(loanToken.balanceOf(receiver), assets, "receiver loan token");
+        assertEq(loanToken.balanceOf(user), assets, "user loan token");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
         assertApproxEqAbs(vault.balanceOf(user), 0, 1, "user shares");
     }
@@ -200,9 +197,9 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _deposited(vault, assets);
 
-        bundles.vaultBundlesV1Withdraw(address(vault), 0, vault.balanceOf(user), 0, receiver, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vault), 0, vault.balanceOf(user), 0, block.timestamp);
 
-        assertApproxEqAbs(loanToken.balanceOf(receiver), assets, 1, "receiver loan token");
+        assertApproxEqAbs(loanToken.balanceOf(user), assets, 1, "user loan token");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
         assertEq(vault.balanceOf(user), 0, "user shares");
     }
@@ -223,7 +220,7 @@ contract VaultBundlesTest is Test {
         // No approval of the bundler over the vault shares.
 
         vm.expectRevert();
-        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, receiver, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, block.timestamp);
     }
 
     function testWithdrawSlippageV1() public {
@@ -240,7 +237,7 @@ contract VaultBundlesTest is Test {
 
         // Realized share price is ~1e27, always below a max-uint floor.
         vm.expectRevert(IVaultBundlesV1.SlippageExceeded.selector);
-        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, type(uint256).max, receiver, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, type(uint256).max, block.timestamp);
     }
 
     function testWithdrawNotExactlyOneZero() public {
@@ -248,17 +245,17 @@ contract VaultBundlesTest is Test {
 
         // Both assets and shares non-zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 1, 0, receiver, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 1, 0, block.timestamp);
 
         // Both assets and shares zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), 0, 0, 0, receiver, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), 0, 0, 0, block.timestamp);
     }
 
     function testWithdrawDeadline() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 0, 0, receiver, block.timestamp - 1);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 0, 0, block.timestamp - 1);
     }
 
     /// MIGRATE ///
@@ -283,10 +280,10 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _deposited(source, assets);
 
-        bundles.vaultBundlesV1Migrate(address(source), address(dest), assets, 0, 0, RAY, onBehalf, block.timestamp);
+        bundles.vaultBundlesV1Migrate(address(source), address(dest), assets, 0, 0, RAY, block.timestamp);
 
         assertApproxEqAbs(source.balanceOf(user), 0, 1, "source shares");
-        assertApproxEqAbs(dest.convertToAssets(dest.balanceOf(onBehalf)), assets, 1, "dest position");
+        assertApproxEqAbs(dest.convertToAssets(dest.balanceOf(user)), assets, 1, "dest position");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
         assertEq(loanToken.balanceOf(user), 0, "user loan token");
     }
@@ -313,11 +310,11 @@ contract VaultBundlesTest is Test {
         _deposited(source, assets);
 
         bundles.vaultBundlesV1Migrate(
-            address(source), address(dest), 0, source.balanceOf(user), 0, RAY, onBehalf, block.timestamp
+            address(source), address(dest), 0, source.balanceOf(user), 0, RAY, block.timestamp
         );
 
         assertEq(source.balanceOf(user), 0, "source shares");
-        assertApproxEqAbs(dest.convertToAssets(dest.balanceOf(onBehalf)), assets, 2, "dest position");
+        assertApproxEqAbs(dest.convertToAssets(dest.balanceOf(user)), assets, 2, "dest position");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
         assertEq(loanToken.balanceOf(user), 0, "user loan token");
     }
@@ -325,9 +322,7 @@ contract VaultBundlesTest is Test {
     function testMigrateInconsistentAssets() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.InconsistentAssets.selector);
-        bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultOther), 100e18, 0, 0, RAY, onBehalf, block.timestamp
-        );
+        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultOther), 100e18, 0, 0, RAY, block.timestamp);
     }
 
     function testMigrateNotExactlyOneZero() public {
@@ -335,32 +330,32 @@ contract VaultBundlesTest is Test {
 
         // Both assets and shares non-zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
-        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 100e18, 1, 0, RAY, onBehalf, block.timestamp);
+        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 100e18, 1, 0, RAY, block.timestamp);
 
         // Both assets and shares zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
-        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 0, 0, 0, RAY, onBehalf, block.timestamp);
+        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 0, 0, 0, RAY, block.timestamp);
     }
 
     function testMigrateSlippageSource() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.SlippageExceeded.selector);
         bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), 100e18, 0, type(uint256).max, RAY, onBehalf, block.timestamp
+            address(vaultV1), address(vaultV2), 100e18, 0, type(uint256).max, RAY, block.timestamp
         );
     }
 
     function testMigrateSlippageDest() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.SlippageExceeded.selector);
-        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 100e18, 0, 0, 1, onBehalf, block.timestamp);
+        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 100e18, 0, 0, 1, block.timestamp);
     }
 
     function testMigrateDeadline() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
         bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), 100e18, 0, 0, RAY, onBehalf, block.timestamp - 1
+            address(vaultV1), address(vaultV2), 100e18, 0, 0, RAY, block.timestamp - 1
         );
     }
 }
