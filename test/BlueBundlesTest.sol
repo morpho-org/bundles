@@ -137,7 +137,19 @@ contract BlueBundlesTest is Test {
         vm.prank(address(0xdead));
         vm.expectRevert(IBlueBundlesV1.Unauthorized.selector);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams, 1, 0, 0, type(uint256).max, 0, WAD, user, receiver, _noPermit(), 0, address(0), block.timestamp
+            marketParams,
+            1,
+            0,
+            0,
+            type(uint256).max,
+            0,
+            WAD,
+            user,
+            receiver,
+            _noPermit(),
+            0,
+            address(0),
+            block.timestamp
         );
     }
 
@@ -179,7 +191,19 @@ contract BlueBundlesTest is Test {
         );
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams, 1, 0, 0, type(uint256).max, 0, WAD, user, receiver, _noPermit(), WAD, address(0), block.timestamp
+            marketParams,
+            1,
+            0,
+            0,
+            type(uint256).max,
+            0,
+            WAD,
+            user,
+            receiver,
+            _noPermit(),
+            WAD,
+            address(0),
+            block.timestamp
         );
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1Supply(
