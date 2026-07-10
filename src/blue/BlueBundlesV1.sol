@@ -32,18 +32,18 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// EXTERNAL ///
 
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
-    /// @dev Pulls `collateralAmount` of `marketParams.collateralToken` from msg.sender (optionally via ERC-2612 or
-    /// Permit2), supplies it as collateral on Blue for onBehalf, then borrows `borrowAssets` of the loan token on
+    /// @dev Pulls collateralAmount of marketParams.collateralToken from msg.sender (optionally via ERC-2612 or
+    /// Permit2), supplies it as collateral on Blue for onBehalf, then borrows assets of the loan token on
     /// behalf of onBehalf, routed via this contract.
-    /// @dev Total loan assets routed: borrowedAssets - referralFeeAssets to receiver, referralFeeAssets to
+    /// @dev Total loan assets routed: assets - referralFeeAssets to receiver, referralFeeAssets to
     /// referralFeeRecipient.
-    /// @dev Fee = borrowedAssets * referralFeePct / WAD; net = borrowedAssets - fee.
+    /// @dev Fee = assets * referralFeePct / WAD; net = assets - fee.
     /// @dev maxLtv caps onBehalf's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAmount,
-        uint256 borrowAssets,
+        uint256 assets,
         uint256 minSharePriceE27,
         uint256 maxLtv,
         address onBehalf,
@@ -61,21 +61,21 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
 
         IMorpho(BLUE).supplyCollateral(marketParams, collateralAmount, onBehalf, "");
-        (, uint256 borrowedShares) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, onBehalf, address(this));
-        require(borrowAssets.mulDivDown(1e27, borrowedShares) >= minSharePriceE27, SlippageExceeded());
+        (, uint256 shares) = IMorpho(BLUE).borrow(marketParams, assets, 0, onBehalf, address(this));
+        require(assets.mulDivDown(1e27, shares) >= minSharePriceE27, SlippageExceeded());
 
         requireMaxLtv(marketParams, onBehalf, maxLtv);
 
-        uint256 referralFeeAssets = borrowAssets.mulDivDown(referralFeePct, WAD);
+        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        SafeTransferLib.safeTransfer(marketParams.loanToken, receiver, borrowAssets - referralFeeAssets);
+        SafeTransferLib.safeTransfer(marketParams.loanToken, receiver, assets - referralFeeAssets);
     }
 
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
     /// @dev Pulls maxRepayAssets from msg.sender, and reimburse the unused remainder at the end of the call.
-    /// @dev If assets == type(uint256).max, the full debt is closed by shares.
+    /// @dev Exactly one of assets and shares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass onBehalf's full borrow shares as shares.
     /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
     /// @dev If withdrawCollateralAssets > 0, also withdraws that amount of collateral from onBehalf's position to receiver.
     /// @dev maxLtv caps onBehalf's resulting LTV after a withdrawal; skipped on a pure repay.
@@ -83,6 +83,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
         uint256 assets,
+        uint256 shares,
         uint256 maxRepayAssets,
         uint256 maxSharePriceE27,
         uint256 withdrawCollateralAssets,
@@ -101,30 +102,24 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         TokenLib.pullToken(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
-        uint256 repayAssets = assets == type(uint256).max ? 0 : assets;
-        uint256 repayShares =
-            assets == type(uint256).max ? IMorpho(BLUE).position(marketParams.id(), onBehalf).borrowShares : 0;
-        (uint256 repaidAmount, uint256 repaidShares) =
-            IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, onBehalf, "");
-        require(repaidAmount.mulDivUp(1e27, repaidShares) <= maxSharePriceE27, SlippageExceeded());
+        (assets, shares) = IMorpho(BLUE).repay(marketParams, assets, shares, onBehalf, "");
+        require(assets.mulDivUp(1e27, shares) <= maxSharePriceE27, SlippageExceeded());
 
         if (withdrawCollateralAssets > 0) {
             IMorpho(BLUE).withdrawCollateral(marketParams, withdrawCollateralAssets, onBehalf, receiver);
             requireMaxLtv(marketParams, onBehalf, maxLtv);
         }
 
-        uint256 referralFeeAssets = repaidAmount.mulDivDown(referralFeePct, WAD - referralFeePct);
+        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD - referralFeePct);
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        SafeTransferLib.safeTransfer(
-            marketParams.loanToken, receiver, maxRepayAssets - repaidAmount - referralFeeAssets
-        );
+        SafeTransferLib.safeTransfer(marketParams.loanToken, receiver, maxRepayAssets - assets - referralFeeAssets);
     }
 
     /// @dev Supply is permissionless on Blue, so no authorization of msg.sender over onBehalf is required.
-    /// @dev Pulls `assets` of `marketParams.loanToken` from msg.sender (optionally via ERC-2612 or Permit2).
-    /// @dev The referral fee is deducted from `assets`; the remainder is supplied to the market for onBehalf.
+    /// @dev Pulls assets of marketParams.loanToken from msg.sender (optionally via ERC-2612 or Permit2).
+    /// @dev The referral fee is deducted from assets; the remainder is supplied to the market for onBehalf.
     /// @dev Fee = assets * referralFeePct / WAD; supplied = assets - fee.
     /// @dev maxSharePriceE27 upper-bounds the realized supply share price (supplied assets per share, scaled by 1e27).
     function blueBundlesV1Supply(
@@ -155,16 +150,15 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     }
 
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
-    /// @dev Withdraws `withdrawAssets` of `marketParams.loanToken` from onBehalf's supply position, routed via this
-    /// contract.
-    /// @dev If `withdrawAssets == type(uint256).max`, the full supply position is closed by shares so no supply
-    /// shares remain.
+    /// @dev Withdraws from onBehalf's supply position, routed via this contract.
+    /// @dev Exactly one of assets and shares should be non-zero: the position is withdrawn by assets, or by shares. To close the full supply position so no supply shares remain, pass onBehalf's full supply shares as shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to receiver.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev minSharePriceE27 lower-bounds the realized withdraw share price (withdrawn assets per share, scaled by 1e27).
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
-        uint256 withdrawAssets,
+        uint256 assets,
+        uint256 shares,
         uint256 minSharePriceE27,
         address onBehalf,
         address receiver,
@@ -176,16 +170,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
-        uint256 withdrawn;
-        uint256 withdrawnShares;
-        if (withdrawAssets == type(uint256).max) {
-            uint256 supplyShares = IMorpho(BLUE).position(marketParams.id(), onBehalf).supplyShares;
-            (withdrawn, withdrawnShares) =
-                IMorpho(BLUE).withdraw(marketParams, 0, supplyShares, onBehalf, address(this));
-        } else {
-            (withdrawn, withdrawnShares) =
-                IMorpho(BLUE).withdraw(marketParams, withdrawAssets, 0, onBehalf, address(this));
-        }
+        (uint256 withdrawn, uint256 withdrawnShares) =
+            IMorpho(BLUE).withdraw(marketParams, assets, shares, onBehalf, address(this));
         require(withdrawn.mulDivDown(1e27, withdrawnShares) >= minSharePriceE27, SlippageExceeded());
 
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
@@ -236,16 +222,15 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             referralFeeRecipient,
             minSharePriceE27
         );
-        (uint256 repaidAmount, uint256 repaidShares) =
-            IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, onBehalf, data);
-        require(repaidAmount.mulDivUp(1e27, repaidShares) <= maxSharePriceE27, SlippageExceeded());
+        (uint256 assets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, onBehalf, data);
+        require(assets.mulDivUp(1e27, position.borrowShares) <= maxSharePriceE27, SlippageExceeded());
 
         requireMaxLtv(destMarketParams, onBehalf, maxLtv);
     }
 
     /// @dev Blue's repay callback. Only reachable during blueBundlesV1MigrateBorrowPosition: no other function passes
     /// non-empty data to repay.
-    /// @dev Blue pulls exactly `assets` of the loan token from this contract after this callback returns.
+    /// @dev Blue pulls exactly assets of the loan token from this contract after this callback returns.
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
         (
