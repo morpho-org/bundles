@@ -75,7 +75,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
     /// @dev Pulls maxRepayAssets from msg.sender, and reimburse the unused remainder at the end of the call.
-    /// @dev If assets == type(uint256).max, the full debt is closed by shares.
+    /// @dev Exactly one of assets and shares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass onBehalf's full borrow shares as shares.
     /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
     /// @dev If withdrawCollateralAssets > 0, also withdraws that amount of collateral from onBehalf's position to receiver.
     /// @dev maxLtv caps onBehalf's resulting LTV after a withdrawal; skipped on a pure repay.
@@ -83,6 +83,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
         uint256 assets,
+        uint256 shares,
         uint256 maxRepayAssets,
         uint256 maxSharePriceE27,
         uint256 withdrawCollateralAssets,
@@ -101,11 +102,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         TokenLib.pullToken(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
-        uint256 repayAssets = assets == type(uint256).max ? 0 : assets;
-        uint256 repayShares =
-            assets == type(uint256).max ? IMorpho(BLUE).position(marketParams.id(), onBehalf).borrowShares : 0;
-        (uint256 repaidAmount, uint256 repaidShares) =
-            IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, onBehalf, "");
+        (uint256 repaidAmount, uint256 repaidShares) = IMorpho(BLUE).repay(marketParams, assets, shares, onBehalf, "");
         require(repaidAmount.mulDivUp(1e27, repaidShares) <= maxSharePriceE27, SlippageExceeded());
 
         if (withdrawCollateralAssets > 0) {
@@ -155,16 +152,15 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     }
 
     /// @dev The onBehalf must have authorized this contract and the msg.sender (if different from onBehalf) on Blue.
-    /// @dev Withdraws `withdrawAssets` of `marketParams.loanToken` from onBehalf's supply position, routed via this
-    /// contract.
-    /// @dev If `withdrawAssets == type(uint256).max`, the full supply position is closed by shares so no supply
-    /// shares remain.
+    /// @dev Withdraws from onBehalf's supply position, routed via this contract.
+    /// @dev Exactly one of assets and shares should be non-zero: the position is withdrawn by assets, or by shares. To close the full supply position so no supply shares remain, pass onBehalf's full supply shares as shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to receiver.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev minSharePriceE27 lower-bounds the realized withdraw share price (withdrawn assets per share, scaled by 1e27).
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
-        uint256 withdrawAssets,
+        uint256 assets,
+        uint256 shares,
         uint256 minSharePriceE27,
         address onBehalf,
         address receiver,
@@ -176,16 +172,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(onBehalf == msg.sender || IMorpho(BLUE).isAuthorized(onBehalf, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
 
-        uint256 withdrawn;
-        uint256 withdrawnShares;
-        if (withdrawAssets == type(uint256).max) {
-            uint256 supplyShares = IMorpho(BLUE).position(marketParams.id(), onBehalf).supplyShares;
-            (withdrawn, withdrawnShares) =
-                IMorpho(BLUE).withdraw(marketParams, 0, supplyShares, onBehalf, address(this));
-        } else {
-            (withdrawn, withdrawnShares) =
-                IMorpho(BLUE).withdraw(marketParams, withdrawAssets, 0, onBehalf, address(this));
-        }
+        (uint256 withdrawn, uint256 withdrawnShares) =
+            IMorpho(BLUE).withdraw(marketParams, assets, shares, onBehalf, address(this));
         require(withdrawn.mulDivDown(1e27, withdrawnShares) >= minSharePriceE27, SlippageExceeded());
 
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
