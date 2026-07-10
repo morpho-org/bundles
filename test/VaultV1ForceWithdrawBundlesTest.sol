@@ -5,10 +5,9 @@ pragma solidity ^0.8.0;
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
-import {VaultIkrBundlesV1} from "../src/vault-ikr/VaultIkrBundlesV1.sol";
-import {IVaultIkrBundlesV1} from "../src/vault-ikr/interfaces/IVaultIkrBundlesV1.sol";
+import {VaultForceWithdrawBundlesV1} from "../src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol";
+import {IVaultForceWithdrawBundlesV1} from "../src/vault-force-withdraw/interfaces/IVaultForceWithdrawBundlesV1.sol";
 
-// Use the vault's own (nested) morpho-blue everywhere, so Morpho, MetaMorpho and this test share a single market type.
 import {IMetaMorpho} from "../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
 import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "../lib/metamorpho/lib/morpho-blue/src/libraries/MarketParamsLib.sol";
@@ -18,11 +17,7 @@ import {MorphoStorageLib} from "../lib/metamorpho/lib/morpho-blue/src/libraries/
 import {ORACLE_PRICE_SCALE} from "../lib/metamorpho/lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/metamorpho/lib/morpho-blue/src/mocks/OracleMock.sol";
 
-// The bundler is compiled against the top-level morpho-blue (a different commit), so its MarketParams is a distinct
-// type: alias it just for the vaultBundlesV1ForceWithdrawIlliquidVaultV1 argument and convert at that single boundary.
-import {MarketParams as BundlerMarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
-
-contract VaultV1IkrBundlesTest is Test {
+contract VaultV1ForceWithdrawBundlesTest is Test {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;
@@ -35,7 +30,7 @@ contract VaultV1IkrBundlesTest is Test {
 
     IMorpho internal morpho;
     IMetaMorpho internal vault;
-    VaultIkrBundlesV1 internal vaultBundles;
+    VaultForceWithdrawBundlesV1 internal vaultBundles;
 
     ERC20Mock internal loanToken;
     ERC20Mock internal collateralToken;
@@ -67,21 +62,16 @@ contract VaultV1IkrBundlesTest is Test {
         morpho.createMarket(marketParams);
         morpho.createMarket(otherMarket);
 
-        vaultBundles = new VaultIkrBundlesV1(address(morpho));
+        vaultBundles = new VaultForceWithdrawBundlesV1(address(morpho));
         assertEq(vaultBundles.BLUE(), address(morpho));
     }
 
     /// HELPERS ///
 
-    /// @dev Converts a market to the bundler's (top-level morpho-blue) MarketParams type.
-    function _toBundler(MarketParams memory mp) internal pure returns (BundlerMarketParams memory) {
-        return BundlerMarketParams(mp.loanToken, mp.collateralToken, mp.oracle, mp.irm, mp.lltv);
-    }
-
     /// @dev Wraps a single market into the singleton list expected by vaultBundlesV1ForceWithdrawIlliquidVaultV1.
-    function _singleton(MarketParams memory marketParams_) internal pure returns (BundlerMarketParams[] memory list) {
-        list = new BundlerMarketParams[](1);
-        list[0] = _toBundler(marketParams_);
+    function _singleton(MarketParams memory marketParams_) internal pure returns (MarketParams[] memory list) {
+        list = new MarketParams[](1);
+        list[0] = marketParams_;
     }
 
     /// @dev Deploys a MetaMorpho (Vault V1) over the loan token, deposits `assets` for address(this) which get
@@ -212,7 +202,7 @@ contract VaultV1IkrBundlesTest is Test {
     /// AUTHORIZATION & VALIDATION ///
 
     function testOnMorphoFlashLoanOnlyBlue() public {
-        vm.expectRevert(IVaultIkrBundlesV1.Unauthorized.selector);
+        vm.expectRevert(IVaultForceWithdrawBundlesV1.Unauthorized.selector);
         vaultBundles.onMorphoFlashLoan(1, "");
     }
 
@@ -256,9 +246,9 @@ contract VaultV1IkrBundlesTest is Test {
         _borrowOut(marketParams, available1 / 2);
         _borrowOut(otherMarket, available2 / 2);
 
-        BundlerMarketParams[] memory list = new BundlerMarketParams[](2);
-        list[0] = _toBundler(marketParams);
-        list[1] = _toBundler(otherMarket);
+        MarketParams[] memory list = new MarketParams[](2);
+        list[0] = marketParams;
+        list[1] = otherMarket;
 
         // Withdraw more than the first market holds so the remainder spills into the second.
         uint256 forceWithdrawAssets = available1 + 20e18;
@@ -285,9 +275,9 @@ contract VaultV1IkrBundlesTest is Test {
         _borrowOut(marketParams, available1);
         _borrowOut(otherMarket, available2);
 
-        BundlerMarketParams[] memory list = new BundlerMarketParams[](2);
-        list[0] = _toBundler(marketParams);
-        list[1] = _toBundler(otherMarket);
+        MarketParams[] memory list = new MarketParams[](2);
+        list[0] = marketParams;
+        list[1] = otherMarket;
 
         // More than the first market holds ⇒ in-kind redeemed across both.
         uint256 forceWithdrawAssets = available1 + 20e18;
@@ -301,12 +291,71 @@ contract VaultV1IkrBundlesTest is Test {
         assertApproxEqAbs(morpho.expectedSupplyAssets(otherMarket, address(this)), 20e18, 3, "second market");
     }
 
+    /// @dev A market can be enabled in the vault yet hold no vault supply. When such a market is reached by the
+    /// redemption loop it must be skipped, not cause a revert: supplying 0 to Morpho Blue reverts INCONSISTENT_INPUT.
+    function testForceWithdrawSkipsEnabledEmptyMarket() public {
+        uint256 assets = 60e18;
+
+        vault = IMetaMorpho(
+            deployCode(
+                "MetaMorpho.sol:MetaMorpho", abi.encode(owner, address(morpho), 1 days, address(loanToken), "V1", "V1")
+            )
+        );
+
+        // Both markets enabled, but the supply queue routes every deposit to otherMarket, leaving marketParams empty.
+        Id[] memory supplyQueue = new Id[](1);
+        supplyQueue[0] = otherMarket.id();
+        vm.startPrank(owner);
+        vault.submitCap(marketParams, type(uint184).max);
+        vault.submitCap(otherMarket, type(uint184).max);
+        vm.warp(block.timestamp + 1 days);
+        vault.acceptCap(marketParams);
+        vault.acceptCap(otherMarket);
+        vault.setSupplyQueue(supplyQueue);
+        vm.stopPrank();
+
+        deal(address(loanToken), address(this), assets);
+        loanToken.approve(address(vault), type(uint256).max);
+        vault.deposit(assets, address(this));
+        assertEq(morpho.supplyShares(marketParams.id(), address(vault)), 0, "marketParams empty");
+        assertGt(morpho.supplyShares(otherMarket.id(), address(vault)), 0, "otherMarket funded");
+
+        // otherMarket fully borrowed out ⇒ illiquid.
+        _borrowOut(otherMarket, morpho.expectedSupplyAssets(otherMarket, address(vault)));
+
+        // Morpho global liquidity to fund the flash loan, from a third market sharing the loan token.
+        vm.prank(owner);
+        morpho.enableLltv(0.5e18);
+        MarketParams memory liquidityMarket =
+            MarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), 0.5e18);
+        morpho.createMarket(liquidityMarket);
+        deal(address(loanToken), liquidityProvider, 4 * assets);
+        vm.startPrank(liquidityProvider);
+        loanToken.approve(address(morpho), type(uint256).max);
+        morpho.supply(liquidityMarket, 4 * assets, 0, liquidityProvider, "");
+        vm.stopPrank();
+
+        vault.approve(address(vaultBundles), type(uint256).max);
+        deal(address(loanToken), address(this), 0);
+
+        // The enabled-but-empty marketParams comes first in the list; it must be skipped rather than revert.
+        MarketParams[] memory list = new MarketParams[](2);
+        list[0] = marketParams;
+        list[1] = otherMarket;
+
+        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(address(vault), list, assets, block.timestamp);
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
+        assertApproxEqAbs(morpho.expectedSupplyAssets(otherMarket, address(this)), assets, 2, "in-kind position");
+    }
+
     /// @dev Reverts once `deadline` is in the past (checkDeadline runs before the body).
     function testForceWithdrawIlliquidDeadlinePassed() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
-        vm.expectRevert(IVaultIkrBundlesV1.DeadlinePassed.selector);
+        vm.expectRevert(IVaultForceWithdrawBundlesV1.DeadlinePassed.selector);
         vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(
             address(vault), _singleton(marketParams), assets, block.timestamp - 1
         );
