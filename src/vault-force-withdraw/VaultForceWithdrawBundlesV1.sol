@@ -66,7 +66,6 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         uint256 assetsToDeallocate = forceWithdrawAssets;
         for (uint256 i = 0; assetsToDeallocate > 0; i++) {
             MarketParams memory marketParams = marketParamsList[i];
-            // Markets not enabled in the vault are skipped.
             if (!IMetaMorpho(vault).config(marketParams.id()).enabled) continue;
 
             uint256 vaultAssets = MorphoBalancesLib.expectedSupplyAssets(IMorpho(BLUE), marketParams, vault);
@@ -115,7 +114,6 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
             uint256 adapterAssets = adapterShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
             uint256 assets = UtilsLib.min(adapterAssets, assetsToDeallocate);
 
-            // Markets for which the adapter accounting reports no shares are skipped.
             if (assets > 0) {
                 bytes memory data = abi.encode(vault, adapter, marketParams[i], msg.sender);
                 IMorpho(BLUE).supply(marketParams[i], assets, 0, msg.sender, data);
