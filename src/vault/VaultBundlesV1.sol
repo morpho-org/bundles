@@ -7,7 +7,7 @@ import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {IERC4626} from "../../lib/vault-v2/src/interfaces/IERC4626.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 
-/// @dev Designed for Morpho Vault V1 (MetaMorpho) and Morpho Vault V2.
+/// @dev Designed and audited for Morpho Vault V1 (MetaMorpho) and Morpho Vault V2.
 /// @dev Inherits the token safety requirements of the vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev Gated vaults (Vault V2) require this contract to be permitted by the relevant gates.
