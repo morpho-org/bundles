@@ -164,6 +164,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         uint256 assetsToWithdraw = UtilsLib.min(forceWithdrawAssets, withdrawableAssets);
         IVaultV2(vault).withdraw(assetsToWithdraw, msg.sender, msg.sender);
 
+        // pre-fetching the market list because the deallocate could drop a market from the list.
         uint256 marketIdsLength = IMorphoMarketV1AdapterV2(adapter).marketIdsLength();
         bytes32[] memory marketIds = new bytes32[](marketIdsLength);
         for (uint256 i = 0; i < marketIdsLength; i++) {
