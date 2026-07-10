@@ -18,13 +18,12 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
 
     /// EXTERNAL ///
 
-    /// @dev Pulls assets of the vault asset from msg.sender (optionally via ERC-2612 or Permit2) and deposits them into vault for onBehalf.
+    /// @dev Pulls assets of the vault asset from msg.sender (optionally via ERC-2612 or Permit2) and deposits them into vault.
     /// @dev maxSharePriceE27 upper-bounds the realized deposit share price (deposited assets per share, scaled by 1e27).
     function vaultBundlesV1Deposit(
         address vault,
         uint256 assets,
         uint256 maxSharePriceE27,
-        address onBehalf,
         TokenPermit memory assetPermit,
         uint256 deadline
     ) external {
@@ -34,11 +33,11 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         TokenLib.pullToken(asset, msg.sender, assets, assetPermit);
         TokenLib.forceApproveMax(asset, vault);
 
-        uint256 shares = IERC4626(vault).deposit(assets, onBehalf);
+        uint256 shares = IERC4626(vault).deposit(assets, msg.sender);
         require(assets.mulDivUp(1e27, shares) <= maxSharePriceE27, SlippageExceeded());
     }
 
-    /// @dev Withdraws from msg.sender's position in the vault and sends the withdrawn assets to receiver.
+    /// @dev Withdraws msg.sender's position in the vault.
     /// @dev Requires the sender to have given enough allowance over its vault shares to this contract.
     /// @dev Exactly one of assets and shares should be non-zero: the vault is withdrawn by assets, or redeemed by shares. To withdraw the sender's entire position, pass its full share balance as shares.
     /// @dev minSharePriceE27 lower-bounds the realized withdraw share price (withdrawn assets per share, scaled by 1e27).
@@ -47,21 +46,20 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         uint256 assets,
         uint256 shares,
         uint256 minSharePriceE27,
-        address receiver,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
         require((assets == 0) != (shares == 0), NotExactlyOneZero());
 
         if (assets > 0) {
-            shares = IERC4626(vault).withdraw(assets, receiver, msg.sender);
+            shares = IERC4626(vault).withdraw(assets, msg.sender, msg.sender);
         } else {
-            assets = IERC4626(vault).redeem(shares, receiver, msg.sender);
+            assets = IERC4626(vault).redeem(shares, msg.sender, msg.sender);
         }
         require(assets.mulDivDown(1e27, shares) >= minSharePriceE27, SlippageExceeded());
     }
 
-    /// @dev Migrates msg.sender's position in sourceVault to a position in destVault for onBehalf, by withdrawing them from sourceVault (routed via this contract) then depositing them into destVault.
+    /// @dev Migrates msg.sender's position in sourceVault to a position in destVault, by withdrawing them from sourceVault (routed via this contract) then depositing them into destVault.
     /// @dev sourceVault and destVault can each be a Vault V1 or a Vault V2. Migrating from a Vault V2 to a Vault V1 is not prevented, even though it is not expected to be useful.
     /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract.
     /// @dev Exactly one of assets and shares should be non-zero: sourceVault is withdrawn by assets, or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as shares.
@@ -73,7 +71,6 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         uint256 shares,
         uint256 minSharePriceE27,
         uint256 maxSharePriceE27,
-        address onBehalf,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -90,7 +87,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         require(assets.mulDivDown(1e27, shares) >= minSharePriceE27, SlippageExceeded());
 
         TokenLib.forceApproveMax(asset, destVault);
-        uint256 sharesMinted = IERC4626(destVault).deposit(assets, onBehalf);
+        uint256 sharesMinted = IERC4626(destVault).deposit(assets, msg.sender);
         require(assets.mulDivUp(1e27, sharesMinted) <= maxSharePriceE27, SlippageExceeded());
     }
 }

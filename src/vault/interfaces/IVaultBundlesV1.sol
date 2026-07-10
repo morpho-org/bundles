@@ -16,7 +16,6 @@ interface IVaultBundlesV1 {
         address vault,
         uint256 assets,
         uint256 maxSharePriceE27,
-        address onBehalf,
         TokenPermit memory assetPermit,
         uint256 deadline
     ) external;
@@ -26,7 +25,6 @@ interface IVaultBundlesV1 {
         uint256 assets,
         uint256 shares,
         uint256 minSharePriceE27,
-        address receiver,
         uint256 deadline
     ) external;
 
@@ -37,7 +35,6 @@ interface IVaultBundlesV1 {
         uint256 shares,
         uint256 minSharePriceE27,
         uint256 maxSharePriceE27,
-        address onBehalf,
         uint256 deadline
     ) external;
 }
