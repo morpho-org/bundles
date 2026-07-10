@@ -23,6 +23,12 @@ Each bundle exposes a small set of high-level entry points that chain several pr
 - `blueBundlesV1Withdraw` — withdraw supplied loan assets (optionally the full position by shares) to a receiver.
 - `blueBundlesV1MigrateBorrowPosition` — move a full borrow position (collateral and debt) from one market to another.
 
+## Aave migration bundles
+
+[AaveMigrationBundlesV1](src/aave-migration/AaveMigrationBundlesV1.sol) contains:
+
+- `aaveMigrationBundlesV1WithdrawAndDepositInVaultV2` — pull an aToken, withdraw its underlying from Aave V3, then deposit the underlying into a Morpho Vault V2.
+
 ## Vault force withdraw bundles
 
 [VaultForceWithdrawBundlesV1](src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol) contains:
