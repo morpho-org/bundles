@@ -275,9 +275,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             }),
                 signature
             ) {}
-            catch {
-                require(IMorpho(BLUE).isAuthorized(sender, address(this)), InvalidAuthorizationSignature());
-            }
+        catch {
+            require(IMorpho(BLUE).isAuthorized(sender, address(this)), InvalidAuthorizationSignature());
+        }
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.
