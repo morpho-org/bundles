@@ -230,7 +230,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
     /// @dev Blue's repay callback. Only reachable during blueBundlesV1MigrateBorrowPosition: no other function passes
     /// non-empty data to repay.
-    /// @dev Blue pulls exactly `assets` of the loan token from this contract after this callback returns.
+    /// @dev Blue pulls exactly assets of the loan token from this contract after this callback returns.
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
         (
