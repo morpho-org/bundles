@@ -18,7 +18,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
 
     /// EXTERNAL ///
 
-    /// @dev Pulls `assets` of the vault asset from msg.sender (optionally via ERC-2612 or Permit2) and deposits them into `vault` for onBehalf.
+    /// @dev Pulls assets of the vault asset from msg.sender (optionally via ERC-2612 or Permit2) and deposits them into vault for onBehalf.
     /// @dev maxSharePriceE27 upper-bounds the realized deposit share price (deposited assets per share, scaled by 1e27).
     function vaultBundlesV1Deposit(
         address vault,
@@ -39,7 +39,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     }
 
     /// @dev Withdraws from msg.sender's position in the vault and sends the withdrawn assets to receiver.
-    /// @dev Requires the sender to have given enough allowance over its vault shares to this contract. Using max allowance makes sure that this condition is met.
+    /// @dev Requires the sender to have given enough allowance over its vault shares to this contract.
     /// @dev Exactly one of assets and shares should be non-zero: the vault is withdrawn by assets, or redeemed by shares. To withdraw the sender's entire position, pass its full share balance as shares.
     /// @dev minSharePriceE27 lower-bounds the realized withdraw share price (withdrawn assets per share, scaled by 1e27).
     function vaultBundlesV1Withdraw(
@@ -63,8 +63,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
 
     /// @dev Migrates msg.sender's position in sourceVault to a position in destVault for onBehalf, by withdrawing them from sourceVault (routed via this contract) then depositing them into destVault.
     /// @dev sourceVault and destVault can each be a Vault V1 or a Vault V2. Migrating from a Vault V2 to a Vault V1 is not prevented, even though it is not expected to be useful.
-    /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract. Using max allowance makes sure that this condition is met.
-    /// @dev The two vaults must share the same asset.
+    /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract.
     /// @dev Exactly one of assets and shares should be non-zero: sourceVault is withdrawn by assets, or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as shares.
     /// @dev minSharePriceE27 lower-bounds the realized sourceVault withdraw share price; maxSharePriceE27 upper-bounds the realized destVault deposit share price (both assets per share, scaled by 1e27).
     function vaultBundlesV1Migrate(
