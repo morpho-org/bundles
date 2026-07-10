@@ -8,6 +8,7 @@ interface IVaultBundlesV1 {
     /// ERRORS ///
     error SlippageExceeded();
     error InconsistentAssets();
+    error NotExactlyOneZero();
     error DeadlinePassed();
 
     /// FUNCTIONS ///
@@ -23,6 +24,7 @@ interface IVaultBundlesV1 {
     function vaultBundlesV1Withdraw(
         address vault,
         uint256 assets,
+        uint256 shares,
         uint256 minSharePriceE27,
         address receiver,
         uint256 deadline
@@ -32,6 +34,7 @@ interface IVaultBundlesV1 {
         address sourceVault,
         address destVault,
         uint256 assets,
+        uint256 shares,
         uint256 minSharePriceE27,
         uint256 maxSharePriceE27,
         address onBehalf,

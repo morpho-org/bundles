@@ -40,62 +40,58 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
 
     /// @dev Withdraws from msg.sender's position in the vault and sends the withdrawn assets to receiver.
     /// @dev Requires the sender to have given enough allowance over its vault shares to this contract. Using max allowance makes sure that this condition is met.
-    /// @dev If assets is type(uint256).max, the sender's entire position in the vault is withdrawn.
+    /// @dev Exactly one of assets and shares should be non-zero: the vault is withdrawn by assets, or redeemed by shares. To withdraw the sender's entire position, pass its full share balance as shares.
     /// @dev minSharePriceE27 lower-bounds the realized withdraw share price (withdrawn assets per share, scaled by 1e27).
     function vaultBundlesV1Withdraw(
         address vault,
         uint256 assets,
+        uint256 shares,
         uint256 minSharePriceE27,
         address receiver,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
+        require((assets == 0) != (shares == 0), NotExactlyOneZero());
 
-        uint256 assetsWithdrawn;
-        uint256 sharesRedeemed;
-        if (assets == type(uint256).max) {
-            sharesRedeemed = IERC4626(vault).balanceOf(msg.sender);
-            assetsWithdrawn = IERC4626(vault).redeem(sharesRedeemed, receiver, msg.sender);
+        if (assets > 0) {
+            shares = IERC4626(vault).withdraw(assets, receiver, msg.sender);
         } else {
-            sharesRedeemed = IERC4626(vault).withdraw(assets, receiver, msg.sender);
-            assetsWithdrawn = assets;
+            assets = IERC4626(vault).redeem(shares, receiver, msg.sender);
         }
-        require(assetsWithdrawn.mulDivDown(1e27, sharesRedeemed) >= minSharePriceE27, SlippageExceeded());
+        require(assets.mulDivDown(1e27, shares) >= minSharePriceE27, SlippageExceeded());
     }
 
     /// @dev Migrates msg.sender's position in sourceVault to a position in destVault for onBehalf, by withdrawing them from sourceVault (routed via this contract) then depositing them into destVault.
     /// @dev sourceVault and destVault can each be a Vault V1 or a Vault V2. Migrating from a Vault V2 to a Vault V1 is not prevented, even though it is not expected to be useful.
     /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract. Using max allowance makes sure that this condition is met.
     /// @dev The two vaults must share the same asset.
-    /// @dev If assets is type(uint256).max, the sender's entire position in sourceVault is withdrawn.
+    /// @dev Exactly one of assets and shares should be non-zero: sourceVault is withdrawn by assets, or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as shares.
     /// @dev minSharePriceE27 lower-bounds the realized sourceVault withdraw share price; maxSharePriceE27 upper-bounds the realized destVault deposit share price (both assets per share, scaled by 1e27).
     function vaultBundlesV1Migrate(
         address sourceVault,
         address destVault,
         uint256 assets,
+        uint256 shares,
         uint256 minSharePriceE27,
         uint256 maxSharePriceE27,
         address onBehalf,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
+        require((assets == 0) != (shares == 0), NotExactlyOneZero());
 
         address asset = IERC4626(sourceVault).asset();
         require(asset == IERC4626(destVault).asset(), InconsistentAssets());
 
-        uint256 assetsWithdrawn;
-        uint256 sharesRedeemed;
-        if (assets == type(uint256).max) {
-            sharesRedeemed = IERC4626(sourceVault).balanceOf(msg.sender);
-            assetsWithdrawn = IERC4626(sourceVault).redeem(sharesRedeemed, address(this), msg.sender);
+        if (assets > 0) {
+            shares = IERC4626(sourceVault).withdraw(assets, address(this), msg.sender);
         } else {
-            sharesRedeemed = IERC4626(sourceVault).withdraw(assets, address(this), msg.sender);
-            assetsWithdrawn = assets;
+            assets = IERC4626(sourceVault).redeem(shares, address(this), msg.sender);
         }
-        require(assetsWithdrawn.mulDivDown(1e27, sharesRedeemed) >= minSharePriceE27, SlippageExceeded());
+        require(assets.mulDivDown(1e27, shares) >= minSharePriceE27, SlippageExceeded());
 
         TokenLib.forceApproveMax(asset, destVault);
-        uint256 sharesMinted = IERC4626(destVault).deposit(assetsWithdrawn, onBehalf);
-        require(assetsWithdrawn.mulDivUp(1e27, sharesMinted) <= maxSharePriceE27, SlippageExceeded());
+        uint256 sharesMinted = IERC4626(destVault).deposit(assets, onBehalf);
+        require(assets.mulDivUp(1e27, sharesMinted) <= maxSharePriceE27, SlippageExceeded());
     }
 }
