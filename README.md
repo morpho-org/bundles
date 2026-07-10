@@ -23,6 +23,14 @@ Each bundle exposes a small set of high-level entry points that chain several pr
 - `blueBundlesV1Withdraw` — withdraw supplied loan assets (optionally the full position by shares) to a receiver.
 - `blueBundlesV1MigrateBorrowPosition` — move a full borrow position (collateral and debt) from one market to another.
 
+## Vault bundles
+
+[VaultBundlesV1](src/vault/VaultBundlesV1.sol) contains:
+
+- `vaultBundlesV1Deposit` — deposit assets into a Morpho Vault V1 or V2 on behalf of an account.
+- `vaultBundlesV1Withdraw` — withdraw assets (optionally the full position) from a vault to a receiver.
+- `vaultBundlesV1Migrate` — migrate a full position from one vault to another sharing the same asset.
+
 ## Vault force withdraw bundles
 
 [VaultForceWithdrawBundlesV1](src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol) contains:
