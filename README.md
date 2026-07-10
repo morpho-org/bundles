@@ -27,10 +27,9 @@ Each bundle exposes a small set of high-level entry points that chain several pr
 
 [VaultBundlesV1](src/vault/VaultBundlesV1.sol) contains:
 
-- `vaultBundlesV1Deposit` — deposit assets into a Morpho Vault V1 or V2 on behalf of an account.
-- `vaultBundlesV1Withdraw` — withdraw assets (optionally the full position) from a vault to a receiver.
-- `vaultBundlesV1Migrate` — migrate a full position from one vault to another sharing the same asset.
-
+- `vaultBundlesV1Deposit` — deposit assets into a vault.
+- `vaultBundlesV1Withdraw` — withdraw assets from a vault.
+- `vaultBundlesV1Migrate` — migrate assets from one vault to another.
 ## Vault force withdraw bundles
 
 [VaultForceWithdrawBundlesV1](src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol) contains:
