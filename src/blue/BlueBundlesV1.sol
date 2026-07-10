@@ -261,7 +261,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev Submits signature to Blue, authorizing this contract on sender's positions.
     /// @dev The expected signed payload is Authorization(sender, address(this), true, Blue's current nonce of sender, deadline): only signatures authorizing this contract for sender can be submitted.
     /// @dev Skipped when signature.r == 0 (no valid signature has r == 0).
-    /// @dev Tolerates revert: the signature may have been front-run, in which case the authorization is already set. Blue checks authorization at the point of use.
+    /// @dev Tolerates a front-run submission: if the authorization is already set, the failed submission is ignored; otherwise reverts with InvalidAuthorizationSignature.
     function submitAuthorizationSignature(address sender, Signature memory signature, uint256 deadline) internal {
         if (signature.r == 0) return;
         try IMorpho(BLUE)
@@ -275,7 +275,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             }),
                 signature
             ) {}
-            catch {}
+            catch {
+                require(IMorpho(BLUE).isAuthorized(sender, address(this)), InvalidAuthorizationSignature());
+            }
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.

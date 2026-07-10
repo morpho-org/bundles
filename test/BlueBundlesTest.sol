@@ -225,8 +225,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(sigUser), borrowAssets);
     }
 
-    /// @dev An invalid signature is tolerated by the submission step, so the revert surfaces at the point of use on
-    /// Blue.
+    /// @dev An invalid signature reverts at the submission step, unless the authorization is already set.
     function testAuthorizationSigInvalid() public {
         (address sigUser,) = makeAddrAndKey("sigUser");
         (, uint256 wrongKey) = makeAddrAndKey("mallory");
@@ -238,7 +237,7 @@ contract BlueBundlesTest is Test {
 
         vm.startPrank(sigUser);
         collateralToken.approve(address(blueBundles), collateral);
-        vm.expectRevert(bytes("unauthorized"));
+        vm.expectRevert(IBlueBundlesV1.InvalidAuthorizationSignature.selector);
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
             marketParams, collateral, borrowAssets, 0, WAD, _noPermit(), authSig, 0, address(0), block.timestamp
         );
