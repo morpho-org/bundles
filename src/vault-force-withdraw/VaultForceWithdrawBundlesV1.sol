@@ -70,9 +70,9 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
 
             uint256 vaultAssets = MorphoBalancesLib.expectedSupplyAssets(IMorpho(BLUE), marketParams, vault);
             uint256 assets = UtilsLib.min(vaultAssets, assetsToDeallocate);
+            assetsToDeallocate -= assets;
 
             if (assets > 0) {
-                assetsToDeallocate -= assets;
                 IMorpho(BLUE).supply(marketParams, assets, 0, sender, "");
             }
         }
@@ -182,8 +182,8 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
             uint256 adapterAssets = adapterShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
             uint256 availableToWithdraw = UtilsLib.min(adapterAssets, totalSupplyAssets - totalBorrowAssets);
             uint256 assets = UtilsLib.min(availableToWithdraw, remainingAssets);
-
             remainingAssets -= assets;
+
             IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), assets, msg.sender);
         }
         IVaultV2(vault).withdraw(assetsToDeallocate, msg.sender, msg.sender);
