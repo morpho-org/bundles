@@ -40,8 +40,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev Requires Morpho Blue to have more than the assets in liquidity.
     /// @dev Requires the sender to have enough shares to withdraw assets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
-    /// @dev Call this function with markets that belong to the vault.
-    /// @dev This function should not be called with duplicate markets in the list.
+    /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
     function vaultBundlesV1ForceWithdrawIlliquidVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
@@ -89,7 +88,6 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev Requires the sender to have enough shares to withdraw ceil(assets *  penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
-    /// @dev Call this function with markets for which the adapter has shares.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
     function vaultBundlesV1ForceWithdrawIlliquidVaultV2(
         address vault,
