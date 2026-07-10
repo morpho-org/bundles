@@ -71,7 +71,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev Pulls maxRepayAssets from msg.sender, and reimburse the unused remainder at the end of the call, and withdraws collateral if withdrawCollateralAssets > 0.
     /// @dev Exactly one of assets and shares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as shares.
     /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
-    /// @dev maxLtv caps onBehalf's resulting LTV after a withdrawal; skipped on a pure repay.
+    /// @dev maxLtv caps msg.sender's resulting LTV after a withdrawal; skipped on a pure repay.
     /// @dev maxSharePriceE27 upper-bounds the realized repay share price (repaid assets per share, scaled by 1e27).
     function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
@@ -81,7 +81,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 maxSharePriceE27,
         uint256 withdrawCollateralAssets,
         uint256 maxLtv,
-        address receiver,
         TokenPermit memory loanTokenPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -97,7 +96,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(assets.mulDivUp(1e27, shares) <= maxSharePriceE27, SlippageExceeded());
 
         if (withdrawCollateralAssets > 0) {
-            IMorpho(BLUE).withdrawCollateral(marketParams, withdrawCollateralAssets, msg.sender, receiver);
+            IMorpho(BLUE).withdrawCollateral(marketParams, withdrawCollateralAssets, msg.sender, msg.sender);
             requireMaxLtv(marketParams, msg.sender, maxLtv);
         }
 
@@ -105,7 +104,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        SafeTransferLib.safeTransfer(marketParams.loanToken, receiver, maxRepayAssets - assets - referralFeeAssets);
+        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, maxRepayAssets - assets - referralFeeAssets);
     }
 
     /// @dev Pulls assets of marketParams.loanToken from msg.sender (optionally via ERC-2612 or Permit2).
@@ -141,7 +140,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev The msg.sender must have authorized this contract on Blue.
     /// @dev Withdraws from msg.sender's supply position, routed via this contract.
     /// @dev Exactly one of assets and shares should be non-zero: the position is withdrawn by assets, or by shares. To close the full supply position so no supply shares remain, pass msg.sender's full supply shares as shares.
-    /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to receiver.
+    /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev minSharePriceE27 lower-bounds the realized withdraw share price (withdrawn assets per share, scaled by 1e27).
     function blueBundlesV1Withdraw(
@@ -149,7 +148,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 assets,
         uint256 shares,
         uint256 minSharePriceE27,
-        address receiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -165,7 +163,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        SafeTransferLib.safeTransfer(marketParams.loanToken, receiver, withdrawn - referralFeeAssets);
+        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, withdrawn - referralFeeAssets);
     }
 
     /// @dev The msg.sender must have authorized this contract on Blue.
