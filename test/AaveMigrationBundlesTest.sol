@@ -11,10 +11,11 @@ import {IAaveMigrationBundlesV1} from "../src/aave-migration/interfaces/IAaveMig
 import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract AaveMigrationBundlesTest is Test {
-    AaveMigrationBundlesV1 internal bundles;
-    AaveV3PoolMock internal pool;
+    address internal pool;
     TokenMock internal asset;
     ATokenMock internal aToken;
+
+    AaveMigrationBundlesV1 internal bundles;
     IVaultV2Factory internal vaultFactory;
     IVaultV2 internal vault;
 
@@ -27,8 +28,8 @@ contract AaveMigrationBundlesTest is Test {
 
         asset = new TokenMock("asset", "asset");
         aToken = new ATokenMock("aToken", "aToken", address(asset));
-        pool = new AaveV3PoolMock();
-        pool.setAToken(address(asset), aToken);
+        pool = address(new AaveV3PoolMock());
+        AaveV3PoolMock(pool).setAToken(address(asset), aToken);
 
         vaultFactory = IVaultV2Factory(deployCode("VaultV2Factory.sol:VaultV2Factory"));
         vault = IVaultV2(vaultFactory.createVaultV2(owner, address(asset), bytes32(0)));
@@ -40,29 +41,22 @@ contract AaveMigrationBundlesTest is Test {
 
     function _noPermit() internal pure returns (TokenPermit memory) {}
 
-    function testWithdrawAndDepositInVaultV2(uint256 amount) public {
-        amount = bound(amount, 1, 1e30);
-        aToken.mint(user, amount);
-        asset.mint(address(pool), amount);
-        uint256 expectedShares = vault.previewDeposit(amount);
+    function testWithdrawAndDepositInVaultV2(uint256 aTokenAmount) public {
+        aTokenAmount = bound(aTokenAmount, 1, 1e30);
+        aToken.mint(user, aTokenAmount);
+        asset.mint(pool, aTokenAmount);
+        uint256 expectedShares = vault.previewDeposit(aTokenAmount);
 
         vm.startPrank(user);
-        aToken.approve(address(bundles), amount);
+        aToken.approve(address(bundles), aTokenAmount);
         bundles.aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
-            address(pool),
-            address(aToken),
-            amount,
-            address(vault),
-            type(uint256).max,
-            user,
-            _noPermit(),
-            block.timestamp
+            pool, address(aToken), aTokenAmount, address(vault), type(uint256).max, user, _noPermit(), block.timestamp
         );
         vm.stopPrank();
 
         assertEq(aToken.balanceOf(user), 0, "user aToken balance");
         assertEq(vault.balanceOf(user), expectedShares, "user vault shares");
-        assertEq(asset.balanceOf(address(vault)), amount, "vault assets");
+        assertEq(asset.balanceOf(address(vault)), aTokenAmount, "vault assets");
         assertEq(asset.balanceOf(address(bundles)), 0, "bundler asset residual");
         assertEq(aToken.balanceOf(address(bundles)), 0, "bundler aToken residual");
     }
@@ -74,14 +68,7 @@ contract AaveMigrationBundlesTest is Test {
         vm.prank(user);
         vm.expectRevert(IAaveMigrationBundlesV1.InconsistentTokens.selector);
         bundles.aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
-            address(pool),
-            address(otherAToken),
-            1,
-            address(vault),
-            type(uint256).max,
-            user,
-            _noPermit(),
-            block.timestamp
+            pool, address(otherAToken), 1, address(vault), type(uint256).max, user, _noPermit(), block.timestamp
         );
     }
 
@@ -89,13 +76,13 @@ contract AaveMigrationBundlesTest is Test {
     function testWithdrawAndDepositSlippageExceeded(uint256 amount) public {
         amount = bound(amount, 1, 1e30);
         aToken.mint(user, amount);
-        asset.mint(address(pool), amount);
+        asset.mint(pool, amount);
 
         vm.startPrank(user);
         aToken.approve(address(bundles), amount);
         vm.expectRevert(IAaveMigrationBundlesV1.SlippageExceeded.selector);
         bundles.aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
-            address(pool), address(aToken), amount, address(vault), 1, user, _noPermit(), block.timestamp
+            pool, address(aToken), amount, address(vault), 1, user, _noPermit(), block.timestamp
         );
         vm.stopPrank();
     }
@@ -106,7 +93,7 @@ contract AaveMigrationBundlesTest is Test {
         vm.prank(user);
         vm.expectRevert(IAaveMigrationBundlesV1.DeadlinePassed.selector);
         bundles.aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
-            address(pool), address(aToken), 1, address(vault), type(uint256).max, user, _noPermit(), past
+            pool, address(aToken), 1, address(vault), type(uint256).max, user, _noPermit(), past
         );
     }
 }
