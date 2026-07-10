@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Copyright (c) 2025 Morpho Association
+// Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
 import {IBlueBundlesV1} from "./interfaces/IBlueBundlesV1.sol";
