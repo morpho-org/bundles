@@ -173,19 +173,20 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
         uint256 assetsToDeallocate = (forceWithdrawAssets - assetsToWithdraw) * WAD / (WAD + penalty);
+        uint256 remainingAssets = assetsToDeallocate;
 
-        for (uint256 i = 0; assetsToDeallocate > 0; i++) {
+        for (uint256 i = 0; remainingAssets > 0; i++) {
             MarketParams memory marketParams = IMorpho(BLUE).idToMarketParams(Id.wrap(marketIds[i]));
             uint256 adapterShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(marketIds[i]);
             (uint256 totalSupplyAssets, uint256 totalSupplyShares, uint256 totalBorrowAssets,) =
                 MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParams);
             uint256 adapterAssets = adapterShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
             uint256 availableToWithdraw = UtilsLib.min(adapterAssets, totalSupplyAssets - totalBorrowAssets);
-            uint256 assets = UtilsLib.min(availableToWithdraw, assetsToDeallocate);
+            uint256 assets = UtilsLib.min(availableToWithdraw, remainingAssets);
 
             IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), assets, msg.sender);
-            IVaultV2(vault).withdraw(assets, msg.sender, msg.sender);
-            assetsToDeallocate -= assets;
+            remainingAssets -= assets;
         }
+        IVaultV2(vault).withdraw(assetsToDeallocate, msg.sender, msg.sender);
     }
 }
