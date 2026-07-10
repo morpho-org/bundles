@@ -83,7 +83,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// FORCE WITHDRAW ILLIQUID VAULT V2 ///
 
     /// @dev Assumes that adapter is a Morpho Blue adapter.
-    /// @dev The sender must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
+    /// @dev The sender must have given enough allowance over vault shares to this bundler.
     /// @dev The assetsToDeallocate amount is floor(forceWithdrawAssets * WAD / (WAD + penalty)).
     /// @dev Requires Morpho Blue to have more than assetsToDeallocate in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw ceil(assets *  penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
