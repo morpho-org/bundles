@@ -36,7 +36,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
 
     /// FORCE WITHDRAW ILLIQUID VAULT V1 ///
 
-    /// @dev The sender must have given enough allowance over vault shares to this bundler. Using max allowance makes sure that this condition is met.
+    /// @dev The sender must have given enough allowance over vault shares to this bundler.
     /// @dev Requires Morpho Blue to have more than the assets in liquidity.
     /// @dev Requires the sender to have enough shares to withdraw assets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
