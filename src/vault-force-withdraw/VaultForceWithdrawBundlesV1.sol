@@ -87,7 +87,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev The assetsToDeallocate amount is floor(forceWithdrawAssets * WAD / (WAD + penalty)).
     /// @dev Requires Morpho Blue to have more than assetsToDeallocate in liquidity.
     /// @dev Requires the sender to have enough shares to withdraw ceil(assets *  penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
-    /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
+    /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev Call this function with markets for which the adapter has shares.
     /// @dev Calling this function with duplicate markets in the list can be used in case there is not enough "flashloanable" liquidity (this liquidity is provided when calling supply with a callback).
