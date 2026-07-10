@@ -90,7 +90,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev Call this function with markets for which the adapter has shares.
-    /// @dev Calling this function with duplicate markets in the list can be used in case there is not enough "flashloanable" liquidity (this liquidity is provided when calling supply with a callback).
+    /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
     function vaultBundlesV1ForceWithdrawIlliquidVaultV2(
         address vault,
         address adapter,
