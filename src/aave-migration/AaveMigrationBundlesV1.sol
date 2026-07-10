@@ -17,12 +17,12 @@ contract AaveMigrationBundlesV1 is IAaveMigrationBundlesV1 {
     using UtilsLib for uint256;
 
     /// EXTERNAL ///
-    /// @dev Pulls amount of aToken from msg.sender (optionally via ERC-2612 or Permit2), withdraws the whole pulled balance from aaveV3Pool into this contract, then deposits the underlying into vaultV2 for onBehalf.
+    /// @dev Pulls aTokenAmount of aToken from msg.sender (optionally via ERC-2612 or Permit2), withdraws the whole pulled balance from aaveV3Pool into this contract, then deposits the underlying into vaultV2 for onBehalf.
     /// @dev maxSharePriceE27 upper-bounds the realized deposit share price (deposited assets per share, scaled by 1e27).
     function aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
         address aaveV3Pool,
         address aToken,
-        uint256 amount,
+        uint256 aTokenAmount,
         address vaultV2,
         uint256 maxSharePriceE27,
         address onBehalf,
@@ -33,7 +33,7 @@ contract AaveMigrationBundlesV1 is IAaveMigrationBundlesV1 {
         address asset = IVaultV2(vaultV2).asset();
         require(asset == IAToken(aToken).UNDERLYING_ASSET_ADDRESS(), InconsistentTokens());
 
-        TokenLib.pullToken(aToken, msg.sender, amount, aTokenPermit);
+        TokenLib.pullToken(aToken, msg.sender, aTokenAmount, aTokenPermit);
         uint256 withdrawn = IAaveV3(aaveV3Pool).withdraw(asset, type(uint256).max, address(this));
 
         TokenLib.forceApproveMax(asset, vaultV2);

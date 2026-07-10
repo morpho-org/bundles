@@ -14,7 +14,7 @@ interface IAaveMigrationBundlesV1 {
     function aaveMigrationBundlesV1WithdrawAndDepositInVaultV2(
         address aaveV3Pool,
         address aToken,
-        uint256 amount,
+        uint256 aTokenAmount,
         address vaultV2,
         uint256 maxSharePriceE27,
         address onBehalf,
