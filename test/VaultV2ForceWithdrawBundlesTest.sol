@@ -512,14 +512,11 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
 
-    /// @dev Passing assets = previewRedeem(balanceOf(sender) - 8) sweeps the three markets and leaves the sender with
-    /// almost nothing in the vault. The 8 shares margin keeps the ceil-rounded withdrawals (one per penalty plus the
-    /// final one) from over-burning.
     function testForceWithdrawLiquidThreeMarkets() public {
         _setUpLiquidThreeMarkets(50e18, 30e18, 20e18);
 
         uint256 sharesBefore = vault.balanceOf(address(this));
-        uint256 amount = vault.previewRedeem(sharesBefore - 8);
+        uint256 amount = vault.previewRedeem(sharesBefore - 4);
         uint256 deallocate = optimalDeallocateAssets(amount);
         assertGt(deallocate, 80e18, "precondition: all three markets are needed");
 
@@ -529,10 +526,10 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         // The first two markets are drained, the remainder is pulled from the third.
         assertEq(morpho.expectedSupplyAssets(marketParams, address(adapter)), 0, "first market position");
         assertEq(morpho.expectedSupplyAssets(otherMarket, address(adapter)), 0, "second market position");
-        assertApproxEqAbs(
-            morpho.expectedSupplyAssets(thirdMarket, address(adapter)), 100e18 - deallocate, 3, "third market position"
+        assertEq(
+            morpho.expectedSupplyAssets(thirdMarket, address(adapter)), 100e18 - deallocate, "third market position"
         );
-        assertLe(vault.previewRedeem(vault.balanceOf(address(this))), 10, "almost nothing left in the vault");
+        assertEq(vault.balanceOf(address(this)), 4, "exactly the margin is left in the vault");
     }
 
     /// @dev The first market's liquidity is partially borrowed out, so only its available liquidity is taken from it
