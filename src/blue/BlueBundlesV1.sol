@@ -4,7 +4,14 @@ pragma solidity 0.8.34;
 
 import {IBlueBundlesV1} from "./interfaces/IBlueBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
-import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {
+    IMorpho,
+    MarketParams,
+    Position,
+    Market,
+    Authorization,
+    Signature
+} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
 import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
@@ -31,7 +38,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
     /// EXTERNAL ///
 
-    /// @dev The msg.sender must have authorized this contract on Blue.
+    /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via authorizationSignature.
     /// @dev Pulls collateralAmount of marketParams.collateralToken from msg.sender (optionally via ERC-2612 or Permit2), supplies it as collateral on Blue for msg.sender, then borrows assets of the loan token on behalf of msg.sender, routed via this contract.
     /// @dev Total loan assets routed: assets - referralFeeAssets to msg.sender, referralFeeAssets to referralFeeRecipient.
     /// @dev Fee = assets * referralFeePct / WAD; net = assets - fee.
@@ -44,12 +51,15 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 minSharePriceE27,
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
+        Signature memory authorizationSignature,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
+
+        setAuthorizationWithSig(msg.sender, authorizationSignature, deadline);
 
         TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAmount, collateralPermit);
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
@@ -67,7 +77,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, assets - referralFeeAssets);
     }
 
-    /// @dev The msg.sender must have authorized this contract on Blue if some collateral is withdrawn.
+    /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via authorizationSignature, if some collateral is withdrawn.
     /// @dev Pulls maxRepayAssets from msg.sender, and reimburse the unused remainder at the end of the call, and withdraws collateral if withdrawCollateralAssets > 0.
     /// @dev Exactly one of assets and shares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as shares.
     /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
@@ -82,12 +92,15 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 withdrawCollateralAssets,
         uint256 maxLtv,
         TokenPermit memory loanTokenPermit,
+        Signature memory authorizationSignature,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
+
+        setAuthorizationWithSig(msg.sender, authorizationSignature, deadline);
 
         TokenLib.pullToken(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
@@ -137,7 +150,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         }
     }
 
-    /// @dev The msg.sender must have authorized this contract on Blue.
+    /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via authorizationSignature.
     /// @dev Withdraws from msg.sender's supply position, routed via this contract.
     /// @dev Exactly one of assets and shares should be non-zero: the position is withdrawn by assets, or by shares. To close the full supply position so no supply shares remain, pass msg.sender's full supply shares as shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
@@ -148,12 +161,15 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 assets,
         uint256 shares,
         uint256 minSharePriceE27,
+        Signature memory authorizationSignature,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
+
+        setAuthorizationWithSig(msg.sender, authorizationSignature, deadline);
 
         (uint256 withdrawn, uint256 withdrawnShares) =
             IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
@@ -166,7 +182,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, withdrawn - referralFeeAssets);
     }
 
-    /// @dev The msg.sender must have authorized this contract on Blue.
+    /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via authorizationSignature.
     /// @dev Moves the full position of msg.sender (collateral and borrow shares, read from Blue) from the source market to the destination market via Blue's repay callback, pulling no tokens from msg.sender.
     /// @dev The markets must have the same loan token and the same collateral token.
     /// @dev The referral fee is borrowed on the destination on top of the repaid assets, adding to the debt.
@@ -180,12 +196,16 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 maxSharePriceE27,
         uint256 minSharePriceE27,
         uint256 maxLtv,
+        Signature memory authorizationSignature,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
+
+        setAuthorizationWithSig(msg.sender, authorizationSignature, deadline);
+
         require(
             sourceMarketParams.loanToken == destMarketParams.loanToken
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
@@ -236,6 +256,26 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         }
 
         TokenLib.forceApproveMax(sourceMarketParams.loanToken, BLUE);
+    }
+
+    /// @dev Submits signature to Blue, authorizing this contract to act on sender's positions, so that the entry points are callable in a single transaction without a prior authorization transaction.
+    /// @dev The expected signed payload is Authorization(sender, address(this), true, Blue's current nonce of sender, deadline), where deadline is the call's deadline. Reconstructing it here ensures that only signatures authorizing this contract for sender can ever be submitted through this path.
+    /// @dev Skipped when signature.r == 0 (no valid signature has r == 0).
+    /// @dev Tolerates revert: a third party may have front-run the submission of the signature, in which case the authorization is already set. Enforcement does not rely on this step: Blue checks authorization at the point of use.
+    function setAuthorizationWithSig(address sender, Signature memory signature, uint256 deadline) internal {
+        if (signature.r == 0) return;
+        try IMorpho(BLUE)
+            .setAuthorizationWithSig(
+                Authorization({
+                authorizer: sender,
+                authorized: address(this),
+                isAuthorized: true,
+                nonce: IMorpho(BLUE).nonce(sender),
+                deadline: deadline
+            }),
+                signature
+            ) {}
+            catch {}
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.
