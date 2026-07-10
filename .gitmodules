@@ -9,7 +9,7 @@
 	url = https://github.com/foundry-rs/forge-std
 [submodule "lib/vault-v2"]
 	path = lib/vault-v2
-	url = git@github.com:morpho-org/vault-v2.git
+	url = https://github.com/morpho-org/vault-v2
 [submodule "lib/metamorpho"]
 	path = lib/metamorpho
 	url = https://github.com/morpho-org/metamorpho

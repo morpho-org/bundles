@@ -2,42 +2,39 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity >=0.8.0;
 
-import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {MarketParams} from "../../../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
 
-interface IVaultIkrBundlesV1 {
+interface IVaultForceWithdrawBundlesV1 {
     /// ERRORS ///
     error AdapterNotPartOfVault();
-    error MarketNotPartOfAdapter();
-    error MarketNotPartOfVault();
+    error DeadlinePassed();
+    error LiquidityAdapterMismatch();
     error MorphoMismatch();
     error Unauthorized();
-    error DeadlinePassed();
 
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///
+    function vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+        address vault,
+        MarketParams[] memory marketParams,
+        uint256 forceWithdrawAssets,
+        uint256 deadline
+    ) external;
 
     function vaultBundlesV1ForceWithdrawIlliquidVaultV2(
         address vault,
         address adapter,
         MarketParams[] memory marketParams,
-        uint256 assets,
+        uint256 forceWithdrawAssets,
         uint256 deadline
     ) external;
 
     function vaultBundlesV1ForceWithdrawLiquidVaultV2(
         address vault,
         address adapter,
-        MarketParams memory marketParams,
-        uint256 assets,
-        uint256 deadline
-    ) external;
-
-    function vaultBundlesV1ForceWithdrawIlliquidVaultV1(
-        address vault,
-        MarketParams[] memory marketParams,
-        uint256 assets,
+        uint256 forceWithdrawAssets,
         uint256 deadline
     ) external;
 }
