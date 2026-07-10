@@ -48,6 +48,8 @@ jobs:
           [ -s compare/old.tsv ] || { echo "old manifest is empty"; exit 1; }
       - name: Run Forge tests
         run: forge test
+        env:
+          ALCHEMY_KEY: ${{ secrets.ALCHEMY_KEY }}
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@8789b3e21e6c11b2697f5eb56eddae542f746c10 # v1
       - name: Build with Foundry
