@@ -5,9 +5,11 @@ pragma solidity >=0.8.0;
 import {MarketParams, Signature} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {TokenPermit} from "../../libraries/TokenLib.sol";
 
+/// @dev The signature deadline is independent of the call deadline: an unsubmitted signature stays submittable until deadline, as revoking on Blue does not consume the nonce.
 struct SignedAuthorization {
     Signature signature;
     uint256 nonce;
+    uint256 deadline;
 }
 
 interface IBlueBundlesV1 {

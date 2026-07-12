@@ -127,7 +127,9 @@ contract BlueBundlesTest is Test {
             )
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
-        return SignedAuthorization({signature: Signature({v: v, r: r, s: s}), nonce: authorization.nonce});
+        return SignedAuthorization({
+            signature: Signature({v: v, r: r, s: s}), nonce: authorization.nonce, deadline: authorization.deadline
+        });
     }
 
     function _collateralFor(uint256 borrowAssets) internal pure returns (uint256) {
@@ -248,6 +250,25 @@ contract BlueBundlesTest is Test {
         morpho.setAuthorization(address(blueBundles), true);
 
         SignedAuthorization memory authSig = _signAuthorization(wrongKey, sigUser, block.timestamp);
+
+        vm.startPrank(sigUser);
+        collateralToken.approve(address(blueBundles), collateral);
+        vm.expectRevert(IBlueBundlesV1.InvalidAuthorizationSignature.selector);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams, collateral, borrowAssets, 0, WAD, _noPermit(), authSig, 0, address(0), block.timestamp
+        );
+        vm.stopPrank();
+    }
+
+    /// @dev An expired signature deadline reverts at the submission step, independently of the call deadline.
+    function testAuthorizationSigExpired() public {
+        (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
+        uint256 borrowAssets = 1e18;
+        uint256 collateral = _collateralFor(borrowAssets);
+        deal(address(collateralToken), sigUser, collateral);
+
+        vm.warp(block.timestamp + 1000);
+        SignedAuthorization memory authSig = _signAuthorization(sigUserKey, sigUser, block.timestamp - 1);
 
         vm.startPrank(sigUser);
         collateralToken.approve(address(blueBundles), collateral);
