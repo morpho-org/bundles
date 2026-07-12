@@ -5,6 +5,11 @@ pragma solidity >=0.8.0;
 import {MarketParams, Signature} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {TokenPermit} from "../../libraries/TokenLib.sol";
 
+struct SignedAuthorization {
+    Signature signature;
+    uint256 nonce;
+}
+
 interface IBlueBundlesV1 {
     /// ERRORS ///
     error PctExceeded();
@@ -26,8 +31,7 @@ interface IBlueBundlesV1 {
         uint256 minSharePriceE27,
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
-        Signature memory authorizationSignature,
-        uint256 authorizationNonce,
+        SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -42,8 +46,7 @@ interface IBlueBundlesV1 {
         uint256 withdrawCollateralAssets,
         uint256 maxLtv,
         TokenPermit memory loanTokenPermit,
-        Signature memory authorizationSignature,
-        uint256 authorizationNonce,
+        SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -64,8 +67,7 @@ interface IBlueBundlesV1 {
         uint256 assets,
         uint256 shares,
         uint256 minSharePriceE27,
-        Signature memory authorizationSignature,
-        uint256 authorizationNonce,
+        SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -77,8 +79,7 @@ interface IBlueBundlesV1 {
         uint256 maxSharePriceE27,
         uint256 minSharePriceE27,
         uint256 maxLtv,
-        Signature memory authorizationSignature,
-        uint256 authorizationNonce,
+        SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
