@@ -262,9 +262,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         TokenLib.forceApproveMax(sourceMarketParams.loanToken, BLUE);
     }
 
-    /// @dev Submits signature to Blue, authorizing this contract on sender's positions.
     /// @dev The expected signed payload is Authorization(sender, address(this), true, nonce, deadline): only signatures authorizing this contract for sender can be submitted.
-    /// @dev Skipped when signature.r == 0 (no valid signature has r == 0).
+    /// @dev Skipped when signature.r == 0 (no valid signature has r == 0), useful to be able to pass an empty signature..
     /// @dev Tolerates a consumed nonce (e.g. a front-run submission) if the authorization is already set; any other failure reverts with InvalidAuthorizationSignature.
     function submitAuthorizationSignature(Signature memory signature, uint256 nonce, uint256 deadline) internal {
         if (signature.r == 0) return;
