@@ -17,7 +17,6 @@ import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
-import {ErrorsLib} from "../../lib/morpho-blue/src/libraries/ErrorsLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
@@ -276,10 +275,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             }),
                 signature
             ) {}
-        catch Error(string memory reason) {
+        catch {
             require(
-                keccak256(bytes(reason)) == keccak256(bytes(ErrorsLib.INVALID_NONCE))
-                    && IMorpho(BLUE).isAuthorized(msg.sender, address(this)),
+                IMorpho(BLUE).nonce(msg.sender) != nonce && IMorpho(BLUE).isAuthorized(msg.sender, address(this)),
                 InvalidAuthorizationSignature()
             );
         }
