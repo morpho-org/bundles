@@ -70,7 +70,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         (, uint256 shares) = IMorpho(BLUE).borrow(marketParams, assets, 0, msg.sender, address(this));
         require(assets.mulDivDown(1e27, shares) >= minSharePriceE27, SlippageExceeded());
 
-        requireMaxLtv(marketParams, msg.sender, maxLtv);
+        requireMaxLtv(marketParams, maxLtv);
 
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
@@ -113,7 +113,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
         if (withdrawCollateralAssets > 0) {
             IMorpho(BLUE).withdrawCollateral(marketParams, withdrawCollateralAssets, msg.sender, msg.sender);
-            requireMaxLtv(marketParams, msg.sender, maxLtv);
+            requireMaxLtv(marketParams, maxLtv);
         }
 
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD - referralFeePct);
@@ -231,7 +231,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         (uint256 assets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, msg.sender, data);
         require(assets.mulDivUp(1e27, position.borrowShares) <= maxSharePriceE27, SlippageExceeded());
 
-        requireMaxLtv(destMarketParams, msg.sender, maxLtv);
+        requireMaxLtv(destMarketParams, maxLtv);
     }
 
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
@@ -287,10 +287,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.
     /// @dev Must be called only after the market's interest has been accrued, so the stored totals are current; mirrors Blue's own health check but against maxLtv.
-    function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal view {
+    function requireMaxLtv(MarketParams memory marketParams, uint256 maxLtv) internal view {
         if (maxLtv >= marketParams.lltv) return;
         Market memory market = IMorpho(BLUE).market(marketParams.id());
-        Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
+        Position memory position = IMorpho(BLUE).position(marketParams.id(), msg.sender);
         uint256 borrowed = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
         uint256 price = IOracle(marketParams.oracle).price();
         uint256 maxBorrow = uint256(position.collateral).mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
