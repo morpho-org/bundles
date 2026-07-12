@@ -59,7 +59,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
-        submitAuthorizationSignature(msg.sender, authorizationSignature, deadline);
+        submitAuthorizationSignature(authorizationSignature, deadline);
 
         TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAmount, collateralPermit);
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
@@ -100,7 +100,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
-        submitAuthorizationSignature(msg.sender, authorizationSignature, deadline);
+        submitAuthorizationSignature(authorizationSignature, deadline);
 
         TokenLib.pullToken(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
@@ -169,7 +169,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
-        submitAuthorizationSignature(msg.sender, authorizationSignature, deadline);
+        submitAuthorizationSignature(authorizationSignature, deadline);
 
         (uint256 withdrawn, uint256 withdrawnShares) =
             IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
@@ -204,7 +204,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
-        submitAuthorizationSignature(msg.sender, authorizationSignature, deadline);
+        submitAuthorizationSignature(authorizationSignature, deadline);
 
         require(
             sourceMarketParams.loanToken == destMarketParams.loanToken
@@ -262,21 +262,21 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev The expected signed payload is Authorization(sender, address(this), true, Blue's current nonce of sender, deadline): only signatures authorizing this contract for sender can be submitted.
     /// @dev Skipped when signature.r == 0 (no valid signature has r == 0).
     /// @dev Tolerates a front-run submission: if the authorization is already set, the failed submission is ignored; otherwise reverts with InvalidAuthorizationSignature.
-    function submitAuthorizationSignature(address sender, Signature memory signature, uint256 deadline) internal {
+    function submitAuthorizationSignature(Signature memory signature, uint256 deadline) internal {
         if (signature.r == 0) return;
         try IMorpho(BLUE)
             .setAuthorizationWithSig(
                 Authorization({
-                authorizer: sender,
+                authorizer: msg.sender,
                 authorized: address(this),
                 isAuthorized: true,
-                nonce: IMorpho(BLUE).nonce(sender),
+                nonce: IMorpho(BLUE).nonce(msg.sender),
                 deadline: deadline
             }),
                 signature
             ) {}
         catch {
-            require(IMorpho(BLUE).isAuthorized(sender, address(this)), InvalidAuthorizationSignature());
+            require(IMorpho(BLUE).isAuthorized(msg.sender, address(this)), InvalidAuthorizationSignature());
         }
     }
 
