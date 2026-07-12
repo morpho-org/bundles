@@ -354,8 +354,6 @@ contract VaultBundlesTest is Test {
     function testMigrateDeadline() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
-        bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), 100e18, 0, 0, RAY, block.timestamp - 1
-        );
+        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 100e18, 0, 0, RAY, block.timestamp - 1);
     }
 }
