@@ -22,7 +22,7 @@ interface IBlueBundlesV1 {
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAmount,
-        uint256 borrowAssets,
+        uint256 assets,
         uint256 minSharePriceE27,
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
