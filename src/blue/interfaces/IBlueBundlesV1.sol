@@ -27,6 +27,7 @@ interface IBlueBundlesV1 {
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
         Signature memory authorizationSignature,
+        uint256 authorizationNonce,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -42,6 +43,7 @@ interface IBlueBundlesV1 {
         uint256 maxLtv,
         TokenPermit memory loanTokenPermit,
         Signature memory authorizationSignature,
+        uint256 authorizationNonce,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -63,6 +65,7 @@ interface IBlueBundlesV1 {
         uint256 shares,
         uint256 minSharePriceE27,
         Signature memory authorizationSignature,
+        uint256 authorizationNonce,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -75,6 +78,7 @@ interface IBlueBundlesV1 {
         uint256 minSharePriceE27,
         uint256 maxLtv,
         Signature memory authorizationSignature,
+        uint256 authorizationNonce,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline

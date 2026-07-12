@@ -17,6 +17,7 @@ import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
+import {ErrorsLib} from "../../lib/morpho-blue/src/libraries/ErrorsLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
@@ -52,6 +53,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
         Signature memory authorizationSignature,
+        uint256 authorizationNonce,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -59,7 +61,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
-        submitAuthorizationSignature(authorizationSignature, deadline);
+        submitAuthorizationSignature(authorizationSignature, authorizationNonce, deadline);
 
         TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAmount, collateralPermit);
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
@@ -93,6 +95,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 maxLtv,
         TokenPermit memory loanTokenPermit,
         Signature memory authorizationSignature,
+        uint256 authorizationNonce,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -100,7 +103,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
-        submitAuthorizationSignature(authorizationSignature, deadline);
+        submitAuthorizationSignature(authorizationSignature, authorizationNonce, deadline);
 
         TokenLib.pullToken(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
@@ -162,6 +165,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 shares,
         uint256 minSharePriceE27,
         Signature memory authorizationSignature,
+        uint256 authorizationNonce,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -169,7 +173,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
-        submitAuthorizationSignature(authorizationSignature, deadline);
+        submitAuthorizationSignature(authorizationSignature, authorizationNonce, deadline);
 
         (uint256 withdrawn, uint256 withdrawnShares) =
             IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
@@ -197,6 +201,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 minSharePriceE27,
         uint256 maxLtv,
         Signature memory authorizationSignature,
+        uint256 authorizationNonce,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -204,7 +209,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
-        submitAuthorizationSignature(authorizationSignature, deadline);
+        submitAuthorizationSignature(authorizationSignature, authorizationNonce, deadline);
 
         require(
             sourceMarketParams.loanToken == destMarketParams.loanToken
@@ -259,24 +264,24 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     }
 
     /// @dev Submits signature to Blue, authorizing this contract on sender's positions.
-    /// @dev The expected signed payload is Authorization(sender, address(this), true, Blue's current nonce of sender, deadline): only signatures authorizing this contract for sender can be submitted.
+    /// @dev The expected signed payload is Authorization(sender, address(this), true, nonce, deadline): only signatures authorizing this contract for sender can be submitted.
     /// @dev Skipped when signature.r == 0 (no valid signature has r == 0).
-    /// @dev Tolerates a front-run submission: if the authorization is already set, the failed submission is ignored; otherwise reverts with InvalidAuthorizationSignature.
-    function submitAuthorizationSignature(Signature memory signature, uint256 deadline) internal {
+    /// @dev Tolerates a consumed nonce (e.g. a front-run submission) if the authorization is already set; any other failure reverts with InvalidAuthorizationSignature.
+    function submitAuthorizationSignature(Signature memory signature, uint256 nonce, uint256 deadline) internal {
         if (signature.r == 0) return;
         try IMorpho(BLUE)
             .setAuthorizationWithSig(
                 Authorization({
-                authorizer: msg.sender,
-                authorized: address(this),
-                isAuthorized: true,
-                nonce: IMorpho(BLUE).nonce(msg.sender),
-                deadline: deadline
+                authorizer: msg.sender, authorized: address(this), isAuthorized: true, nonce: nonce, deadline: deadline
             }),
                 signature
             ) {}
-        catch {
-            require(IMorpho(BLUE).isAuthorized(msg.sender, address(this)), InvalidAuthorizationSignature());
+        catch Error(string memory reason) {
+            require(
+                keccak256(bytes(reason)) == keccak256(bytes(ErrorsLib.INVALID_NONCE))
+                    && IMorpho(BLUE).isAuthorized(msg.sender, address(this)),
+                InvalidAuthorizationSignature()
+            );
         }
     }
 
