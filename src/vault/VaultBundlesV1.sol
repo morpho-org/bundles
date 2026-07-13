@@ -51,11 +51,8 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         require(block.timestamp <= deadline, DeadlinePassed());
         require((assets == 0) != (shares == 0), NotExactlyOneZero());
 
-        if (assets > 0) {
-            shares = IERC4626(vault).withdraw(assets, msg.sender, msg.sender);
-        } else {
-            assets = IERC4626(vault).redeem(shares, msg.sender, msg.sender);
-        }
+        if (assets > 0) shares = IERC4626(vault).withdraw(assets, msg.sender, msg.sender);
+        else assets = IERC4626(vault).redeem(shares, msg.sender, msg.sender);
         require(assets.mulDivDown(1e27, shares) >= minSharePriceE27, SlippageExceeded());
     }
 
@@ -79,11 +76,8 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         address asset = IERC4626(sourceVault).asset();
         require(asset == IERC4626(destVault).asset(), InconsistentAssets());
 
-        if (assets > 0) {
-            shares = IERC4626(sourceVault).withdraw(assets, address(this), msg.sender);
-        } else {
-            assets = IERC4626(sourceVault).redeem(shares, address(this), msg.sender);
-        }
+        if (assets > 0) shares = IERC4626(sourceVault).withdraw(assets, address(this), msg.sender);
+        else assets = IERC4626(sourceVault).redeem(shares, address(this), msg.sender);
         require(assets.mulDivDown(1e27, shares) >= minSharePriceE27, SlippageExceeded());
 
         TokenLib.forceApproveMax(asset, destVault);
