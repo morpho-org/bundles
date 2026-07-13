@@ -10,6 +10,7 @@ interface IVaultForceWithdrawBundlesV1 {
     error DeadlinePassed();
     error LiquidityAdapterMismatch();
     error MorphoMismatch();
+    error PctExceeded();
     error Unauthorized();
 
     /// STORAGE GETTERS ///
@@ -35,6 +36,8 @@ interface IVaultForceWithdrawBundlesV1 {
         address vault,
         address adapter,
         uint256 forceWithdrawAssets,
+        uint256 referralFeePct,
+        address referralFeeRecipient,
         uint256 deadline
     ) external;
 }

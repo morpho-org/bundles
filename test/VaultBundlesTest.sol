@@ -8,6 +8,7 @@ import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 import {VaultBundlesV1} from "../src/vault/VaultBundlesV1.sol";
 import {IVaultBundlesV1} from "../src/vault/interfaces/IVaultBundlesV1.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
+import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 
 // The generic ERC-4626 handle, satisfied by both Vault V1 (MetaMorpho) and Vault V2.
 import {IERC4626} from "../lib/vault-v2/src/interfaces/IERC4626.sol";
@@ -50,6 +51,7 @@ contract VaultBundlesTest is Test {
     IERC4626 internal vaultOther; // Vault V2 over a different asset, for the asset-consistency check.
 
     address internal owner = makeAddr("owner");
+    address internal referralFeeRecipient = makeAddr("referralFeeRecipient");
 
     // This contract is the user: it owns positions and grants the bundler its allowances.
     address internal user = address(this);
@@ -109,8 +111,7 @@ contract VaultBundlesTest is Test {
         return IERC4626(vaultV2Factory.createVaultV2(owner, address(asset), salt));
     }
 
-    /// @dev The user deposits `assets` into `vault` directly and approves the bundler over the resulting shares, as
-    /// required by withdraw and migrate.
+    /// @dev The user deposits assets into vault directly and approves the bundler over the resulting shares, as required by withdraw and migrate.
     function _deposited(IERC4626 vault, uint256 assets) internal {
         deal(address(loanToken), user, assets);
         loanToken.approve(address(vault), type(uint256).max);
@@ -133,11 +134,38 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         deal(address(loanToken), user, assets);
 
-        bundles.vaultBundlesV1Deposit(address(vault), assets, RAY, noPermit, block.timestamp);
+        bundles.vaultBundlesV1Deposit(address(vault), assets, RAY, noPermit, 0, address(0), block.timestamp);
 
         assertEq(loanToken.balanceOf(user), 0, "user loan token");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
         assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(user)), assets, 1, "user position");
+    }
+
+    function testDepositWithReferralFeeV1(uint256 assets, uint256 referralFeePct) public {
+        _testDepositWithReferralFee(vaultV1, assets, referralFeePct);
+    }
+
+    function testDepositWithReferralFeeV2(uint256 assets, uint256 referralFeePct) public {
+        _testDepositWithReferralFee(vaultV2, assets, referralFeePct);
+    }
+
+    /// @dev The fee is deducted from the pulled assets; only the remainder is deposited for the user.
+    function _testDepositWithReferralFee(IERC4626 vault, uint256 assets, uint256 referralFeePct) internal {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+        deal(address(loanToken), user, assets);
+
+        uint256 expectedFee = assets * referralFeePct / WAD;
+        uint256 deposited = assets - expectedFee;
+
+        bundles.vaultBundlesV1Deposit(
+            address(vault), assets, RAY, noPermit, referralFeePct, referralFeeRecipient, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(user), 0, "user loan token");
+        assertEq(loanToken.balanceOf(referralFeeRecipient), expectedFee, "referralFeeRecipient fee");
+        assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
+        assertApproxEqAbs(vault.convertToAssets(vault.balanceOf(user)), deposited, 1, "user position");
     }
 
     function testDepositSlippageV1() public {
@@ -154,13 +182,19 @@ contract VaultBundlesTest is Test {
 
         // Realized share price is ~1e27, so a 1 wei-per-share cap is always exceeded.
         vm.expectRevert(IVaultBundlesV1.SlippageExceeded.selector);
-        bundles.vaultBundlesV1Deposit(address(vault), assets, 1, noPermit, block.timestamp);
+        bundles.vaultBundlesV1Deposit(address(vault), assets, 1, noPermit, 0, address(0), block.timestamp);
     }
 
     function testDepositDeadline() public {
         deal(address(loanToken), user, 1e18);
         vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
-        bundles.vaultBundlesV1Deposit(address(vaultV1), 1e18, RAY, noPermit, block.timestamp - 1);
+        bundles.vaultBundlesV1Deposit(address(vaultV1), 1e18, RAY, noPermit, 0, address(0), block.timestamp - 1);
+    }
+
+    function testDepositPctExceeded() public {
+        deal(address(loanToken), user, 1e18);
+        vm.expectRevert(IVaultBundlesV1.PctExceeded.selector);
+        bundles.vaultBundlesV1Deposit(address(vaultV1), 1e18, RAY, noPermit, WAD, referralFeeRecipient, block.timestamp);
     }
 
     /// WITHDRAW ///
@@ -177,9 +211,35 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _deposited(vault, assets);
 
-        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, 0, address(0), block.timestamp);
 
         assertEq(loanToken.balanceOf(user), assets, "user loan token");
+        assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
+        assertApproxEqAbs(vault.balanceOf(user), 0, 1, "user shares");
+    }
+
+    function testWithdrawWithReferralFeeV1(uint256 assets, uint256 referralFeePct) public {
+        _testWithdrawWithReferralFee(vaultV1, assets, referralFeePct);
+    }
+
+    function testWithdrawWithReferralFeeV2(uint256 assets, uint256 referralFeePct) public {
+        _testWithdrawWithReferralFee(vaultV2, assets, referralFeePct);
+    }
+
+    /// @dev The fee is deducted from the withdrawn assets; the remainder is sent to the user.
+    function _testWithdrawWithReferralFee(IERC4626 vault, uint256 assets, uint256 referralFeePct) internal {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+        _deposited(vault, assets);
+
+        uint256 expectedFee = assets * referralFeePct / WAD;
+
+        bundles.vaultBundlesV1Withdraw(
+            address(vault), assets, 0, 0, referralFeePct, referralFeeRecipient, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(user), assets - expectedFee, "user net");
+        assertEq(loanToken.balanceOf(referralFeeRecipient), expectedFee, "referralFeeRecipient fee");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
         assertApproxEqAbs(vault.balanceOf(user), 0, 1, "user shares");
     }
@@ -197,11 +257,63 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _deposited(vault, assets);
 
-        bundles.vaultBundlesV1Withdraw(address(vault), 0, vault.balanceOf(user), 0, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vault), 0, vault.balanceOf(user), 0, 0, address(0), block.timestamp);
 
         assertApproxEqAbs(loanToken.balanceOf(user), assets, 1, "user loan token");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
         assertEq(vault.balanceOf(user), 0, "user shares");
+    }
+
+    function testWithdrawAllWithReferralFeeV1(uint256 assets, uint256 referralFeePct) public {
+        _testWithdrawAllWithReferralFee(vaultV1, assets, referralFeePct);
+    }
+
+    function testWithdrawAllWithReferralFeeV2(uint256 assets, uint256 referralFeePct) public {
+        _testWithdrawAllWithReferralFee(vaultV2, assets, referralFeePct);
+    }
+
+    function _testWithdrawAllWithReferralFee(IERC4626 vault, uint256 assets, uint256 referralFeePct) internal {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+        _deposited(vault, assets);
+
+        bundles.vaultBundlesV1Withdraw(
+            address(vault), 0, vault.balanceOf(user), 0, referralFeePct, referralFeeRecipient, block.timestamp
+        );
+
+        // Redeeming by shares rounds assets down, so up to 1 wei can stay behind in the vault.
+        uint256 withdrawn = loanToken.balanceOf(user) + loanToken.balanceOf(referralFeeRecipient);
+        uint256 expectedFee = withdrawn * referralFeePct / WAD;
+
+        assertEq(vault.balanceOf(user), 0, "user shares");
+        assertApproxEqAbs(withdrawn, assets, 1, "withdrawn");
+        assertEq(loanToken.balanceOf(referralFeeRecipient), expectedFee, "referralFeeRecipient fee");
+        assertEq(loanToken.balanceOf(user), withdrawn - expectedFee, "user net");
+        assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
+    }
+
+    function testWithdrawTargetNetV1(uint256 targetNet, uint256 referralFeePct) public {
+        _testWithdrawTargetNet(vaultV1, targetNet, referralFeePct);
+    }
+
+    function testWithdrawTargetNetV2(uint256 targetNet, uint256 referralFeePct) public {
+        _testWithdrawTargetNet(vaultV2, targetNet, referralFeePct);
+    }
+
+    /// @dev Checks the doc formula: to receive targetNet, pass assets = floor(targetNet * WAD / (WAD - referralFeePct)).
+    function _testWithdrawTargetNet(IERC4626 vault, uint256 targetNet, uint256 referralFeePct) internal {
+        targetNet = bound(targetNet, MIN_ASSETS, MAX_ASSETS);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+
+        uint256 assets = targetNet * WAD / (WAD - referralFeePct);
+        vm.assume(assets <= MAX_ASSETS);
+        _deposited(vault, assets);
+
+        bundles.vaultBundlesV1Withdraw(
+            address(vault), assets, 0, 0, referralFeePct, referralFeeRecipient, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(user), targetNet, "net equals target");
     }
 
     function testWithdrawRequiresApprovalV1() public {
@@ -220,7 +332,7 @@ contract VaultBundlesTest is Test {
         // No approval of the bundler over the vault shares.
 
         vm.expectRevert();
-        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, 0, address(0), block.timestamp);
     }
 
     function testWithdrawSlippageV1() public {
@@ -237,7 +349,7 @@ contract VaultBundlesTest is Test {
 
         // Realized share price is ~1e27, always below a max-uint floor.
         vm.expectRevert(IVaultBundlesV1.SlippageExceeded.selector);
-        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, type(uint256).max, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, type(uint256).max, 0, address(0), block.timestamp);
     }
 
     function testWithdrawNotExactlyOneZero() public {
@@ -245,17 +357,23 @@ contract VaultBundlesTest is Test {
 
         // Both assets and shares non-zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 1, 0, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 1, 0, 0, address(0), block.timestamp);
 
         // Both assets and shares zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), 0, 0, 0, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), 0, 0, 0, 0, address(0), block.timestamp);
     }
 
     function testWithdrawDeadline() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 0, 0, block.timestamp - 1);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 0, 0, 0, address(0), block.timestamp - 1);
+    }
+
+    function testWithdrawPctExceeded() public {
+        _deposited(vaultV1, 100e18);
+        vm.expectRevert(IVaultBundlesV1.PctExceeded.selector);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 0, 0, WAD, referralFeeRecipient, block.timestamp);
     }
 
     /// MIGRATE ///
@@ -280,10 +398,47 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _deposited(source, assets);
 
-        bundles.vaultBundlesV1Migrate(address(source), address(dest), assets, 0, 0, RAY, block.timestamp);
+        bundles.vaultBundlesV1Migrate(address(source), address(dest), assets, 0, 0, RAY, 0, address(0), block.timestamp);
 
         assertApproxEqAbs(source.balanceOf(user), 0, 1, "source shares");
         assertApproxEqAbs(dest.convertToAssets(dest.balanceOf(user)), assets, 1, "dest position");
+        assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
+        assertEq(loanToken.balanceOf(user), 0, "user loan token");
+    }
+
+    function testMigrateWithReferralFeeV1toV2(uint256 assets, uint256 referralFeePct) public {
+        _testMigrateWithReferralFee(vaultV1, vaultV2, assets, referralFeePct);
+    }
+
+    function testMigrateWithReferralFeeV2toV1(uint256 assets, uint256 referralFeePct) public {
+        _testMigrateWithReferralFee(vaultV2, vaultV1, assets, referralFeePct);
+    }
+
+    function testMigrateWithReferralFeeV1toV1(uint256 assets, uint256 referralFeePct) public {
+        _testMigrateWithReferralFee(vaultV1, vaultV1b, assets, referralFeePct);
+    }
+
+    function testMigrateWithReferralFeeV2toV2(uint256 assets, uint256 referralFeePct) public {
+        _testMigrateWithReferralFee(vaultV2, vaultV2b, assets, referralFeePct);
+    }
+
+    function _testMigrateWithReferralFee(IERC4626 source, IERC4626 dest, uint256 assets, uint256 referralFeePct)
+        internal
+    {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+        _deposited(source, assets);
+
+        uint256 expectedFee = assets * referralFeePct / WAD;
+        uint256 deposited = assets - expectedFee;
+
+        bundles.vaultBundlesV1Migrate(
+            address(source), address(dest), assets, 0, 0, RAY, referralFeePct, referralFeeRecipient, block.timestamp
+        );
+
+        assertApproxEqAbs(source.balanceOf(user), 0, 1, "source shares");
+        assertApproxEqAbs(dest.convertToAssets(dest.balanceOf(user)), deposited, 1, "dest position");
+        assertEq(loanToken.balanceOf(referralFeeRecipient), expectedFee, "referralFeeRecipient fee");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
         assertEq(loanToken.balanceOf(user), 0, "user loan token");
     }
@@ -304,13 +459,12 @@ contract VaultBundlesTest is Test {
         _testMigrateAll(vaultV2, vaultV2b, assets);
     }
 
-    // Passing the sender's full sourceVault share balance redeems its entire position before depositing into destVault.
     function _testMigrateAll(IERC4626 source, IERC4626 dest, uint256 assets) internal {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _deposited(source, assets);
 
         bundles.vaultBundlesV1Migrate(
-            address(source), address(dest), 0, source.balanceOf(user), 0, RAY, block.timestamp
+            address(source), address(dest), 0, source.balanceOf(user), 0, RAY, 0, address(0), block.timestamp
         );
 
         assertEq(source.balanceOf(user), 0, "source shares");
@@ -319,10 +473,78 @@ contract VaultBundlesTest is Test {
         assertEq(loanToken.balanceOf(user), 0, "user loan token");
     }
 
+    function testMigrateAllWithReferralFeeV1toV2(uint256 assets, uint256 referralFeePct) public {
+        _testMigrateAllWithReferralFee(vaultV1, vaultV2, assets, referralFeePct);
+    }
+
+    function testMigrateAllWithReferralFeeV2toV1(uint256 assets, uint256 referralFeePct) public {
+        _testMigrateAllWithReferralFee(vaultV2, vaultV1, assets, referralFeePct);
+    }
+
+    function testMigrateAllWithReferralFeeV1toV1(uint256 assets, uint256 referralFeePct) public {
+        _testMigrateAllWithReferralFee(vaultV1, vaultV1b, assets, referralFeePct);
+    }
+
+    function testMigrateAllWithReferralFeeV2toV2(uint256 assets, uint256 referralFeePct) public {
+        _testMigrateAllWithReferralFee(vaultV2, vaultV2b, assets, referralFeePct);
+    }
+
+    function _testMigrateAllWithReferralFee(IERC4626 source, IERC4626 dest, uint256 assets, uint256 referralFeePct)
+        internal
+    {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+        _deposited(source, assets);
+
+        uint256 shares = source.balanceOf(user);
+        uint256 withdrawn = source.previewRedeem(shares);
+        uint256 expectedFee = withdrawn * referralFeePct / WAD;
+        uint256 deposited = withdrawn - expectedFee;
+
+        bundles.vaultBundlesV1Migrate(
+            address(source), address(dest), 0, shares, 0, RAY, referralFeePct, referralFeeRecipient, block.timestamp
+        );
+
+        assertEq(source.balanceOf(user), 0, "source shares");
+        // Can suffer from 2 rounding errors: one from redeeming by shares, one from depositing by assets.
+        assertApproxEqAbs(dest.convertToAssets(dest.balanceOf(user)), deposited, 2, "dest position");
+        assertEq(loanToken.balanceOf(referralFeeRecipient), expectedFee, "referralFeeRecipient fee");
+        assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
+        assertEq(loanToken.balanceOf(user), 0, "user loan token");
+    }
+
+    /// @dev Checks the doc formula: to deposit targetDeposit into destVault, pass assetsWithdrawn = floor(targetDeposit * WAD / (WAD - referralFeePct)).
+    /// @dev Both vaults are Vault V2, so the deposited assets sit idle in destVault and its loan token balance reads the deposited amount exactly.
+    function testMigrateTargetDeposit(uint256 targetDeposit, uint256 referralFeePct) public {
+        targetDeposit = bound(targetDeposit, MIN_ASSETS, MAX_ASSETS);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+
+        uint256 assetsWithdrawn = targetDeposit * WAD / (WAD - referralFeePct);
+        vm.assume(assetsWithdrawn <= MAX_ASSETS);
+        _deposited(vaultV2, assetsWithdrawn);
+
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV2),
+            address(vaultV2b),
+            assetsWithdrawn,
+            0,
+            0,
+            RAY,
+            referralFeePct,
+            referralFeeRecipient,
+            block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(referralFeeRecipient), assetsWithdrawn - targetDeposit, "referralFeeRecipient fee");
+        assertEq(loanToken.balanceOf(address(vaultV2b)), targetDeposit, "deposited equals target");
+    }
+
     function testMigrateInconsistentAssets() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.InconsistentAssets.selector);
-        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultOther), 100e18, 0, 0, RAY, block.timestamp);
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultOther), 100e18, 0, 0, RAY, 0, address(0), block.timestamp
+        );
     }
 
     function testMigrateNotExactlyOneZero() public {
@@ -330,30 +552,44 @@ contract VaultBundlesTest is Test {
 
         // Both assets and shares non-zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
-        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 100e18, 1, 0, RAY, block.timestamp);
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultV2), 100e18, 1, 0, RAY, 0, address(0), block.timestamp
+        );
 
         // Both assets and shares zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
-        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 0, 0, 0, RAY, block.timestamp);
+        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 0, 0, 0, RAY, 0, address(0), block.timestamp);
     }
 
     function testMigrateSlippageSource() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.SlippageExceeded.selector);
         bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), 100e18, 0, type(uint256).max, RAY, block.timestamp
+            address(vaultV1), address(vaultV2), 100e18, 0, type(uint256).max, RAY, 0, address(0), block.timestamp
         );
     }
 
     function testMigrateSlippageDest() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.SlippageExceeded.selector);
-        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 100e18, 0, 0, 1, block.timestamp);
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultV2), 100e18, 0, 0, 1, 0, address(0), block.timestamp
+        );
     }
 
     function testMigrateDeadline() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
-        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 100e18, 0, 0, RAY, block.timestamp - 1);
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultV2), 100e18, 0, 0, RAY, 0, address(0), block.timestamp - 1
+        );
+    }
+
+    function testMigratePctExceeded() public {
+        _deposited(vaultV1, 100e18);
+        vm.expectRevert(IVaultBundlesV1.PctExceeded.selector);
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultV2), 100e18, 0, 0, RAY, WAD, referralFeeRecipient, block.timestamp
+        );
     }
 }

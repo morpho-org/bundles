@@ -28,9 +28,9 @@ interface IMidnightBundlesV1 {
     error DeadlinePassed();
     error InconsistentMarket();
     error InconsistentSide();
+    error NotReduceOnly();
     error OutOfOffers();
     error PctExceeded();
-    error NotReduceOnly();
     error SellerAssetsTooLow();
     error Unauthorized();
     error UnitsTooHigh();

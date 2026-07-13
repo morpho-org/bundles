@@ -55,6 +55,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
     address internal allocator = makeAddr("allocator");
     address internal borrower = makeAddr("borrower");
     address internal liquidityProvider = makeAddr("liquidityProvider");
+    address internal referralFeeRecipient = makeAddr("referralFeeRecipient");
 
     function setUp() public {
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
@@ -483,7 +484,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
 
         vm.expectRevert(IVaultForceWithdrawBundlesV1.AdapterNotPartOfVault.selector);
         vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
-            address(vault), makeAddr("notAdapter"), assets, block.timestamp
+            address(vault), makeAddr("notAdapter"), assets, 0, address(0), block.timestamp
         );
     }
 
@@ -494,7 +495,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
 
         vm.expectRevert();
         vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
-            address(vault), address(adapter), 2 * assets, block.timestamp
+            address(vault), address(adapter), 2 * assets, 0, address(0), block.timestamp
         );
     }
 
@@ -502,7 +503,9 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpLiquid(assets);
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(address(vault), address(adapter), assets, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), assets, 0, address(0), block.timestamp
+        );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
         assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
@@ -510,6 +513,35 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         // The user leaves the vault with the deallocated assets.
         assertEq(loanToken.balanceOf(address(this)), optimalDeallocateAssets(assets), "user loan token balance");
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
+    }
+
+    /// @dev The fee is deducted from the withdrawn assets; the remainder is sent to the user.
+    function testForceWithdrawLiquidWithReferralFee(uint256 assets, uint256 referralFeePct) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+        _setUpLiquid(assets);
+
+        uint256 withdrawn = optimalDeallocateAssets(assets);
+        uint256 expectedFee = withdrawn * referralFeePct / WAD;
+
+        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), assets, referralFeePct, referralFeeRecipient, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), withdrawn - expectedFee, "user net");
+        assertEq(loanToken.balanceOf(referralFeeRecipient), expectedFee, "referralFeeRecipient fee");
+        assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
+    }
+
+    function testForceWithdrawLiquidPctExceeded() public {
+        uint256 assets = 100e18;
+        _setUpLiquid(assets);
+
+        vm.expectRevert(IVaultForceWithdrawBundlesV1.PctExceeded.selector);
+        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), assets, WAD, referralFeeRecipient, block.timestamp
+        );
     }
 
     /// @dev Passing assets = previewRedeem(balanceOf(sender) - 8) sweeps the three markets and leaves the sender with
@@ -523,7 +555,9 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         uint256 deallocate = optimalDeallocateAssets(amount);
         assertGt(deallocate, 80e18, "precondition: all three markets are needed");
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(address(vault), address(adapter), amount, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), amount, 0, address(0), block.timestamp
+        );
 
         assertEq(loanToken.balanceOf(address(this)), deallocate, "user loan token balance");
         // The first two markets are drained, the remainder is pulled from the third.
@@ -552,7 +586,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         assertEq(optimalDeallocateAssets(forceWithdrawAssets), 100e18, "precondition");
 
         vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
-            address(vault), address(adapter), forceWithdrawAssets, block.timestamp
+            address(vault), address(adapter), forceWithdrawAssets, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(this)), 100e18, "user loan token balance");
@@ -568,7 +602,9 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         vm.prank(allocator);
         vault.setLiquidityAdapterAndData(address(adapter), abi.encode(marketParams));
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(address(vault), address(adapter), 80e18, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), 80e18, 0, address(0), block.timestamp
+        );
 
         // 60 comes penalty-free through the liquidity adapter, the remaining 20 pays the penalty.
         assertEq(loanToken.balanceOf(address(this)), 60e18 + optimalDeallocateAssets(20e18), "user loan token balance");
@@ -588,7 +624,9 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         vm.prank(allocator);
         vault.setLiquidityAdapterAndData(address(adapter), abi.encode(marketParams));
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(address(vault), address(adapter), 50e18, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), 50e18, 0, address(0), block.timestamp
+        );
 
         assertEq(loanToken.balanceOf(address(this)), 50e18, "user loan token balance");
         assertEq(morpho.expectedSupplyAssets(marketParams, address(adapter)), 10e18, "first market position");
@@ -608,7 +646,9 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         vault.approve(address(vaultBundles), type(uint256).max);
         deal(address(loanToken), address(this), 0);
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(address(vault), address(adapter), 40e18, block.timestamp);
+        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+            address(vault), address(adapter), 40e18, 0, address(0), block.timestamp
+        );
 
         // 30 comes penalty-free from the idle assets, the remaining 10 pays the penalty.
         assertEq(loanToken.balanceOf(address(this)), 30e18 + optimalDeallocateAssets(10e18), "user loan token balance");
@@ -621,7 +661,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
 
         vm.expectRevert(IVaultForceWithdrawBundlesV1.DeadlinePassed.selector);
         vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
-            address(vault), address(adapter), assets, block.timestamp - 1
+            address(vault), address(adapter), assets, 0, address(0), block.timestamp - 1
         );
     }
 }
