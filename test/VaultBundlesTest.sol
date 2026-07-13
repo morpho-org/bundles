@@ -6,7 +6,7 @@ import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
 import {VaultBundlesV1} from "../src/vault/VaultBundlesV1.sol";
-import {IVaultBundlesV1} from "../src/vault/interfaces/IVaultBundlesV1.sol";
+import {IVaultBundlesV1, SharesPermit} from "../src/vault/interfaces/IVaultBundlesV1.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 
@@ -21,6 +21,14 @@ import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/i
 import {MarketParamsLib} from "../lib/metamorpho/lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {ORACLE_PRICE_SCALE} from "../lib/metamorpho/lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/metamorpho/lib/morpho-blue/src/mocks/OracleMock.sol";
+
+// Minimal ERC-2612 handle exposed by both Vault V1 (MetaMorpho) and Vault V2, used to sign shares permits.
+interface IERC20PermitVault {
+    function nonces(address owner) external view returns (uint256);
+    function DOMAIN_SEPARATOR() external view returns (bytes32);
+    function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+        external;
+}
 
 contract VaultBundlesTest is Test {
     using MarketParamsLib for MarketParams;
@@ -57,6 +65,12 @@ contract VaultBundlesTest is Test {
     address internal user = address(this);
 
     TokenPermit internal noPermit = TokenPermit(PermitKind.None, "");
+
+    // The empty shares permit (v, r and s all zero) is skipped by the bundler.
+    SharesPermit internal noSharesPermit;
+
+    // keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)")
+    bytes32 internal constant PERMIT_TYPEHASH = 0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
 
     function setUp() public {
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
@@ -118,6 +132,20 @@ contract VaultBundlesTest is Test {
         vault.deposit(assets, user);
         vault.approve(address(bundles), type(uint256).max);
         deal(address(loanToken), user, 0);
+    }
+
+    /// @dev Signs an ERC-2612 permit of the bundler over owner's vault shares, for the given value and deadline.
+    function _signSharesPermit(uint256 privateKey, address owner_, IERC4626 vault, uint256 value, uint256 sigDeadline)
+        internal
+        view
+        returns (SharesPermit memory)
+    {
+        uint256 nonce = IERC20PermitVault(address(vault)).nonces(owner_);
+        bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner_, address(bundles), value, nonce, sigDeadline));
+        bytes32 digest =
+            keccak256(abi.encodePacked("\x19\x01", IERC20PermitVault(address(vault)).DOMAIN_SEPARATOR(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+        return SharesPermit({value: value, nonce: nonce, deadline: sigDeadline, v: v, r: r, s: s});
     }
 
     /// DEPOSIT ///
@@ -211,7 +239,7 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _deposited(vault, assets);
 
-        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, 0, address(0), block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, noSharesPermit, 0, address(0), block.timestamp);
 
         assertEq(loanToken.balanceOf(user), assets, "user loan token");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
@@ -235,7 +263,7 @@ contract VaultBundlesTest is Test {
         uint256 expectedFee = assets * referralFeePct / WAD;
 
         bundles.vaultBundlesV1Withdraw(
-            address(vault), assets, 0, 0, referralFeePct, referralFeeRecipient, block.timestamp
+            address(vault), assets, 0, 0, noSharesPermit, referralFeePct, referralFeeRecipient, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(user), assets - expectedFee, "user net");
@@ -257,7 +285,9 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _deposited(vault, assets);
 
-        bundles.vaultBundlesV1Withdraw(address(vault), 0, vault.balanceOf(user), 0, 0, address(0), block.timestamp);
+        bundles.vaultBundlesV1Withdraw(
+            address(vault), 0, vault.balanceOf(user), 0, noSharesPermit, 0, address(0), block.timestamp
+        );
 
         assertApproxEqAbs(loanToken.balanceOf(user), assets, 1, "user loan token");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
@@ -278,7 +308,14 @@ contract VaultBundlesTest is Test {
         _deposited(vault, assets);
 
         bundles.vaultBundlesV1Withdraw(
-            address(vault), 0, vault.balanceOf(user), 0, referralFeePct, referralFeeRecipient, block.timestamp
+            address(vault),
+            0,
+            vault.balanceOf(user),
+            0,
+            noSharesPermit,
+            referralFeePct,
+            referralFeeRecipient,
+            block.timestamp
         );
 
         // Redeeming by shares rounds assets down, so up to 1 wei can stay behind in the vault.
@@ -310,7 +347,7 @@ contract VaultBundlesTest is Test {
         _deposited(vault, assets);
 
         bundles.vaultBundlesV1Withdraw(
-            address(vault), assets, 0, 0, referralFeePct, referralFeeRecipient, block.timestamp
+            address(vault), assets, 0, 0, noSharesPermit, referralFeePct, referralFeeRecipient, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(user), targetNet, "net equals target");
@@ -332,7 +369,7 @@ contract VaultBundlesTest is Test {
         // No approval of the bundler over the vault shares.
 
         vm.expectRevert();
-        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, 0, address(0), block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, noSharesPermit, 0, address(0), block.timestamp);
     }
 
     function testWithdrawSlippageV1() public {
@@ -349,7 +386,9 @@ contract VaultBundlesTest is Test {
 
         // Realized share price is ~1e27, always below a max-uint floor.
         vm.expectRevert(IVaultBundlesV1.SlippageExceeded.selector);
-        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, type(uint256).max, 0, address(0), block.timestamp);
+        bundles.vaultBundlesV1Withdraw(
+            address(vault), assets, 0, type(uint256).max, noSharesPermit, 0, address(0), block.timestamp
+        );
     }
 
     function testWithdrawNotExactlyOneZero() public {
@@ -357,23 +396,117 @@ contract VaultBundlesTest is Test {
 
         // Both assets and shares non-zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 1, 0, 0, address(0), block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 1, 0, noSharesPermit, 0, address(0), block.timestamp);
 
         // Both assets and shares zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), 0, 0, 0, 0, address(0), block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), 0, 0, 0, noSharesPermit, 0, address(0), block.timestamp);
     }
 
     function testWithdrawDeadline() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 0, 0, 0, address(0), block.timestamp - 1);
+        bundles.vaultBundlesV1Withdraw(
+            address(vaultV1), 100e18, 0, 0, noSharesPermit, 0, address(0), block.timestamp - 1
+        );
     }
 
     function testWithdrawPctExceeded() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.PctExceeded.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), 100e18, 0, 0, WAD, referralFeeRecipient, block.timestamp);
+        bundles.vaultBundlesV1Withdraw(
+            address(vaultV1), 100e18, 0, 0, noSharesPermit, WAD, referralFeeRecipient, block.timestamp
+        );
+    }
+
+    /// SHARES PERMIT ///
+
+    function testWithdrawWithSharesPermitV1(uint256 assets) public {
+        _testWithdrawWithSharesPermit(vaultV1, assets);
+    }
+
+    function testWithdrawWithSharesPermitV2(uint256 assets) public {
+        _testWithdrawWithSharesPermit(vaultV2, assets);
+    }
+
+    /// @dev A sender that never approved the bundler can withdraw in a single transaction via sharesPermit.
+    function _testWithdrawWithSharesPermit(IERC4626 vault, uint256 assets) internal {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
+
+        deal(address(loanToken), sigUser, assets);
+        vm.startPrank(sigUser);
+        loanToken.approve(address(vault), type(uint256).max);
+        vault.deposit(assets, sigUser);
+        vm.stopPrank();
+
+        assertEq(vault.allowance(sigUser, address(bundles)), 0, "no prior allowance");
+
+        SharesPermit memory sharesPermit =
+            _signSharesPermit(sigUserKey, sigUser, vault, type(uint256).max, block.timestamp);
+        vm.prank(sigUser);
+        bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, sharesPermit, 0, address(0), block.timestamp);
+
+        assertApproxEqAbs(loanToken.balanceOf(sigUser), assets, 1, "user loan token");
+        assertApproxEqAbs(vault.balanceOf(sigUser), 0, 1, "user shares");
+    }
+
+    /// @dev A third party submitting the permit first consumes its nonce; the bundle call skips the stale permit and
+    /// relies on the allowance the front-run already set.
+    function testWithdrawSharesPermitFrontRunTolerated() public {
+        uint256 assets = 100e18;
+        (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
+
+        deal(address(loanToken), sigUser, assets);
+        vm.startPrank(sigUser);
+        loanToken.approve(address(vaultV1), type(uint256).max);
+        vaultV1.deposit(assets, sigUser);
+        vm.stopPrank();
+
+        SharesPermit memory sharesPermit =
+            _signSharesPermit(sigUserKey, sigUser, vaultV1, type(uint256).max, block.timestamp);
+
+        vm.prank(makeAddr("frontRunner"));
+        IERC20PermitVault(address(vaultV1))
+            .permit(
+                sigUser,
+                address(bundles),
+                sharesPermit.value,
+                sharesPermit.deadline,
+                sharesPermit.v,
+                sharesPermit.r,
+                sharesPermit.s
+            );
+        assertEq(vaultV1.allowance(sigUser, address(bundles)), type(uint256).max, "allowance set by front-runner");
+
+        vm.prank(sigUser);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, 0, sharesPermit, 0, address(0), block.timestamp);
+
+        assertApproxEqAbs(loanToken.balanceOf(sigUser), assets, 1, "user loan token");
+    }
+
+    /// @dev The migrate step pulls the sourceVault shares, so its allowance can also be granted via sharesPermit.
+    function testMigrateWithSharesPermit(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
+
+        deal(address(loanToken), sigUser, assets);
+        vm.startPrank(sigUser);
+        loanToken.approve(address(vaultV1), type(uint256).max);
+        vaultV1.deposit(assets, sigUser);
+        vm.stopPrank();
+
+        assertEq(vaultV1.allowance(sigUser, address(bundles)), 0, "no prior allowance");
+
+        SharesPermit memory sharesPermit =
+            _signSharesPermit(sigUserKey, sigUser, vaultV1, type(uint256).max, block.timestamp);
+        vm.prank(sigUser);
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultV2), assets, 0, 0, RAY, sharesPermit, 0, address(0), block.timestamp
+        );
+
+        assertApproxEqAbs(vaultV1.balanceOf(sigUser), 0, 1, "source shares");
+        assertApproxEqAbs(vaultV2.convertToAssets(vaultV2.balanceOf(sigUser)), assets, 1, "dest position");
     }
 
     /// MIGRATE ///
@@ -398,7 +531,9 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _deposited(source, assets);
 
-        bundles.vaultBundlesV1Migrate(address(source), address(dest), assets, 0, 0, RAY, 0, address(0), block.timestamp);
+        bundles.vaultBundlesV1Migrate(
+            address(source), address(dest), assets, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
+        );
 
         assertApproxEqAbs(source.balanceOf(user), 0, 1, "source shares");
         assertApproxEqAbs(dest.convertToAssets(dest.balanceOf(user)), assets, 1, "dest position");
@@ -433,7 +568,16 @@ contract VaultBundlesTest is Test {
         uint256 deposited = assets - expectedFee;
 
         bundles.vaultBundlesV1Migrate(
-            address(source), address(dest), assets, 0, 0, RAY, referralFeePct, referralFeeRecipient, block.timestamp
+            address(source),
+            address(dest),
+            assets,
+            0,
+            0,
+            RAY,
+            noSharesPermit,
+            referralFeePct,
+            referralFeeRecipient,
+            block.timestamp
         );
 
         assertApproxEqAbs(source.balanceOf(user), 0, 1, "source shares");
@@ -464,7 +608,16 @@ contract VaultBundlesTest is Test {
         _deposited(source, assets);
 
         bundles.vaultBundlesV1Migrate(
-            address(source), address(dest), 0, source.balanceOf(user), 0, RAY, 0, address(0), block.timestamp
+            address(source),
+            address(dest),
+            0,
+            source.balanceOf(user),
+            0,
+            RAY,
+            noSharesPermit,
+            0,
+            address(0),
+            block.timestamp
         );
 
         assertEq(source.balanceOf(user), 0, "source shares");
@@ -502,7 +655,16 @@ contract VaultBundlesTest is Test {
         uint256 deposited = withdrawn - expectedFee;
 
         bundles.vaultBundlesV1Migrate(
-            address(source), address(dest), 0, shares, 0, RAY, referralFeePct, referralFeeRecipient, block.timestamp
+            address(source),
+            address(dest),
+            0,
+            shares,
+            0,
+            RAY,
+            noSharesPermit,
+            referralFeePct,
+            referralFeeRecipient,
+            block.timestamp
         );
 
         assertEq(source.balanceOf(user), 0, "source shares");
@@ -530,6 +692,7 @@ contract VaultBundlesTest is Test {
             0,
             0,
             RAY,
+            noSharesPermit,
             referralFeePct,
             referralFeeRecipient,
             block.timestamp
@@ -543,7 +706,7 @@ contract VaultBundlesTest is Test {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.InconsistentAssets.selector);
         bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultOther), 100e18, 0, 0, RAY, 0, address(0), block.timestamp
+            address(vaultV1), address(vaultOther), 100e18, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
         );
     }
 
@@ -553,19 +716,30 @@ contract VaultBundlesTest is Test {
         // Both assets and shares non-zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
         bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), 100e18, 1, 0, RAY, 0, address(0), block.timestamp
+            address(vaultV1), address(vaultV2), 100e18, 1, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
         );
 
         // Both assets and shares zero.
         vm.expectRevert(IVaultBundlesV1.NotExactlyOneZero.selector);
-        bundles.vaultBundlesV1Migrate(address(vaultV1), address(vaultV2), 0, 0, 0, RAY, 0, address(0), block.timestamp);
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultV2), 0, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
+        );
     }
 
     function testMigrateSlippageSource() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.SlippageExceeded.selector);
         bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), 100e18, 0, type(uint256).max, RAY, 0, address(0), block.timestamp
+            address(vaultV1),
+            address(vaultV2),
+            100e18,
+            0,
+            type(uint256).max,
+            RAY,
+            noSharesPermit,
+            0,
+            address(0),
+            block.timestamp
         );
     }
 
@@ -573,7 +747,7 @@ contract VaultBundlesTest is Test {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.SlippageExceeded.selector);
         bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), 100e18, 0, 0, 1, 0, address(0), block.timestamp
+            address(vaultV1), address(vaultV2), 100e18, 0, 0, 1, noSharesPermit, 0, address(0), block.timestamp
         );
     }
 
@@ -581,7 +755,7 @@ contract VaultBundlesTest is Test {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
         bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), 100e18, 0, 0, RAY, 0, address(0), block.timestamp - 1
+            address(vaultV1), address(vaultV2), 100e18, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp - 1
         );
     }
 
@@ -589,7 +763,16 @@ contract VaultBundlesTest is Test {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.PctExceeded.selector);
         bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), 100e18, 0, 0, RAY, WAD, referralFeeRecipient, block.timestamp
+            address(vaultV1),
+            address(vaultV2),
+            100e18,
+            0,
+            0,
+            RAY,
+            noSharesPermit,
+            WAD,
+            referralFeeRecipient,
+            block.timestamp
         );
     }
 }

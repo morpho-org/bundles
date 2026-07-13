@@ -4,6 +4,17 @@ pragma solidity >=0.8.0;
 
 import {MarketParams} from "../../../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
 
+/// @dev An empty permit (v, r and s all zero) means no permit is submitted.
+/// @dev The permit deadline is independent of the call deadline: an unsubmitted permit stays submittable until deadline, as long as the nonce is not consumed elsewhere.
+struct SharesPermit {
+    uint256 value;
+    uint256 nonce;
+    uint256 deadline;
+    uint8 v;
+    bytes32 r;
+    bytes32 s;
+}
+
 interface IVaultForceWithdrawBundlesV1 {
     /// ERRORS ///
     error AdapterNotPartOfVault();
@@ -21,6 +32,7 @@ interface IVaultForceWithdrawBundlesV1 {
         address vault,
         MarketParams[] memory marketParams,
         uint256 forceWithdrawAssets,
+        SharesPermit memory sharesPermit,
         uint256 deadline
     ) external;
 
@@ -29,6 +41,7 @@ interface IVaultForceWithdrawBundlesV1 {
         address adapter,
         MarketParams[] memory marketParams,
         uint256 forceWithdrawAssets,
+        SharesPermit memory sharesPermit,
         uint256 deadline
     ) external;
 
@@ -36,6 +49,7 @@ interface IVaultForceWithdrawBundlesV1 {
         address vault,
         address adapter,
         uint256 forceWithdrawAssets,
+        SharesPermit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline

@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IVaultBundlesV1} from "./interfaces/IVaultBundlesV1.sol";
+import {IVaultBundlesV1, SharesPermit} from "./interfaces/IVaultBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
+import {IERC20Permit} from "../libraries/interfaces/IERC20Permit.sol";
 import {IERC4626} from "../../lib/vault-v2/src/interfaces/IERC4626.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
@@ -50,7 +51,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     }
 
     /// @dev Withdraws msg.sender's position in the vault.
-    /// @dev Requires the sender to have given enough allowance over its vault shares to this contract.
+    /// @dev Requires the sender to have given enough allowance over its vault shares to this contract, beforehand or via sharesPermit.
     /// @dev Exactly one of assets and shares should be non-zero: the vault is withdrawn by assets, or redeemed by shares. To withdraw the sender's entire position, pass its full share balance as shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
@@ -61,6 +62,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         uint256 assets,
         uint256 shares,
         uint256 minSharePriceE27,
+        SharesPermit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -68,6 +70,8 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         require(block.timestamp <= deadline, DeadlinePassed());
         require((assets == 0) != (shares == 0), NotExactlyOneZero());
         require(referralFeePct < WAD, PctExceeded());
+
+        permitShares(vault, sharesPermit);
 
         if (assets > 0) shares = IERC4626(vault).withdraw(assets, address(this), msg.sender);
         else assets = IERC4626(vault).redeem(shares, address(this), msg.sender);
@@ -81,7 +85,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
 
     /// @dev Migrates msg.sender's position in sourceVault to a position in destVault, by withdrawing them from sourceVault (routed via this contract) then depositing them into destVault.
     /// @dev sourceVault and destVault can each be a Vault V1 or a Vault V2. Migrating from a Vault V2 to a Vault V1 is not prevented, even though it is not expected to be useful.
-    /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract.
+    /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract, beforehand or via sharesPermit.
     /// @dev Exactly one of assetsWithdrawn and sharesRedeemed should be non-zero: sourceVault is withdrawn by assets, or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is deposited into destVault.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; deposited = withdrawnAssets - fee.
@@ -94,6 +98,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         uint256 sharesRedeemed,
         uint256 minSharePriceE27,
         uint256 maxSharePriceE27,
+        SharesPermit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -101,6 +106,8 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         require(block.timestamp <= deadline, DeadlinePassed());
         require((assetsWithdrawn == 0) != (sharesRedeemed == 0), NotExactlyOneZero());
         require(referralFeePct < WAD, PctExceeded());
+
+        permitShares(sourceVault, sharesPermit);
 
         address asset = IERC4626(sourceVault).asset();
         require(asset == IERC4626(destVault).asset(), InconsistentAssets());
@@ -120,5 +127,27 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         require(toDeposit.mulDivUp(1e27, sharesMinted) <= maxSharePriceE27, SlippageExceeded());
 
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
+    }
+
+    /// INTERNAL ///
+
+    /// @dev Permits this contract to spend value of msg.sender's vault shares.
+    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful to be able to pass an empty sharesPermit.
+    /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that case.
+    function permitShares(address vault, SharesPermit memory sharesPermit) internal {
+        bool emptyPermit = sharesPermit.v == 0 && sharesPermit.r == 0 && sharesPermit.s == 0;
+
+        if (!emptyPermit && IERC20Permit(vault).nonces(msg.sender) <= sharesPermit.nonce) {
+            IERC20Permit(vault)
+                .permit(
+                    msg.sender,
+                    address(this),
+                    sharesPermit.value,
+                    sharesPermit.deadline,
+                    sharesPermit.v,
+                    sharesPermit.r,
+                    sharesPermit.s
+                );
+        }
     }
 }
