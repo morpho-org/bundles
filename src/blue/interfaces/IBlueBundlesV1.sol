@@ -2,8 +2,16 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity >=0.8.0;
 
-import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {MarketParams, Signature} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {TokenPermit} from "../../libraries/TokenLib.sol";
+
+/// @dev An empty signature (v, r and s all zero) means no authorization is submitted.
+/// @dev The signature deadline is independent of the call deadline: an unsubmitted signature stays submittable until deadline, as revoking on Blue does not consume the nonce.
+struct SignedAuthorization {
+    Signature signature;
+    uint256 nonce;
+    uint256 deadline;
+}
 
 interface IBlueBundlesV1 {
     /// ERRORS ///
@@ -25,6 +33,7 @@ interface IBlueBundlesV1 {
         uint256 minSharePriceE27,
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
+        SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -39,6 +48,7 @@ interface IBlueBundlesV1 {
         uint256 withdrawCollateralAssets,
         uint256 maxLtv,
         TokenPermit memory loanTokenPermit,
+        SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -59,6 +69,7 @@ interface IBlueBundlesV1 {
         uint256 assets,
         uint256 shares,
         uint256 minSharePriceE27,
+        SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -70,6 +81,7 @@ interface IBlueBundlesV1 {
         uint256 maxSharePriceE27,
         uint256 minSharePriceE27,
         uint256 maxLtv,
+        SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
