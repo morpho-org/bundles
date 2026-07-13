@@ -202,7 +202,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-
         require(
             sourceMarketParams.loanToken == destMarketParams.loanToken
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
