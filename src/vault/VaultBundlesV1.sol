@@ -88,8 +88,8 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     function vaultBundlesV1Migrate(
         address sourceVault,
         address destVault,
-        uint256 assets,
-        uint256 shares,
+        uint256 assetsWithdrawn,
+        uint256 sharesRedeemed,
         uint256 minSharePriceE27,
         uint256 maxSharePriceE27,
         uint256 referralFeePct,
@@ -97,18 +97,21 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
-        require((assets == 0) != (shares == 0), NotExactlyOneZero());
+        require((assetsWithdrawn == 0) != (sharesRedeemed == 0), NotExactlyOneZero());
         require(referralFeePct < WAD, PctExceeded());
 
         address asset = IERC4626(sourceVault).asset();
         require(asset == IERC4626(destVault).asset(), InconsistentAssets());
 
-        if (assets > 0) shares = IERC4626(sourceVault).withdraw(assets, address(this), msg.sender);
-        else assets = IERC4626(sourceVault).redeem(shares, address(this), msg.sender);
-        require(assets.mulDivDown(1e27, shares) >= minSharePriceE27, SlippageExceeded());
+        if (assetsWithdrawn > 0) {
+            sharesRedeemed = IERC4626(sourceVault).withdraw(assetsWithdrawn, address(this), msg.sender);
+        } else {
+            assetsWithdrawn = IERC4626(sourceVault).redeem(sharesRedeemed, address(this), msg.sender);
+        }
+        require(assetsWithdrawn.mulDivDown(1e27, sharesRedeemed) >= minSharePriceE27, SlippageExceeded());
 
-        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
-        uint256 toDeposit = assets - referralFeeAssets;
+        uint256 referralFeeAssets = assetsWithdrawn.mulDivDown(referralFeePct, WAD);
+        uint256 toDeposit = assetsWithdrawn - referralFeeAssets;
 
         TokenLib.forceApproveMax(asset, destVault);
         uint256 sharesMinted = IERC4626(destVault).deposit(toDeposit, msg.sender);

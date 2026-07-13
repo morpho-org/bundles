@@ -36,8 +36,8 @@ interface IVaultBundlesV1 {
     function vaultBundlesV1Migrate(
         address sourceVault,
         address destVault,
-        uint256 assets,
-        uint256 shares,
+        uint256 assetsWithdrawn,
+        uint256 sharesRedeemed,
         uint256 minSharePriceE27,
         uint256 maxSharePriceE27,
         uint256 referralFeePct,
