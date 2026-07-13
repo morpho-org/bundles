@@ -6,6 +6,7 @@ import {IVaultForceWithdrawBundlesV1, SharesPermit} from "./interfaces/IVaultFor
 import {TokenLib} from "../libraries/TokenLib.sol";
 import {IERC20Permit} from "../libraries/interfaces/IERC20Permit.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
+import {MathLib} from "../../lib/vault-v2/src/libraries/MathLib.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {WAD} from "../../lib/vault-v2/src/libraries/ConstantsLib.sol";
@@ -27,6 +28,7 @@ import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/Utils
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
+    using MathLib for uint256;
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
 
@@ -43,7 +45,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev Requires the sender to have enough shares to withdraw assets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    function vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+    function vaultForceWithdrawBundlesV1IlliquidVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
         uint256 forceWithdrawAssets,
@@ -62,12 +64,12 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     }
 
     function onMorphoFlashLoan(uint256 forceWithdrawAssets, bytes calldata data) external {
-        require(msg.sender == BLUE, Unauthorized());
+        require(msg.sender == BLUE, UnauthorizedCallback());
         (address vault, MarketParams[] memory marketParamsList, address sender) =
             abi.decode(data, (address, MarketParams[], address));
 
         uint256 assetsToDeallocate = forceWithdrawAssets;
-        for (uint256 i = 0; assetsToDeallocate > 0; i++) {
+        for (uint256 i; assetsToDeallocate > 0; i++) {
             MarketParams memory marketParams = marketParamsList[i];
             if (!IMetaMorpho(vault).config(marketParams.id()).enabled) continue;
 
@@ -89,14 +91,14 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
     /// @dev The assetsToDeallocate amount is floor(forceWithdrawAssets * WAD / (WAD + penalty)).
     /// @dev Requires Morpho Blue to have more than assetsToDeallocate in loan token balance.
-    /// @dev Requires the sender to have enough shares to withdraw ceil(assets *  penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
+    /// @dev Requires the sender to have enough shares to withdraw ceil(assets * penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    function vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+    function vaultForceWithdrawBundlesV1IlliquidVaultV2(
         address vault,
         address adapter,
-        MarketParams[] memory marketParams,
+        MarketParams[] memory marketParamsList,
         uint256 forceWithdrawAssets,
         SharesPermit memory sharesPermit,
         uint256 deadline
@@ -106,28 +108,28 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
 
         permitShares(vault, sharesPermit);
-        TokenLib.forceApproveMax(marketParams[0].loanToken, BLUE);
+        TokenLib.forceApproveMax(marketParamsList[0].loanToken, BLUE);
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
-        uint256 assetsToDeallocate = forceWithdrawAssets * WAD / (WAD + penalty);
+        uint256 assetsToDeallocate = forceWithdrawAssets.mulDivDown(WAD, WAD + penalty);
 
-        for (uint256 i = 0; assetsToDeallocate > 0; i++) {
-            uint256 adapterShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(Id.unwrap(marketParams[i].id()));
+        for (uint256 i; assetsToDeallocate > 0; i++) {
+            uint256 adapterShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(Id.unwrap(marketParamsList[i].id()));
             (uint256 totalSupplyAssets, uint256 totalSupplyShares,,) =
-                MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParams[i]);
+                MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParamsList[i]);
             uint256 adapterAssets = adapterShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
             uint256 assets = UtilsLib.min(adapterAssets, assetsToDeallocate);
             assetsToDeallocate -= assets;
 
             if (assets > 0) {
-                bytes memory data = abi.encode(vault, adapter, marketParams[i], msg.sender);
-                IMorpho(BLUE).supply(marketParams[i], assets, 0, msg.sender, data);
+                bytes memory data = abi.encode(vault, adapter, marketParamsList[i], msg.sender);
+                IMorpho(BLUE).supply(marketParamsList[i], assets, 0, msg.sender, data);
             }
         }
     }
 
     function onMorphoSupply(uint256 assets, bytes calldata data) external {
-        require(msg.sender == BLUE, Unauthorized());
+        require(msg.sender == BLUE, UnauthorizedCallback());
         (address vault, address adapter, MarketParams memory marketParams, address sender) =
             abi.decode(data, (address, address, MarketParams, address));
 
@@ -140,12 +142,12 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev Assumes that adapter is a Morpho Blue adapter.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
     /// @dev Starts by withdrawing without penalty everything the vault can pay: its idle assets and the liquidity available through the liquidity adapter.
-    /// @dev The assetsToDeallocate amount is floor(forceWithdrawAssets - assetsToWithdraw * WAD / (WAD + penalty)), where assetsToWithdraw is the amount withdrawn without penalty.
+    /// @dev The assetsToDeallocate amount is floor((forceWithdrawAssets - assetsToWithdraw) * WAD / (WAD + penalty)), where assetsToWithdraw is the amount withdrawn without penalty.
     /// @dev The assetsToDeallocate amount is force deallocated by looping over the adapter's markets, taking from each market as much as its liquidity and the adapter's position allow before moving to the next one.
     /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and reverts.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
-    function vaultBundlesV1ForceWithdrawLiquidVaultV2(
+    function vaultForceWithdrawBundlesV1LiquidVaultV2(
         address vault,
         address adapter,
         uint256 forceWithdrawAssets,
@@ -180,15 +182,15 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         // pre-fetching the market list because the deallocate could drop a market from the list.
         uint256 marketIdsLength = IMorphoMarketV1AdapterV2(adapter).marketIdsLength();
         bytes32[] memory marketIds = new bytes32[](marketIdsLength);
-        for (uint256 i = 0; i < marketIdsLength; i++) {
+        for (uint256 i; i < marketIdsLength; i++) {
             marketIds[i] = IMorphoMarketV1AdapterV2(adapter).marketIds(i);
         }
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
-        uint256 assetsToDeallocate = (forceWithdrawAssets - assetsToWithdraw) * WAD / (WAD + penalty);
+        uint256 assetsToDeallocate = (forceWithdrawAssets - assetsToWithdraw).mulDivDown(WAD, WAD + penalty);
         uint256 remainingAssets = assetsToDeallocate;
 
-        for (uint256 i = 0; remainingAssets > 0; i++) {
+        for (uint256 i; remainingAssets > 0; i++) {
             MarketParams memory marketParams = IMorpho(BLUE).idToMarketParams(Id.wrap(marketIds[i]));
             uint256 adapterShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(marketIds[i]);
             (uint256 totalSupplyAssets, uint256 totalSupplyShares, uint256 totalBorrowAssets,) =
@@ -204,7 +206,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         IVaultV2(vault).withdraw(assetsToDeallocate, address(this), msg.sender);
 
         uint256 withdrawn = assetsToWithdraw + assetsToDeallocate;
-        uint256 referralFeeAssets = withdrawn * referralFeePct / WAD;
+        uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
         SafeTransferLib.safeTransfer(asset, msg.sender, withdrawn - referralFeeAssets);
     }

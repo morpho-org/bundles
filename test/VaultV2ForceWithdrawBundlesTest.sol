@@ -140,7 +140,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         return assets * WAD / (WAD + PENALTY);
     }
 
-    /// @dev Wraps a single market into the singleton list expected by vaultBundlesV1ForceWithdrawIlliquidVaultV2.
+    /// @dev Wraps a single market into the singleton list expected by vaultForceWithdrawBundlesV1IlliquidVaultV2.
     function _singleton(MarketParams memory marketParams_) internal pure returns (MarketParams[] memory list) {
         list = new MarketParams[](1);
         list[0] = marketParams_;
@@ -329,7 +329,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         _setUpIlliquid(assets);
 
         vm.expectRevert(IVaultForceWithdrawBundlesV1.AdapterNotPartOfVault.selector);
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV2(
             address(vault), makeAddr("notAdapter"), _singleton(marketParams), assets, noSharesPermit, block.timestamp
         );
     }
@@ -342,7 +342,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
 
         // otherMarket was never allocated through the adapter ⇒ supplyShares == 0.
         vm.expectRevert();
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV2(
             address(vault), address(adapter), _singleton(otherMarket), assets, noSharesPermit, block.timestamp
         );
     }
@@ -358,13 +358,13 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         assertGt(optimalDeallocateAssets(tooMuch), assets, "precondition");
 
         vm.expectRevert();
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV2(
             address(vault), address(adapter), _singleton(marketParams), tooMuch, noSharesPermit, block.timestamp
         );
     }
 
     function testOnMorphoSupplyOnlyBlue() public {
-        vm.expectRevert(IVaultForceWithdrawBundlesV1.Unauthorized.selector);
+        vm.expectRevert(IVaultForceWithdrawBundlesV1.UnauthorizedCallback.selector);
         vaultBundles.onMorphoSupply(1, "");
     }
 
@@ -375,7 +375,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         assertEq(optimalDeallocateAssets(assets), 0, "precondition");
 
         uint256 sharesBefore = vault.balanceOf(address(this));
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV2(
             address(vault), address(adapter), _singleton(marketParams), assets, noSharesPermit, block.timestamp
         );
 
@@ -401,7 +401,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV2(
             address(vault), address(adapter), _singleton(marketParams), assets, noSharesPermit, block.timestamp
         );
 
@@ -425,7 +425,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
 
         SharesPermit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, type(uint256).max, block.timestamp);
         vm.prank(sigUser);
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV2(
             address(vault), address(adapter), _singleton(marketParams), assets, sharesPermit, block.timestamp
         );
 
@@ -453,7 +453,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         uint256 deallocate = optimalDeallocateAssets(forceWithdrawAssets);
         assertGt(deallocate, available1, "precondition: one market is not enough");
 
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV2(
             address(vault), address(adapter), list, forceWithdrawAssets, noSharesPermit, block.timestamp
         );
 
@@ -480,7 +480,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         list[0] = otherMarket;
         list[1] = marketParams;
 
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV2(
             address(vault), address(adapter), list, assets, noSharesPermit, block.timestamp
         );
 
@@ -497,7 +497,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         _setUpIlliquid(assets);
 
         vm.expectRevert(IVaultForceWithdrawBundlesV1.DeadlinePassed.selector);
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV2(
             address(vault), address(adapter), _singleton(marketParams), assets, noSharesPermit, block.timestamp - 1
         );
     }
@@ -525,7 +525,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         uint256 amount = vault.previewRedeem(sharesBefore - 2);
         vm.assume(optimalDeallocateAssets(amount) > 0);
 
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV2(
             address(vault), address(adapter), _singleton(marketParams), amount, noSharesPermit, block.timestamp
         );
 
@@ -541,7 +541,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         _setUpLiquid(assets);
 
         vm.expectRevert(IVaultForceWithdrawBundlesV1.AdapterNotPartOfVault.selector);
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1LiquidVaultV2(
             address(vault), makeAddr("notAdapter"), assets, noSharesPermit, 0, address(0), block.timestamp
         );
     }
@@ -552,7 +552,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         _setUpLiquid(assets);
 
         vm.expectRevert();
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1LiquidVaultV2(
             address(vault), address(adapter), 2 * assets, noSharesPermit, 0, address(0), block.timestamp
         );
     }
@@ -561,7 +561,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpLiquid(assets);
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1LiquidVaultV2(
             address(vault), address(adapter), assets, noSharesPermit, 0, address(0), block.timestamp
         );
 
@@ -582,7 +582,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         uint256 withdrawn = optimalDeallocateAssets(assets);
         uint256 expectedFee = withdrawn * referralFeePct / WAD;
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1LiquidVaultV2(
             address(vault),
             address(adapter),
             assets,
@@ -603,7 +603,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         _setUpLiquid(assets);
 
         vm.expectRevert(IVaultForceWithdrawBundlesV1.PctExceeded.selector);
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1LiquidVaultV2(
             address(vault), address(adapter), assets, noSharesPermit, WAD, referralFeeRecipient, block.timestamp
         );
     }
@@ -619,7 +619,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         uint256 deallocate = optimalDeallocateAssets(amount);
         assertGt(deallocate, 80e18, "precondition: all three markets are needed");
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1LiquidVaultV2(
             address(vault), address(adapter), amount, noSharesPermit, 0, address(0), block.timestamp
         );
 
@@ -649,7 +649,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         uint256 forceWithdrawAssets = 101e18;
         assertEq(optimalDeallocateAssets(forceWithdrawAssets), 100e18, "precondition");
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1LiquidVaultV2(
             address(vault), address(adapter), forceWithdrawAssets, noSharesPermit, 0, address(0), block.timestamp
         );
 
@@ -666,7 +666,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         vm.prank(allocator);
         vault.setLiquidityAdapterAndData(address(adapter), abi.encode(marketParams));
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1LiquidVaultV2(
             address(vault), address(adapter), 80e18, noSharesPermit, 0, address(0), block.timestamp
         );
 
@@ -688,7 +688,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         vm.prank(allocator);
         vault.setLiquidityAdapterAndData(address(adapter), abi.encode(marketParams));
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1LiquidVaultV2(
             address(vault), address(adapter), 50e18, noSharesPermit, 0, address(0), block.timestamp
         );
 
@@ -710,7 +710,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         vault.approve(address(vaultBundles), type(uint256).max);
         deal(address(loanToken), address(this), 0);
 
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1LiquidVaultV2(
             address(vault), address(adapter), 40e18, noSharesPermit, 0, address(0), block.timestamp
         );
 
@@ -724,7 +724,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         _setUpLiquid(assets);
 
         vm.expectRevert(IVaultForceWithdrawBundlesV1.DeadlinePassed.selector);
-        vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(
+        vaultBundles.vaultForceWithdrawBundlesV1LiquidVaultV2(
             address(vault), address(adapter), assets, noSharesPermit, 0, address(0), block.timestamp - 1
         );
     }
