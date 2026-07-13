@@ -54,7 +54,6 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
 
         permitShares(vault, sharesPermit);
-
         address loanToken = marketParamsList[0].loanToken;
         TokenLib.forceApproveMax(loanToken, BLUE);
 
