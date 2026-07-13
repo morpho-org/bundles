@@ -254,7 +254,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         TokenLib.forceApproveMax(sourceMarketParams.loanToken, BLUE);
     }
 
-    /// @dev Skipped when the signature is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful to be able to pass an empty signedAuthorization.
+    /// @dev Skipped when the signature is empty (v, r and s all zero; which doesn't correspond to a valid signature), for when the authorization is already done.
     /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the signature is not checked in that case, and Blue checks authorization at the point of use.
     /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until signedAuthorization.deadline, as revoking on Blue does not consume the nonce.
     function setAuthorizationWithSig(SignedAuthorization memory signedAuthorization) internal {
