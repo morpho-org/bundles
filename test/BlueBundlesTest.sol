@@ -425,7 +425,7 @@ contract BlueBundlesTest is Test {
         deal(address(loanToken), user, maxRepayAssets);
         vm.startPrank(user);
         loanToken.approve(address(blueBundles), maxRepayAssets);
-        vm.expectRevert("transfer reverted");
+        vm.expectRevert("Insufficient balance");
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
             marketParams,
             0,

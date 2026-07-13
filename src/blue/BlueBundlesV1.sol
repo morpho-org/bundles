@@ -7,22 +7,21 @@ import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
 import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
-import {IERC20} from "../../lib/morpho-blue/src/interfaces/IERC20.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
-import {SafeTransferLib} from "../../lib/morpho-blue/src/libraries/SafeTransferLib.sol";
-import {MathLib, WAD} from "../../lib/morpho-blue/src/libraries/MathLib.sol";
+import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
+import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
+import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev Inherits the token safety requirements of Morpho Blue (see Morpho.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
-    using MathLib for uint256;
+    using UtilsLib for uint256;
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
-    using SafeTransferLib for IERC20;
 
     address public immutable BLUE;
 
@@ -63,9 +62,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
         uint256 referralFeeAssets = borrowAssets.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
-            IERC20(marketParams.loanToken).safeTransfer(referralFeeRecipient, referralFeeAssets);
+            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        IERC20(marketParams.loanToken).safeTransfer(msg.sender, borrowAssets - referralFeeAssets);
+        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, borrowAssets - referralFeeAssets);
     }
 
     /// @dev The msg.sender must have authorized this contract on Blue if some collateral is withdrawn.
@@ -103,9 +102,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
         uint256 referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
         if (referralFeeAssets > 0) {
-            IERC20(marketParams.loanToken).safeTransfer(referralFeeRecipient, referralFeeAssets);
+            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        IERC20(marketParams.loanToken).safeTransfer(msg.sender, maxRepayAssets - repayAssets - referralFeeAssets);
+        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, maxRepayAssets - repayAssets - referralFeeAssets);
     }
 
     /// @dev Pulls assets of marketParams.loanToken from msg.sender (optionally via ERC-2612 or Permit2).
@@ -134,7 +133,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(toSupply.mulDivUp(1e27, suppliedShares) <= maxSharePriceE27, SlippageExceeded());
 
         if (referralFeeAssets > 0) {
-            IERC20(marketParams.loanToken).safeTransfer(referralFeeRecipient, referralFeeAssets);
+            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
     }
 
@@ -162,9 +161,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
-            IERC20(marketParams.loanToken).safeTransfer(referralFeeRecipient, referralFeeAssets);
+            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        IERC20(marketParams.loanToken).safeTransfer(msg.sender, withdrawn - referralFeeAssets);
+        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, withdrawn - referralFeeAssets);
     }
 
     /// @dev The msg.sender must have authorized this contract on Blue.
@@ -233,7 +232,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(borrowAssets.mulDivDown(1e27, borrowedShares) >= minSharePriceE27, SlippageExceeded());
 
         if (referralFeeAssets > 0) {
-            IERC20(destMarketParams.loanToken).safeTransfer(referralFeeRecipient, referralFeeAssets);
+            SafeTransferLib.safeTransfer(destMarketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
 
         TokenLib.forceApproveMax(sourceMarketParams.loanToken, BLUE);

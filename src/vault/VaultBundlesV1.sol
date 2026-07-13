@@ -6,9 +6,9 @@ import {IVaultBundlesV1, SharesPermit} from "./interfaces/IVaultBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {IERC20Permit} from "../libraries/interfaces/IERC20Permit.sol";
 import {IERC4626} from "../../lib/vault-v2/src/interfaces/IERC4626.sol";
-import {SafeERC20Lib} from "../../lib/vault-v2/src/libraries/SafeERC20Lib.sol";
-import {MathLib} from "../../lib/vault-v2/src/libraries/MathLib.sol";
-import {WAD} from "../../lib/vault-v2/src/libraries/ConstantsLib.sol";
+import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
+import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
+import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev Designed and audited for Morpho Vault V1 (MetaMorpho) and Morpho Vault V2 (Vault v2 with Morpho registry).
 /// @dev Inherits the token safety requirements of the vaults and their dependencies.
@@ -17,7 +17,7 @@ import {WAD} from "../../lib/vault-v2/src/libraries/ConstantsLib.sol";
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 contract VaultBundlesV1 is IVaultBundlesV1 {
-    using MathLib for uint256;
+    using UtilsLib for uint256;
 
     /// EXTERNAL ///
 
@@ -47,7 +47,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         uint256 shares = IERC4626(vault).deposit(toDeposit, msg.sender);
         require(toDeposit.mulDivUp(1e27, shares) <= maxSharePriceE27, SlippageExceeded());
 
-        if (referralFeeAssets > 0) SafeERC20Lib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
+        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
     }
 
     /// @dev Withdraws msg.sender's position in the vault.
@@ -79,8 +79,8 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
 
         address asset = IERC4626(vault).asset();
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
-        if (referralFeeAssets > 0) SafeERC20Lib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
-        SafeERC20Lib.safeTransfer(asset, msg.sender, assets - referralFeeAssets);
+        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
+        SafeTransferLib.safeTransfer(asset, msg.sender, assets - referralFeeAssets);
     }
 
     /// @dev Migrates msg.sender's position in sourceVault to a position in destVault, by withdrawing them from sourceVault (routed via this contract) then depositing them into destVault.
@@ -126,7 +126,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         uint256 sharesMinted = IERC4626(destVault).deposit(toDeposit, msg.sender);
         require(toDeposit.mulDivUp(1e27, sharesMinted) <= maxSharePriceE27, SlippageExceeded());
 
-        if (referralFeeAssets > 0) SafeERC20Lib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
+        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
     }
 
     /// INTERNAL ///
