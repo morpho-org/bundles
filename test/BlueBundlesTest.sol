@@ -145,7 +145,7 @@ contract BlueBundlesTest is Test {
         blueBundles.blueBundlesV1Withdraw(marketParams, 1, 0, 0, WAD, address(0), block.timestamp);
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, WAD, WAD, address(0), block.timestamp
+            marketParams, destMarketParams, 1, 0, 0, type(uint256).max, 0, WAD, WAD, WAD, address(0), block.timestamp
         );
         vm.stopPrank();
     }
@@ -167,7 +167,7 @@ contract BlueBundlesTest is Test {
         blueBundles.blueBundlesV1Withdraw(marketParams, 1, 0, 0, 0, address(0), past);
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, WAD, 0, address(0), past
+            marketParams, destMarketParams, 1, 0, 0, type(uint256).max, 0, WAD, WAD, 0, address(0), past
         );
         vm.stopPrank();
     }
@@ -556,7 +556,7 @@ contract BlueBundlesTest is Test {
         vm.prank(user);
         vm.expectRevert(IBlueBundlesV1.InconsistentTokens.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, wrongDest, type(uint256).max, 0, WAD, 0, address(0), block.timestamp
+            marketParams, wrongDest, 1, 0, 0, type(uint256).max, 0, WAD, WAD, 0, address(0), block.timestamp
         );
     }
 
@@ -564,6 +564,7 @@ contract BlueBundlesTest is Test {
         uint256 borrowAssets = 100e18;
         _openBorrow(user, borrowAssets);
         uint256 collateral = morpho.collateral(id, user);
+        uint256 shares = morpho.borrowShares(id, user);
 
         // Allowed borrow = collateral value * maxLtv (1:1 price). At the exact-fit ltv the allowance equals the
         // debt; one wei less drops it just below.
@@ -572,12 +573,12 @@ contract BlueBundlesTest is Test {
         vm.prank(user);
         vm.expectRevert(IBlueBundlesV1.LtvExceeded.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, fitLtv - 1, 0, address(0), block.timestamp
+            marketParams, destMarketParams, 0, shares, collateral, type(uint256).max, 0, WAD, fitLtv - 1, 0, address(0), block.timestamp
         );
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, fitLtv, 0, address(0), block.timestamp
+            marketParams, destMarketParams, 0, shares, collateral, type(uint256).max, 0, WAD, fitLtv, 0, address(0), block.timestamp
         );
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
     }
@@ -588,6 +589,8 @@ contract BlueBundlesTest is Test {
         uint256 borrowAssets = 100e18;
         uint256 referralFeePct = 0.1e18;
         _openBorrow(user, borrowAssets);
+        uint256 collateral = morpho.collateral(id, user);
+        uint256 shares = morpho.borrowShares(id, user);
 
         // Collateral 200e18 (1:1 price) at maxLtv 0.54 allows 108e18: fits the 100e18 debt, not debt + 10e18 fee.
         uint256 maxLtv = 0.54e18;
@@ -595,18 +598,18 @@ contract BlueBundlesTest is Test {
         vm.prank(user);
         vm.expectRevert(IBlueBundlesV1.LtvExceeded.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, maxLtv, referralFeePct, referrer, block.timestamp
+            marketParams, destMarketParams, 0, shares, collateral, type(uint256).max, 0, WAD, maxLtv, referralFeePct, referrer, block.timestamp
         );
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, maxLtv, 0, address(0), block.timestamp
+            marketParams, destMarketParams, 0, shares, collateral, type(uint256).max, 0, WAD, maxLtv, 0, address(0), block.timestamp
         );
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
     }
 
-    /// @dev With maxLtv == destLltv the bundler cap is a no-op (it short-circuits at/above the LLTV), so Blue's own
-    /// health check bounds the borrow: a position landing precisely at the destination LLTV limit passes.
+    /// @dev With destMaxLtv == destLltv the bundler cap is a no-op (it short-circuits at/above the LLTV), so Blue's
+    /// own health check bounds the borrow: a position landing precisely at the destination LLTV limit passes.
     function testMigrateBorrowPositionLtvBoundAtDestLltvExactLimit() public {
         // Dest collateral value is half the source's: 200e18 collateral => 100e18 value => 90e18 limit at 0.9 LLTV.
         destOracle.setPrice(ORACLE_PRICE_SCALE / 2);
@@ -618,7 +621,7 @@ contract BlueBundlesTest is Test {
         morpho.supplyCollateral(marketParams, collateral, user, "");
         morpho.borrow(marketParams, 90e18, 0, user, user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, LLTV_DEST, 0, address(0), block.timestamp
+            marketParams, destMarketParams, 0, morpho.borrowShares(id, user), collateral, type(uint256).max, 0, WAD, LLTV_DEST, 0, address(0), block.timestamp
         );
         vm.stopPrank();
 
@@ -634,10 +637,11 @@ contract BlueBundlesTest is Test {
         collateralToken.approve(address(morpho), type(uint256).max);
         morpho.supplyCollateral(marketParams, collateral, user, "");
         morpho.borrow(marketParams, 90e18 + 1, 0, user, user);
-        // maxLtv == destLltv makes the bundler cap a no-op, so the over-limit borrow reverts on Blue's own check.
+        uint256 shares = morpho.borrowShares(id, user);
+        // destMaxLtv == destLltv makes the bundler cap a no-op, so the over-limit borrow reverts on Blue's own check.
         vm.expectRevert(bytes("insufficient collateral"));
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, LLTV_DEST, 0, address(0), block.timestamp
+            marketParams, destMarketParams, 0, shares, collateral, type(uint256).max, 0, WAD, LLTV_DEST, 0, address(0), block.timestamp
         );
         vm.stopPrank();
     }
@@ -646,10 +650,11 @@ contract BlueBundlesTest is Test {
         borrowAssets = bound(borrowAssets, 1, 1e30);
         _openBorrow(user, borrowAssets);
         uint256 collateral = morpho.collateral(id, user);
+        uint256 shares = morpho.borrowShares(id, user);
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, WAD, 0, address(0), block.timestamp
+            marketParams, destMarketParams, 0, shares, collateral, type(uint256).max, 0, WAD, WAD, 0, address(0), block.timestamp
         );
 
         assertEq(morpho.collateral(id, user), 0, "source collateral");
@@ -662,47 +667,71 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(user), borrowAssets, "user loan tokens untouched");
     }
 
-    /// @dev The fee is borrowed on the destination on top of the repaid assets, so the move stays capital-free for
-    /// the user and the fee shows up as extra destination debt.
-    function testMigrateBorrowPositionWithReferralFee(uint256 borrowAssets, uint256 referralFeePct) public {
-        borrowAssets = bound(borrowAssets, 1, 1e30);
-        // Collateral is 2x the debt and dest LLTV is 0.9, so total borrow must stay under 1.8x. The fee is borrowed on
-        // top (pct / (WAD - pct)), so cap pct at 0.4e18 => fee <= 0.667x => total <= 1.667x.
-        referralFeePct = bound(referralFeePct, 0, 0.4e18);
+    /// @dev A partial migration moves a slice of the debt and a slice of the collateral, leaving the remainder on the
+    /// source: both markets end up with the split amounts.
+    function testMigrateBorrowPositionPartial(uint256 borrowAssets) public {
+        borrowAssets = bound(borrowAssets, 2, 1e30);
         _openBorrow(user, borrowAssets);
         uint256 collateral = morpho.collateral(id, user);
+        uint256 shares = morpho.borrowShares(id, user);
 
-        uint256 expectedFee = borrowAssets * referralFeePct / (WAD - referralFeePct);
+        uint256 repayShares = shares / 2;
+        uint256 withdrawCollateral = collateral / 2;
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, WAD, referralFeePct, referrer, block.timestamp
+            marketParams, destMarketParams, 0, repayShares, withdrawCollateral, type(uint256).max, 0, WAD, WAD, 0, address(0), block.timestamp
         );
 
-        assertEq(morpho.collateral(id, user), 0, "source collateral");
-        assertEq(morpho.borrowShares(id, user), 0, "source debt");
-        assertEq(morpho.collateral(destId, user), collateral, "dest collateral");
-        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets + expectedFee, "dest debt incl fee");
-        assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
+        assertEq(morpho.collateral(id, user), collateral - withdrawCollateral, "source collateral");
+        assertEq(morpho.borrowShares(id, user), shares - repayShares, "source shares");
+        assertEq(morpho.collateral(destId, user), withdrawCollateral, "dest collateral");
+        // The destination debt equals the assets repaid on the source: the leg is capital-free.
+        assertGt(morpho.expectedBorrowAssets(destMarketParams, user), 0, "dest debt");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler loan residual");
         assertEq(collateralToken.balanceOf(address(blueBundles)), 0, "bundler collateral residual");
-        // Still capital-free for the user: the fee is financed by the extra destination borrow.
         assertEq(loanToken.balanceOf(user), borrowAssets, "user loan tokens untouched");
     }
 
-    /// @dev The source oracle is never read during a full-position migrateBorrowPosition: the debt is zero by the
-    /// time the collateral withdrawal health check runs, which short-circuits before the oracle call. Positions can
-    /// therefore migrate out of a market whose oracle is broken.
+    /// @dev sourceMaxLtv caps the LTV of the position left behind on the source: withdrawing too much collateral for
+    /// the amount of debt repaid reverts, even while the remaining position is still healthy for Blue's own LLTV.
+    function testMigrateBorrowPositionSourceLtvExceeded() public {
+        _openBorrow(user, 100e18);
+        assertEq(morpho.collateral(id, user), 200e18, "collateral");
+
+        // Repay 10e18 and withdraw 60e18: the source keeps 90e18 debt against 140e18 collateral (LTV ~0.643), healthy
+        // for the 0.8 source LLTV but over a 0.64 sourceMaxLtv.
+        vm.prank(user);
+        vm.expectRevert(IBlueBundlesV1.LtvExceeded.selector);
+        blueBundles.blueBundlesV1MigrateBorrowPosition(
+            marketParams, destMarketParams, 10e18, 0, 60e18, type(uint256).max, 0, 0.64e18, WAD, 0, address(0), block.timestamp
+        );
+
+        vm.prank(user);
+        blueBundles.blueBundlesV1MigrateBorrowPosition(
+            marketParams, destMarketParams, 10e18, 0, 60e18, type(uint256).max, 0, 0.65e18, WAD, 0, address(0), block.timestamp
+        );
+
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), 90e18, "source debt");
+        assertEq(morpho.collateral(id, user), 140e18, "source collateral");
+        assertEq(morpho.collateral(destId, user), 60e18, "dest collateral");
+        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), 10e18, "dest debt");
+    }
+
+    /// @dev The source oracle is never read during a full-position migrateBorrowPosition (sourceMaxLtv disabled): the
+    /// debt is zero by the time the collateral withdrawal health check runs, which short-circuits before the oracle
+    /// call. Positions can therefore migrate out of a market whose oracle is broken.
     function testMigrateBorrowPositionWithBrokenSourceOracle() public {
         uint256 borrowAssets = 100e18;
         _openBorrow(user, borrowAssets);
         uint256 collateral = morpho.collateral(id, user);
+        uint256 shares = morpho.borrowShares(id, user);
 
         vm.mockCallRevert(address(oracle), abi.encodeWithSelector(IOracle.price.selector), "oracle down");
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, WAD, 0, address(0), block.timestamp
+            marketParams, destMarketParams, 0, shares, collateral, type(uint256).max, 0, WAD, WAD, 0, address(0), block.timestamp
         );
 
         assertEq(morpho.borrowShares(id, user), 0, "source debt");
@@ -710,8 +739,8 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
     }
 
-    /// @dev Reading the position from Blue makes migrateBorrowPosition immune to drift: a third party repaying part
-    /// of the debt between quoting and execution no longer reverts the call — the remaining position is moved.
+    /// @dev The caller specifies the shares to repay, read fresh at execution: a third party repaying part of the
+    /// debt between quoting and execution no longer reverts the call — passing the remaining shares moves the rest.
     function testMigrateBorrowPositionAfterThirdPartyRepay() public {
         uint256 borrowAssets = 100e18;
         _openBorrow(user, borrowAssets);
@@ -724,9 +753,10 @@ contract BlueBundlesTest is Test {
         morpho.repay(marketParams, 1, 0, user, "");
         vm.stopPrank();
 
+        uint256 shares = morpho.borrowShares(id, user);
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, 0, WAD, 0, address(0), block.timestamp
+            marketParams, destMarketParams, 0, shares, collateral, type(uint256).max, 0, WAD, WAD, 0, address(0), block.timestamp
         );
 
         assertEq(morpho.borrowShares(id, user), 0, "source debt");
@@ -798,22 +828,26 @@ contract BlueBundlesTest is Test {
     /// @dev migrateBorrowPosition bounds both legs: a maxSharePriceE27 below the source repay price reverts.
     function testMigrateBorrowPositionSourceRepaySlippageExceeded() public {
         _openBorrow(user, 100e18);
+        uint256 collateral = morpho.collateral(id, user);
+        uint256 shares = morpho.borrowShares(id, user);
 
         vm.prank(user);
         vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, 1, 0, WAD, 0, address(0), block.timestamp
+            marketParams, destMarketParams, 0, shares, collateral, 1, 0, WAD, WAD, 0, address(0), block.timestamp
         );
     }
 
     /// @dev migrateBorrowPosition bounds both legs: a minSharePriceE27 above the destination borrow price reverts.
     function testMigrateBorrowPositionDestBorrowSlippageExceeded() public {
         _openBorrow(user, 100e18);
+        uint256 collateral = morpho.collateral(id, user);
+        uint256 shares = morpho.borrowShares(id, user);
 
         vm.prank(user);
         vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, type(uint256).max, type(uint256).max, WAD, 0, address(0), block.timestamp
+            marketParams, destMarketParams, 0, shares, collateral, type(uint256).max, type(uint256).max, WAD, WAD, 0, address(0), block.timestamp
         );
     }
 }
