@@ -9,6 +9,7 @@ interface IVaultBundlesV1 {
     error SlippageExceeded();
     error InconsistentAssets();
     error NotExactlyOneZero();
+    error PctExceeded();
     error DeadlinePassed();
 
     /// FUNCTIONS ///
@@ -17,6 +18,8 @@ interface IVaultBundlesV1 {
         uint256 assets,
         uint256 maxSharePriceE27,
         TokenPermit memory assetPermit,
+        uint256 referralFeePct,
+        address referralFeeRecipient,
         uint256 deadline
     ) external;
 
@@ -25,6 +28,8 @@ interface IVaultBundlesV1 {
         uint256 assets,
         uint256 shares,
         uint256 minSharePriceE27,
+        uint256 referralFeePct,
+        address referralFeeRecipient,
         uint256 deadline
     ) external;
 
@@ -35,6 +40,8 @@ interface IVaultBundlesV1 {
         uint256 shares,
         uint256 minSharePriceE27,
         uint256 maxSharePriceE27,
+        uint256 referralFeePct,
+        address referralFeeRecipient,
         uint256 deadline
     ) external;
 }
