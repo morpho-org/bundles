@@ -308,6 +308,25 @@ contract BlueBundlesTest is Test {
         vm.stopPrank();
     }
 
+    /// @dev A nonce ahead of Blue's current nonce is not skipped: it is submitted and reverts on Blue.
+    function testAuthorizationSigFutureNonce() public {
+        (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
+        uint256 borrowAssets = 1e18;
+        uint256 collateral = _collateralFor(borrowAssets);
+        deal(address(collateralToken), sigUser, collateral);
+
+        SignedAuthorization memory authSig = _signAuthorization(sigUserKey, sigUser, block.timestamp);
+        authSig.nonce = authSig.nonce + 1;
+
+        vm.startPrank(sigUser);
+        collateralToken.approve(address(blueBundles), collateral);
+        vm.expectRevert(bytes("invalid nonce"));
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams, collateral, borrowAssets, 0, WAD, _noPermit(), authSig, 0, address(0), block.timestamp
+        );
+        vm.stopPrank();
+    }
+
     /// @dev A signature with v == 0 but non-zero r and s (e.g. a yParity encoding bug) is not treated as empty: it
     /// is submitted and reverts on Blue.
     function testAuthorizationSigYParityNotSkipped() public {
