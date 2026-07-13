@@ -32,8 +32,8 @@ interface IBlueBundlesV1 {
 
     function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
-        uint256 assets,
-        uint256 shares,
+        uint256 repayAssets,
+        uint256 repayShares,
         uint256 maxRepayAssets,
         uint256 maxSharePriceE27,
         uint256 withdrawCollateralAssets,
