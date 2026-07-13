@@ -23,7 +23,7 @@ import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/Utils
 /// @dev Meant to be used to force withdraw assets from a vault that allocates assets to Morpho Blue.
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev No-ops are allowed.
+/// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
     using MarketParamsLib for MarketParams;

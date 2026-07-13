@@ -13,7 +13,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Inherits the token safety requirements of the vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev Gated vaults (Vault V2) require this contract to be permitted by the relevant gates.
-/// @dev No-ops are allowed.
+/// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 contract VaultBundlesV1 is IVaultBundlesV1 {
     using UtilsLib for uint256;
@@ -81,7 +81,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     /// @dev Migrates msg.sender's position in sourceVault to a position in destVault, by withdrawing them from sourceVault (routed via this contract) then depositing them into destVault.
     /// @dev sourceVault and destVault can each be a Vault V1 or a Vault V2. Migrating from a Vault V2 to a Vault V1 is not prevented, even though it is not expected to be useful.
     /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract.
-    /// @dev Exactly one of assets and shares should be non-zero: sourceVault is withdrawn by assets, or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as shares.
+    /// @dev Exactly one of assetsWithdrawn and sharesRedeemed should be non-zero: sourceVault is withdrawn by assets, or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is deposited into destVault.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; deposited = withdrawnAssets - fee.
     /// @dev minSharePriceE27 lower-bounds the realized sourceVault withdraw share price; maxSharePriceE27 upper-bounds the realized destVault deposit share price (both assets per share, scaled by 1e27).

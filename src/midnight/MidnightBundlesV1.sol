@@ -33,7 +33,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// buy, decreasing to sell).
 /// @dev offerFills[i].units should prevent taking more than what is takeable w.r.t. the callback / the balances / the health.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev No-ops are allowed.
+/// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 /// @dev For buy/sell functions, the current market continuous fee must be at most maxContinuousFee. Pass
 /// type(uint256).max to disable.
