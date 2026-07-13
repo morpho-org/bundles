@@ -292,6 +292,30 @@ contract VaultBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
     }
 
+    function testWithdrawTargetNetV1(uint256 targetNet, uint256 referralFeePct) public {
+        _testWithdrawTargetNet(vaultV1, targetNet, referralFeePct);
+    }
+
+    function testWithdrawTargetNetV2(uint256 targetNet, uint256 referralFeePct) public {
+        _testWithdrawTargetNet(vaultV2, targetNet, referralFeePct);
+    }
+
+    /// @dev Checks the doc formula: to receive targetNet, pass assets = floor(targetNet * WAD / (WAD - referralFeePct)).
+    function _testWithdrawTargetNet(IERC4626 vault, uint256 targetNet, uint256 referralFeePct) internal {
+        targetNet = bound(targetNet, MIN_ASSETS, MAX_ASSETS);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+
+        uint256 assets = targetNet * WAD / (WAD - referralFeePct);
+        vm.assume(assets <= MAX_ASSETS);
+        _deposited(vault, assets);
+
+        bundles.vaultBundlesV1Withdraw(
+            address(vault), assets, 0, 0, referralFeePct, referralFeeRecipient, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(user), targetNet, "net equals target");
+    }
+
     function testWithdrawRequiresApprovalV1() public {
         _testWithdrawRequiresApproval(vaultV1);
     }
@@ -487,6 +511,32 @@ contract VaultBundlesTest is Test {
         assertEq(loanToken.balanceOf(referralFeeRecipient), expectedFee, "referralFeeRecipient fee");
         assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
         assertEq(loanToken.balanceOf(user), 0, "user loan token");
+    }
+
+    /// @dev Checks the doc formula: to deposit targetDeposit into destVault, pass assetsWithdrawn = floor(targetDeposit * WAD / (WAD - referralFeePct)).
+    /// @dev Both vaults are Vault V2, so the deposited assets sit idle in destVault and its loan token balance reads the deposited amount exactly.
+    function testMigrateTargetDeposit(uint256 targetDeposit, uint256 referralFeePct) public {
+        targetDeposit = bound(targetDeposit, MIN_ASSETS, MAX_ASSETS);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+
+        uint256 assetsWithdrawn = targetDeposit * WAD / (WAD - referralFeePct);
+        vm.assume(assetsWithdrawn <= MAX_ASSETS);
+        _deposited(vaultV2, assetsWithdrawn);
+
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV2),
+            address(vaultV2b),
+            assetsWithdrawn,
+            0,
+            0,
+            RAY,
+            referralFeePct,
+            referralFeeRecipient,
+            block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(referralFeeRecipient), assetsWithdrawn - targetDeposit, "referralFeeRecipient fee");
+        assertEq(loanToken.balanceOf(address(vaultV2b)), targetDeposit, "deposited equals target");
     }
 
     function testMigrateInconsistentAssets() public {
