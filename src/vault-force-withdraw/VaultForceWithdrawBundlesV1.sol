@@ -211,9 +211,9 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
 
     /// INTERNAL ///
 
-    /// @dev Permits this contract to spend value of msg.sender's vault shares.
     /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful to be able to pass an empty sharesPermit.
     /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that case.
+    /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until sharesPermit.deadline, as revoking on the vault does not consume the nonce.
     function permitShares(address vault, SharesPermit memory sharesPermit) internal {
         bool emptyPermit = sharesPermit.v == 0 && sharesPermit.r == 0 && sharesPermit.s == 0;
 

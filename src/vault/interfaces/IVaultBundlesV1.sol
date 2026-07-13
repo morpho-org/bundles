@@ -5,7 +5,6 @@ pragma solidity >=0.8.0;
 import {TokenPermit} from "../../libraries/TokenLib.sol";
 
 /// @dev An empty permit (v, r and s all zero) means no permit is submitted.
-/// @dev The permit deadline is independent of the call deadline: an unsubmitted permit stays submittable until deadline, as long as the nonce is not consumed elsewhere.
 struct SharesPermit {
     uint256 value;
     uint256 nonce;
