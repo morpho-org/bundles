@@ -154,7 +154,7 @@ contract BlueBundlesTest is Test {
     /// AUTHORIZATION SIGNATURE ///
 
     /// @dev A user with no prior Blue authorization can use the bundle in a single transaction via
-    /// authorizationSignature.
+    /// signedAuthorization.
     function testSupplyCollateralAndBorrowWithAuthorizationSig(uint256 borrowAssets) public {
         borrowAssets = bound(borrowAssets, 1, 1e30);
         (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
