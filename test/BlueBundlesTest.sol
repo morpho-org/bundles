@@ -13,7 +13,7 @@ import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
-import {IBlueBundlesV1, SignedAuthorization, AuthorizationKind} from "../src/blue/interfaces/IBlueBundlesV1.sol";
+import {IBlueBundlesV1, SignedAuthorization} from "../src/blue/interfaces/IBlueBundlesV1.sol";
 import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract BlueBundlesTest is Test {
@@ -128,10 +128,7 @@ contract BlueBundlesTest is Test {
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
         return SignedAuthorization({
-            kind: AuthorizationKind.Signature,
-            signature: Signature({v: v, r: r, s: s}),
-            nonce: authorization.nonce,
-            deadline: authorization.deadline
+            signature: Signature({v: v, r: r, s: s}), nonce: authorization.nonce, deadline: authorization.deadline
         });
     }
 
@@ -305,6 +302,26 @@ contract BlueBundlesTest is Test {
         vm.startPrank(sigUser);
         collateralToken.approve(address(blueBundles), collateral);
         vm.expectRevert(IBlueBundlesV1.InvalidAuthorizationSignature.selector);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams, collateral, borrowAssets, 0, WAD, _noPermit(), authSig, 0, address(0), block.timestamp
+        );
+        vm.stopPrank();
+    }
+
+    /// @dev A signature with v == 0 but non-zero r and s (e.g. a yParity encoding bug) is not treated as empty: it
+    /// is submitted and reverts on Blue.
+    function testAuthorizationSigYParityNotSkipped() public {
+        (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
+        uint256 borrowAssets = 1e18;
+        uint256 collateral = _collateralFor(borrowAssets);
+        deal(address(collateralToken), sigUser, collateral);
+
+        SignedAuthorization memory authSig = _signAuthorization(sigUserKey, sigUser, block.timestamp);
+        authSig.signature.v = 0;
+
+        vm.startPrank(sigUser);
+        collateralToken.approve(address(blueBundles), collateral);
+        vm.expectRevert(bytes("invalid signature"));
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
             marketParams, collateral, borrowAssets, 0, WAD, _noPermit(), authSig, 0, address(0), block.timestamp
         );

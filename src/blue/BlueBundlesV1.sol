@@ -2,9 +2,16 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IBlueBundlesV1, SignedAuthorization, AuthorizationKind} from "./interfaces/IBlueBundlesV1.sol";
+import {IBlueBundlesV1, SignedAuthorization} from "./interfaces/IBlueBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
-import {IMorpho, MarketParams, Position, Market, Authorization} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {
+    IMorpho,
+    MarketParams,
+    Position,
+    Market,
+    Authorization,
+    Signature
+} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
 import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
@@ -251,11 +258,12 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         TokenLib.forceApproveMax(sourceMarketParams.loanToken, BLUE);
     }
 
-    /// @dev Skipped when kind == None, useful to be able to pass an empty signedAuthorization.
+    /// @dev Skipped when the signature is empty (v, r and s all zero; no valid signature has any of them zero), useful to be able to pass an empty signedAuthorization.
     /// @dev On a consumed nonce, skips the submission if the authorization is already set (e.g. a front-run submission), and reverts with InvalidAuthorizationSignature otherwise; an invalid or expired signature reverts on Blue.
     /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until signedAuthorization.deadline, as revoking on Blue does not consume the nonce.
     function setAuthorizationWithSig(SignedAuthorization memory signedAuthorization) internal {
-        if (signedAuthorization.kind == AuthorizationKind.None) return;
+        Signature memory signature = signedAuthorization.signature;
+        if (signature.v == 0 && signature.r == 0 && signature.s == 0) return;
         if (IMorpho(BLUE).nonce(msg.sender) != signedAuthorization.nonce) {
             require(IMorpho(BLUE).isAuthorized(msg.sender, address(this)), InvalidAuthorizationSignature());
             return;
@@ -269,7 +277,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
                 nonce: signedAuthorization.nonce,
                 deadline: signedAuthorization.deadline
             }),
-                signedAuthorization.signature
+                signature
             );
     }
 
