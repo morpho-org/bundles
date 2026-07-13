@@ -23,6 +23,13 @@ Each bundle exposes a small set of high-level entry points that chain several pr
 - `blueBundlesV1Withdraw` — withdraw supplied loan assets (optionally by shares).
 - `blueBundlesV1MigrateBorrowPosition` — move a full borrow position (collateral and debt) from one market to another.
 
+## Vault bundles
+
+[VaultBundlesV1](src/vault/VaultBundlesV1.sol) contains:
+
+- `vaultBundlesV1Deposit` — deposit assets into a vault.
+- `vaultBundlesV1Withdraw` — withdraw assets from a vault.
+- `vaultBundlesV1Migrate` — migrate assets from one vault to another.
 ## Vault force withdraw bundles
 
 [VaultForceWithdrawBundlesV1](src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol) contains:
