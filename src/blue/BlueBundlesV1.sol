@@ -4,10 +4,11 @@ pragma solidity 0.8.34;
 
 import {IBlueBundlesV1} from "./interfaces/IBlueBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
-import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {IMorpho, Id, MarketParams, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
 import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
+import {MorphoStorageLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoStorageLib.sol";
 import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
@@ -192,19 +193,20 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             InconsistentTokens()
         );
 
-        Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), msg.sender);
+        (uint256 borrowShares, uint256 collateral) =
+            positionBorrowSharesAndCollateral(sourceMarketParams.id(), msg.sender);
 
         bytes memory data = abi.encode(
             sourceMarketParams,
             destMarketParams,
-            position.collateral,
+            collateral,
             msg.sender,
             referralFeePct,
             referralFeeRecipient,
             minSharePriceE27
         );
-        (uint256 assets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, msg.sender, data);
-        require(assets.mulDivUp(1e27, position.borrowShares) <= maxSharePriceE27, SlippageExceeded());
+        (uint256 assets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, borrowShares, msg.sender, data);
+        require(assets.mulDivUp(1e27, borrowShares) <= maxSharePriceE27, SlippageExceeded());
 
         requireMaxLtv(destMarketParams, msg.sender, maxLtv);
     }
@@ -243,10 +245,23 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal view {
         if (maxLtv >= marketParams.lltv) return;
         Market memory market = IMorpho(BLUE).market(marketParams.id());
-        Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
-        uint256 borrowed = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+        (uint256 borrowShares, uint256 collateral) = positionBorrowSharesAndCollateral(marketParams.id(), sender);
+        uint256 borrowed = borrowShares.toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
         uint256 price = IOracle(marketParams.oracle).price();
-        uint256 maxBorrow = uint256(position.collateral).mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
+        uint256 maxBorrow = collateral.mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
         require(borrowed <= maxBorrow, LtvExceeded());
+    }
+
+    /// @dev Reads sender's borrow shares and collateral on the market via Blue's extSloads, avoiding to load the supply shares slot.
+    function positionBorrowSharesAndCollateral(Id id, address sender)
+        internal
+        view
+        returns (uint256 borrowShares, uint256 collateral)
+    {
+        bytes32[] memory slots = new bytes32[](1);
+        slots[0] = MorphoStorageLib.positionBorrowSharesAndCollateralSlot(id, sender);
+        bytes32 slot = IMorpho(BLUE).extSloads(slots)[0];
+        borrowShares = uint128(uint256(slot));
+        collateral = uint256(slot >> 128);
     }
 }
