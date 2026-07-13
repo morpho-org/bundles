@@ -11,6 +11,7 @@ import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 /// @dev Inherits the token safety requirements of the vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev Gated vaults (Vault V2) require this contract to be permitted by the relevant gates.
+/// @dev This contract can approve tokens to arbitrary addresses. This is safe because a token amount pulled is always fully spent in the same transaction, and because the tokens are only pulled to this contract from the msg.sender.
 /// @dev No-ops are allowed.
 /// @dev Zero checks are not systematically performed.
 contract VaultBundlesV1 is IVaultBundlesV1 {
