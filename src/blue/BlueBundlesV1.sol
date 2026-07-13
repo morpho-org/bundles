@@ -168,7 +168,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-
         (uint256 withdrawn, uint256 withdrawnShares) =
             IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
         require(withdrawn.mulDivDown(1e27, withdrawnShares) >= minSharePriceE27, SlippageExceeded());
