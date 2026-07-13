@@ -13,7 +13,7 @@ import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
-import {IBlueBundlesV1, SignedAuthorization} from "../src/blue/interfaces/IBlueBundlesV1.sol";
+import {IBlueBundlesV1, SignedAuthorization, AuthorizationKind} from "../src/blue/interfaces/IBlueBundlesV1.sol";
 import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract BlueBundlesTest is Test {
@@ -128,7 +128,10 @@ contract BlueBundlesTest is Test {
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
         return SignedAuthorization({
-            signature: Signature({v: v, r: r, s: s}), nonce: authorization.nonce, deadline: authorization.deadline
+            kind: AuthorizationKind.Signature,
+            signature: Signature({v: v, r: r, s: s}),
+            nonce: authorization.nonce,
+            deadline: authorization.deadline
         });
     }
 
@@ -219,7 +222,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(sigUser), borrowAssets);
     }
 
-    /// @dev An invalid signature reverts at the submission step.
+    /// @dev An invalid signature reverts on Blue at the submission step.
     function testAuthorizationSigInvalid() public {
         (address sigUser,) = makeAddrAndKey("sigUser");
         (, uint256 wrongKey) = makeAddrAndKey("mallory");
@@ -231,7 +234,7 @@ contract BlueBundlesTest is Test {
 
         vm.startPrank(sigUser);
         collateralToken.approve(address(blueBundles), collateral);
-        vm.expectRevert(IBlueBundlesV1.InvalidAuthorizationSignature.selector);
+        vm.expectRevert(bytes("invalid signature"));
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
             marketParams, collateral, borrowAssets, 0, WAD, _noPermit(), authSig, 0, address(0), block.timestamp
         );
@@ -253,7 +256,7 @@ contract BlueBundlesTest is Test {
 
         vm.startPrank(sigUser);
         collateralToken.approve(address(blueBundles), collateral);
-        vm.expectRevert(IBlueBundlesV1.InvalidAuthorizationSignature.selector);
+        vm.expectRevert(bytes("invalid signature"));
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
             marketParams, collateral, borrowAssets, 0, WAD, _noPermit(), authSig, 0, address(0), block.timestamp
         );
@@ -269,6 +272,35 @@ contract BlueBundlesTest is Test {
 
         vm.warp(block.timestamp + 1000);
         SignedAuthorization memory authSig = _signAuthorization(sigUserKey, sigUser, block.timestamp - 1);
+
+        vm.startPrank(sigUser);
+        collateralToken.approve(address(blueBundles), collateral);
+        vm.expectRevert(bytes("signature expired"));
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams, collateral, borrowAssets, 0, WAD, _noPermit(), authSig, 0, address(0), block.timestamp
+        );
+        vm.stopPrank();
+    }
+
+    /// @dev A stale signature (consumed nonce) without the authorization set reverts with InvalidAuthorizationSignature.
+    function testAuthorizationSigStaleNonceNotAuthorized() public {
+        (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
+        uint256 borrowAssets = 1e18;
+        uint256 collateral = _collateralFor(borrowAssets);
+        deal(address(collateralToken), sigUser, collateral);
+
+        // Consume the nonce by submitting the authorization directly, then revoke: the old signature is now stale.
+        SignedAuthorization memory authSig = _signAuthorization(sigUserKey, sigUser, block.timestamp);
+        Authorization memory authorization = Authorization({
+            authorizer: sigUser,
+            authorized: address(blueBundles),
+            isAuthorized: true,
+            nonce: authSig.nonce,
+            deadline: authSig.deadline
+        });
+        morpho.setAuthorizationWithSig(authorization, authSig.signature);
+        vm.prank(sigUser);
+        morpho.setAuthorization(address(blueBundles), false);
 
         vm.startPrank(sigUser);
         collateralToken.approve(address(blueBundles), collateral);

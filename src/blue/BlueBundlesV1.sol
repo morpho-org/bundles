@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IBlueBundlesV1, SignedAuthorization} from "./interfaces/IBlueBundlesV1.sol";
+import {IBlueBundlesV1, SignedAuthorization, AuthorizationKind} from "./interfaces/IBlueBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {IMorpho, MarketParams, Position, Market, Authorization} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
@@ -252,12 +252,16 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     }
 
     /// @dev The expected signed payload is Authorization(sender, address(this), true, nonce, deadline): only signatures authorizing this contract for sender can be submitted.
-    /// @dev Skipped when signature.r == 0 (no valid signature has r == 0), useful to be able to pass an empty signature..
-    /// @dev Tolerates a consumed nonce (e.g. a front-run submission) if the authorization is already set; any other failure reverts with InvalidAuthorizationSignature.
-    /// @dev The signature deadline is independent of the call deadline: an unsubmitted signature stays submittable until signedAuthorization.deadline, as revoking on Blue does not consume the nonce.
+    /// @dev Skipped when kind == None, useful to be able to pass an empty signedAuthorization.
+    /// @dev On a consumed nonce, skips the submission if the authorization is already set (e.g. a front-run submission), and reverts with InvalidAuthorizationSignature otherwise; an invalid or expired signature reverts on Blue.
+    /// @dev The signature deadline is independent of the call deadline: signature not submitted stays submittable until signedAuthorization.deadline, as revoking on Blue does not consume the nonce.
     function submitAuthorizationSignature(SignedAuthorization memory signedAuthorization) internal {
-        if (signedAuthorization.signature.r == 0) return;
-        try IMorpho(BLUE)
+        if (signedAuthorization.kind == AuthorizationKind.None) return;
+        if (IMorpho(BLUE).nonce(msg.sender) != signedAuthorization.nonce) {
+            require(IMorpho(BLUE).isAuthorized(msg.sender, address(this)), InvalidAuthorizationSignature());
+            return;
+        }
+        IMorpho(BLUE)
             .setAuthorizationWithSig(
                 Authorization({
                 authorizer: msg.sender,
@@ -267,14 +271,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
                 deadline: signedAuthorization.deadline
             }),
                 signedAuthorization.signature
-            ) {}
-        catch {
-            require(
-                IMorpho(BLUE).nonce(msg.sender) != signedAuthorization.nonce
-                    && IMorpho(BLUE).isAuthorized(msg.sender, address(this)),
-                InvalidAuthorizationSignature()
             );
-        }
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.
