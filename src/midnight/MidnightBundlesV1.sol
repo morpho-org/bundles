@@ -113,7 +113,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
 
     /// @dev The receiver will receive at least minSellerAssets.
     /// @dev Total loan assets received by the receiver is filledSellerAssets - filledSellerAssets * referralFeePct / WAD.
-    /// @dev msg.sender will pay collateralWithdrawals[0].assets of the first token of collateralSupplies etc.
+    /// @dev msg.sender will pay collateralSupplies[0].assets of the first token of collateralSupplies, etc.
     function midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
         uint256 targetUnits,
         uint256 minSellerAssets,
@@ -180,7 +180,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
     /// @dev Total loan assets transferred from msg.sender is targetBuyerAssets.
     /// @dev The taker will gain at least minUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
-    /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals etc.
+    /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
     function midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral(
         uint256 targetBuyerAssets,
         uint256 minUnits,
@@ -254,7 +254,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
     /// @dev Total loan assets received by the receiver is targetSellerAssets.
     /// @dev The taker will lose at most maxUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
-    /// @dev msg.sender will pay collateralWithdrawals[0].assets of the first token of collateralSupplies etc.
+    /// @dev msg.sender will pay collateralSupplies[0].assets of the first token of collateralSupplies, etc.
     function midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget(
         uint256 targetSellerAssets,
         uint256 maxUnits,
@@ -325,7 +325,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
     /// @dev The msg.sender must have approved the contract to transfer assets of the market's loan token.
     /// @dev Fee = assets * pct / WAD; units repaid = assets - fee.
     /// @dev To fully repay a debt D, pass assets = floor(D * WAD / (WAD - pct)).
-    /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals etc.
+    /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
     function midnightBundlesV1RepayAndWithdrawCollateral(
         Market memory market,
         uint256 assets,
