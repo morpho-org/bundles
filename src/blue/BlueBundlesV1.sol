@@ -16,7 +16,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev Inherits the token safety requirements of Morpho Blue (see Morpho.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev No-ops are allowed.
+/// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     using UtilsLib for uint256;
