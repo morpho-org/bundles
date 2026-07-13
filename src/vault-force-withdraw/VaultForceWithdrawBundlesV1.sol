@@ -6,6 +6,7 @@ import {IVaultForceWithdrawBundlesV1, SharesPermit} from "./interfaces/IVaultFor
 import {TokenLib} from "../libraries/TokenLib.sol";
 import {IERC20Permit} from "../libraries/interfaces/IERC20Permit.sol";
 import {SafeERC20Lib} from "../../lib/vault-v2/src/libraries/SafeERC20Lib.sol";
+import {MathLib} from "../../lib/vault-v2/src/libraries/MathLib.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {WAD} from "../../lib/vault-v2/src/libraries/ConstantsLib.sol";
@@ -27,6 +28,7 @@ import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/Utils
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
+    using MathLib for uint256;
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
 
@@ -111,7 +113,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         TokenLib.forceApproveMax(marketParamsList[0].loanToken, BLUE);
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
-        uint256 assetsToDeallocate = forceWithdrawAssets * WAD / (WAD + penalty);
+        uint256 assetsToDeallocate = forceWithdrawAssets.mulDivDown(WAD, WAD + penalty);
 
         for (uint256 i; assetsToDeallocate > 0; i++) {
             uint256 adapterShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(Id.unwrap(marketParamsList[i].id()));
@@ -187,7 +189,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         }
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
-        uint256 assetsToDeallocate = (forceWithdrawAssets - assetsToWithdraw) * WAD / (WAD + penalty);
+        uint256 assetsToDeallocate = (forceWithdrawAssets - assetsToWithdraw).mulDivDown(WAD, WAD + penalty);
         uint256 remainingAssets = assetsToDeallocate;
 
         for (uint256 i; remainingAssets > 0; i++) {
@@ -206,7 +208,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         IVaultV2(vault).withdraw(assetsToDeallocate, address(this), msg.sender);
 
         uint256 withdrawn = assetsToWithdraw + assetsToDeallocate;
-        uint256 referralFeeAssets = withdrawn * referralFeePct / WAD;
+        uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) SafeERC20Lib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
         SafeERC20Lib.safeTransfer(asset, msg.sender, withdrawn - referralFeeAssets);
     }
