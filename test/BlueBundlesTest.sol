@@ -279,7 +279,8 @@ contract BlueBundlesTest is Test {
         vm.stopPrank();
     }
 
-    /// @dev A stale signature (consumed nonce) without the authorization set reverts with InvalidAuthorizationSignature.
+    /// @dev A stale signature (consumed nonce) without the authorization set is skipped: the revert surfaces at the
+    /// point of use on Blue.
     function testAuthorizationSigStaleNonceNotAuthorized() public {
         (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
         uint256 borrowAssets = 1e18;
@@ -301,11 +302,53 @@ contract BlueBundlesTest is Test {
 
         vm.startPrank(sigUser);
         collateralToken.approve(address(blueBundles), collateral);
-        vm.expectRevert(IBlueBundlesV1.InvalidAuthorizationSignature.selector);
+        vm.expectRevert(bytes("unauthorized"));
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
             marketParams, collateral, borrowAssets, 0, WAD, _noPermit(), authSig, 0, address(0), block.timestamp
         );
         vm.stopPrank();
+    }
+
+    /// @dev A stale signature on a pure repay is skipped silently: the repay succeeds and no authorization is set.
+    function testAuthorizationSigStaleNoncePureRepay() public {
+        (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
+        uint256 borrowAssets = 1e18;
+        _openBorrow(sigUser, borrowAssets);
+
+        // Consume the nonce by submitting the authorization directly, then revoke: the old signature is now stale.
+        SignedAuthorization memory authSig = _signAuthorization(sigUserKey, sigUser, block.timestamp);
+        Authorization memory authorization = Authorization({
+            authorizer: sigUser,
+            authorized: address(blueBundles),
+            isAuthorized: true,
+            nonce: authSig.nonce,
+            deadline: authSig.deadline
+        });
+        morpho.setAuthorizationWithSig(authorization, authSig.signature);
+        vm.prank(sigUser);
+        morpho.setAuthorization(address(blueBundles), false);
+
+        deal(address(loanToken), sigUser, borrowAssets);
+        vm.startPrank(sigUser);
+        loanToken.approve(address(blueBundles), borrowAssets);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams,
+            borrowAssets,
+            0,
+            borrowAssets,
+            type(uint256).max,
+            0,
+            WAD,
+            _noPermit(),
+            authSig,
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.borrowShares(id, sigUser), 0);
+        assertFalse(morpho.isAuthorized(sigUser, address(blueBundles)));
     }
 
     /// @dev A nonce ahead of Blue's current nonce is not skipped: it is submitted and reverts on Blue.

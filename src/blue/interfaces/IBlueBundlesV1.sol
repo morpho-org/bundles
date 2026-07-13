@@ -21,7 +21,6 @@ interface IBlueBundlesV1 {
     error LtvExceeded();
     error SlippageExceeded();
     error DeadlinePassed();
-    error InvalidAuthorizationSignature();
 
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);
