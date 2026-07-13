@@ -100,7 +100,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-
         TokenLib.pullToken(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
