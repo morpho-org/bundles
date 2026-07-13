@@ -73,44 +73,41 @@ function summaryWithdrawCollateral(address token, uint256 assets, address receiv
     if (receiver == currentContract) bundlerBalance[token] = bundlerBalance[token] + assets;
 }
 
-rule supplyPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 maxSharePriceE27, address onBehalf, TokenLib.TokenPermit permit, uint256 feePct, address recipient, address token, uint256 deadline) {
+rule supplyPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 maxSharePriceE27, TokenLib.TokenPermit permit, uint256 feePct, address recipient, address token, uint256 deadline) {
     require permit.kind == TokenLib.PermitKind.None, "simplification for prover performance";
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require recipient != currentContract, "no bundler donations of the fee";
 
     mathint before = bundlerBalance[token];
-    blueBundlesV1Supply(e, marketParams, assets, maxSharePriceE27, onBehalf, permit, feePct, recipient, deadline);
+    blueBundlesV1Supply(e, marketParams, assets, maxSharePriceE27, permit, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
 }
 
-rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, uint256 minSharePriceE27, address onBehalf, address receiver, uint256 feePct, address recipient, address token, uint256 deadline) {
+rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, uint256 minSharePriceE27, uint256 feePct, address recipient, address token, uint256 deadline) {
     require e.msg.sender != currentContract, "bundler is never its own caller";
-    require receiver != currentContract, "no bundler donations of proceeds";
     require recipient != currentContract, "no bundler donations of the fee";
 
     mathint before = bundlerBalance[token];
-    blueBundlesV1Withdraw(e, marketParams, assets, shares, minSharePriceE27, onBehalf, receiver, feePct, recipient, deadline);
+    blueBundlesV1Withdraw(e, marketParams, assets, shares, minSharePriceE27, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
 }
 
-rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAmount, uint256 borrowAssets, uint256 minSharePriceE27, uint256 maxLtv, address onBehalf, address receiver, TokenLib.TokenPermit permit, uint256 feePct, address recipient, address token, uint256 deadline) {
+rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAmount, uint256 borrowAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit permit, uint256 feePct, address recipient, address token, uint256 deadline) {
     require permit.kind == TokenLib.PermitKind.None, "simplification for prover performance";
     require e.msg.sender != currentContract, "bundler is never its own caller";
-    require receiver != currentContract, "no bundler donations of proceeds";
     require recipient != currentContract, "no bundler donations of the fee";
 
     mathint before = bundlerBalance[token];
-    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAmount, borrowAssets, minSharePriceE27, maxLtv, onBehalf, receiver, permit, feePct, recipient, deadline);
+    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAmount, borrowAssets, minSharePriceE27, maxLtv, permit, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
 }
 
-rule repayAndWithdrawCollateralPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, uint256 maxRepayAssets, uint256 maxSharePriceE27, uint256 withdrawCollateralAssets, uint256 maxLtv, address onBehalf, address receiver, TokenLib.TokenPermit permit, uint256 feePct, address recipient, address token, uint256 deadline) {
+rule repayAndWithdrawCollateralPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, uint256 maxRepayAssets, uint256 maxSharePriceE27, uint256 withdrawCollateralAssets, uint256 maxLtv, TokenLib.TokenPermit permit, uint256 feePct, address recipient, address token, uint256 deadline) {
     require permit.kind == TokenLib.PermitKind.None, "simplification for prover performance";
     require e.msg.sender != currentContract, "bundler is never its own caller";
-    require receiver != currentContract, "no bundler donations of proceeds";
     require recipient != currentContract, "no bundler donations of the fee";
 
     mathint before = bundlerBalance[token];
-    blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, assets, shares, maxRepayAssets, maxSharePriceE27, withdrawCollateralAssets, maxLtv, onBehalf, receiver, permit, feePct, recipient, deadline);
+    blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, assets, shares, maxRepayAssets, maxSharePriceE27, withdrawCollateralAssets, maxLtv, permit, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
 }

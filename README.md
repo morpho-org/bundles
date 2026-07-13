@@ -17,10 +17,10 @@ Each bundle exposes a small set of high-level entry points that chain several pr
 
 [BlueBundlesV1](src/blue/BlueBundlesV1.sol) contains:
 
-- `blueBundlesV1SupplyCollateralAndBorrow` — supply collateral and borrow on behalf, routing the borrow to a receiver.
-- `blueBundlesV1RepayAndWithdrawCollateral` — repay debt (optionally the full position by shares) and optionally withdraw collateral.
+- `blueBundlesV1SupplyCollateralAndBorrow` — supply collateral and borrow.
+- `blueBundlesV1RepayAndWithdrawCollateral` — repay debt (optionally by shares) and optionally withdraw collateral.
 - `blueBundlesV1Supply` — supply loan assets to a market.
-- `blueBundlesV1Withdraw` — withdraw supplied loan assets (optionally the full position by shares) to a receiver.
+- `blueBundlesV1Withdraw` — withdraw supplied loan assets (optionally by shares).
 - `blueBundlesV1MigrateBorrowPosition` — move a full borrow position (collateral and debt) from one market to another.
 
 ## Vault bundles

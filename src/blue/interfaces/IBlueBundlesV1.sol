@@ -8,7 +8,6 @@ import {TokenPermit} from "../../libraries/TokenLib.sol";
 interface IBlueBundlesV1 {
     /// ERRORS ///
     error PctExceeded();
-    error Unauthorized();
     error UnauthorizedCallback();
     error InconsistentTokens();
     error LtvExceeded();
@@ -25,8 +24,6 @@ interface IBlueBundlesV1 {
         uint256 borrowAssets,
         uint256 minSharePriceE27,
         uint256 maxLtv,
-        address onBehalf,
-        address receiver,
         TokenPermit memory collateralPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -41,8 +38,6 @@ interface IBlueBundlesV1 {
         uint256 maxSharePriceE27,
         uint256 withdrawCollateralAssets,
         uint256 maxLtv,
-        address onBehalf,
-        address receiver,
         TokenPermit memory loanTokenPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -53,7 +48,6 @@ interface IBlueBundlesV1 {
         MarketParams memory marketParams,
         uint256 assets,
         uint256 maxSharePriceE27,
-        address onBehalf,
         TokenPermit memory loanTokenPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -65,8 +59,6 @@ interface IBlueBundlesV1 {
         uint256 assets,
         uint256 shares,
         uint256 minSharePriceE27,
-        address onBehalf,
-        address receiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -78,7 +70,6 @@ interface IBlueBundlesV1 {
         uint256 maxSharePriceE27,
         uint256 minSharePriceE27,
         uint256 maxLtv,
-        address onBehalf,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
