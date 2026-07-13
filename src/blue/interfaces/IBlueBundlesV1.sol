@@ -7,12 +7,12 @@ import {TokenPermit} from "../../libraries/TokenLib.sol";
 
 interface IBlueBundlesV1 {
     /// ERRORS ///
-    error PctExceeded();
-    error UnauthorizedCallback();
+    error DeadlinePassed();
     error InconsistentTokens();
     error LtvExceeded();
+    error PctExceeded();
     error SlippageExceeded();
-    error DeadlinePassed();
+    error UnauthorizedCallback();
 
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);
