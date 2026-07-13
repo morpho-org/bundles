@@ -5,7 +5,7 @@ pragma solidity 0.8.34;
 import {IVaultForceWithdrawBundlesV1, SharesPermit} from "./interfaces/IVaultForceWithdrawBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 import {IERC20Permit} from "../libraries/interfaces/IERC20Permit.sol";
-import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
+import {SafeERC20Lib} from "../../lib/vault-v2/src/libraries/SafeERC20Lib.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {WAD} from "../../lib/vault-v2/src/libraries/ConstantsLib.sol";
@@ -207,8 +207,8 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
 
         uint256 withdrawn = assetsToWithdraw + assetsToDeallocate;
         uint256 referralFeeAssets = withdrawn * referralFeePct / WAD;
-        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
-        SafeTransferLib.safeTransfer(asset, msg.sender, withdrawn - referralFeeAssets);
+        if (referralFeeAssets > 0) SafeERC20Lib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
+        SafeERC20Lib.safeTransfer(asset, msg.sender, withdrawn - referralFeeAssets);
     }
 
     /// INTERNAL ///
