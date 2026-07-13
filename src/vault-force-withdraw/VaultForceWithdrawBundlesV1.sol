@@ -63,7 +63,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     }
 
     function onMorphoFlashLoan(uint256 forceWithdrawAssets, bytes calldata data) external {
-        require(msg.sender == BLUE, Unauthorized());
+        require(msg.sender == BLUE, UnauthorizedCallback());
         (address vault, MarketParams[] memory marketParamsList, address sender) =
             abi.decode(data, (address, MarketParams[], address));
 
@@ -129,7 +129,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     }
 
     function onMorphoSupply(uint256 assets, bytes calldata data) external {
-        require(msg.sender == BLUE, Unauthorized());
+        require(msg.sender == BLUE, UnauthorizedCallback());
         (address vault, address adapter, MarketParams memory marketParams, address sender) =
             abi.decode(data, (address, address, MarketParams, address));
 

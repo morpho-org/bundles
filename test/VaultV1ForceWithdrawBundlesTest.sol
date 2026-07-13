@@ -242,7 +242,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
     /// AUTHORIZATION & VALIDATION ///
 
     function testOnMorphoFlashLoanOnlyBlue() public {
-        vm.expectRevert(IVaultForceWithdrawBundlesV1.Unauthorized.selector);
+        vm.expectRevert(IVaultForceWithdrawBundlesV1.UnauthorizedCallback.selector);
         vaultBundles.onMorphoFlashLoan(1, "");
     }
 

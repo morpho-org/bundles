@@ -22,7 +22,7 @@ interface IVaultForceWithdrawBundlesV1 {
     error LiquidityAdapterMismatch();
     error MorphoMismatch();
     error PctExceeded();
-    error Unauthorized();
+    error UnauthorizedCallback();
 
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);

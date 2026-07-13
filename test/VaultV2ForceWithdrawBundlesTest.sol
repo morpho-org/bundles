@@ -364,7 +364,7 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
     }
 
     function testOnMorphoSupplyOnlyBlue() public {
-        vm.expectRevert(IVaultForceWithdrawBundlesV1.Unauthorized.selector);
+        vm.expectRevert(IVaultForceWithdrawBundlesV1.UnauthorizedCallback.selector);
         vaultBundles.onMorphoSupply(1, "");
     }
 
