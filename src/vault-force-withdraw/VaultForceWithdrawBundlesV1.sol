@@ -4,6 +4,7 @@ pragma solidity 0.8.34;
 
 import {IVaultForceWithdrawBundlesV1} from "./interfaces/IVaultForceWithdrawBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
+import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {WAD} from "../../lib/vault-v2/src/libraries/ConstantsLib.sol";
@@ -137,17 +138,23 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev The assetsToDeallocate amount is floor(forceWithdrawAssets - assetsToWithdraw * WAD / (WAD + penalty)), where assetsToWithdraw is the amount withdrawn without penalty.
     /// @dev The assetsToDeallocate amount is force deallocated by looping over the adapter's markets, taking from each market as much as its liquidity and the adapter's position allow before moving to the next one.
     /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and reverts.
+    /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
+    /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     function vaultBundlesV1ForceWithdrawLiquidVaultV2(
         address vault,
         address adapter,
         uint256 forceWithdrawAssets,
+        uint256 referralFeePct,
+        address referralFeeRecipient,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
+        require(referralFeePct < WAD, PctExceeded());
 
-        uint256 withdrawableAssets = IERC20(IVaultV2(vault).asset()).balanceOf(vault);
+        address asset = IVaultV2(vault).asset();
+        uint256 withdrawableAssets = IERC20(asset).balanceOf(vault);
         address liquidityAdapter = IVaultV2(vault).liquidityAdapter();
         if (liquidityAdapter != address(0)) {
             require(liquidityAdapter == adapter, LiquidityAdapterMismatch());
@@ -160,7 +167,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
             withdrawableAssets += UtilsLib.min(liquidityAdapterAssets, totalSupplyAssets - totalBorrowAssets);
         }
         uint256 assetsToWithdraw = UtilsLib.min(forceWithdrawAssets, withdrawableAssets);
-        IVaultV2(vault).withdraw(assetsToWithdraw, msg.sender, msg.sender);
+        IVaultV2(vault).withdraw(assetsToWithdraw, address(this), msg.sender);
 
         // pre-fetching the market list because the deallocate could drop a market from the list.
         uint256 marketIdsLength = IMorphoMarketV1AdapterV2(adapter).marketIdsLength();
@@ -185,6 +192,11 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
 
             IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), assets, msg.sender);
         }
-        IVaultV2(vault).withdraw(assetsToDeallocate, msg.sender, msg.sender);
+        IVaultV2(vault).withdraw(assetsToDeallocate, address(this), msg.sender);
+
+        uint256 withdrawn = assetsToWithdraw + assetsToDeallocate;
+        uint256 referralFeeAssets = withdrawn * referralFeePct / WAD;
+        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
+        SafeTransferLib.safeTransfer(asset, msg.sender, withdrawn - referralFeeAssets);
     }
 }
