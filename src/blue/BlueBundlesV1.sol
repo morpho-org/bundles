@@ -33,15 +33,15 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// EXTERNAL ///
 
     /// @dev The msg.sender must have authorized this contract on Blue.
-    /// @dev Pulls collateralAmount of marketParams.collateralToken from msg.sender (optionally via ERC-2612 or Permit2), supplies it as collateral on Blue for msg.sender, then borrows assets of the loan token on behalf of msg.sender, routed via this contract.
-    /// @dev Total loan assets routed: assets - referralFeeAssets to msg.sender, referralFeeAssets to referralFeeRecipient.
-    /// @dev Fee = assets * referralFeePct / WAD; net = assets - fee.
+    /// @dev Pulls collateralAssets of marketParams.collateralToken from msg.sender (optionally via ERC-2612 or Permit2), supplies it as collateral on Blue for msg.sender, then borrows assets of the loan token on behalf of msg.sender, routed via this contract.
+    /// @dev Total loan assets routed: borrowAssets - referralFeeAssets to msg.sender, referralFeeAssets to referralFeeRecipient.
+    /// @dev Fee = borrowAssets * referralFeePct / WAD; net = borrowAssets - fee.
     /// @dev maxLtv caps msg.sender's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
-        uint256 collateralAmount,
-        uint256 assets,
+        uint256 collateralAssets,
+        uint256 borrowAssets,
         uint256 minSharePriceE27,
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
@@ -52,35 +52,35 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
-        TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAmount, collateralPermit);
+        TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
 
-        IMorpho(BLUE).supplyCollateral(marketParams, collateralAmount, msg.sender, "");
-        (, uint256 shares) = IMorpho(BLUE).borrow(marketParams, assets, 0, msg.sender, address(this));
-        require(assets.mulDivDown(1e27, shares) >= minSharePriceE27, SlippageExceeded());
+        IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
+        (, uint256 borrowShares) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, msg.sender, address(this));
+        require(borrowAssets.mulDivDown(1e27, borrowShares) >= minSharePriceE27, SlippageExceeded());
 
         requireMaxLtv(marketParams, msg.sender, maxLtv);
 
-        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
+        uint256 referralFeeAssets = borrowAssets.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
             IERC20(marketParams.loanToken).safeTransfer(referralFeeRecipient, referralFeeAssets);
         }
-        IERC20(marketParams.loanToken).safeTransfer(msg.sender, assets - referralFeeAssets);
+        IERC20(marketParams.loanToken).safeTransfer(msg.sender, borrowAssets - referralFeeAssets);
     }
 
     /// @dev The msg.sender must have authorized this contract on Blue if some collateral is withdrawn.
-    /// @dev Pulls maxRepayAssets from msg.sender, and reimburse the unused remainder at the end of the call, and withdraws collateral if withdrawCollateralAssets > 0.
-    /// @dev Exactly one of assets and shares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as shares.
+    /// @dev Pulls maxRepayAssets from msg.sender, and reimburse the unused remainder at the end of the call, and withdraws collateral if collateralAssets > 0.
+    /// @dev Exactly one of repayAssets and repayShares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as repayShares.
     /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
     /// @dev maxLtv caps msg.sender's resulting LTV after a withdrawal; skipped on a pure repay.
     /// @dev maxSharePriceE27 upper-bounds the realized repay share price (repaid assets per share, scaled by 1e27).
     function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
-        uint256 assets,
-        uint256 shares,
+        uint256 repayAssets,
+        uint256 repayShares,
         uint256 maxRepayAssets,
         uint256 maxSharePriceE27,
-        uint256 withdrawCollateralAssets,
+        uint256 collateralAssets,
         uint256 maxLtv,
         TokenPermit memory loanTokenPermit,
         uint256 referralFeePct,
@@ -93,19 +93,19 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         TokenLib.pullToken(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
-        (assets, shares) = IMorpho(BLUE).repay(marketParams, assets, shares, msg.sender, "");
-        require(assets.mulDivUp(1e27, shares) <= maxSharePriceE27, SlippageExceeded());
+        (repayAssets, repayShares) = IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, msg.sender, "");
+        require(repayAssets.mulDivUp(1e27, repayShares) <= maxSharePriceE27, SlippageExceeded());
 
-        if (withdrawCollateralAssets > 0) {
-            IMorpho(BLUE).withdrawCollateral(marketParams, withdrawCollateralAssets, msg.sender, msg.sender);
+        if (collateralAssets > 0) {
+            IMorpho(BLUE).withdrawCollateral(marketParams, collateralAssets, msg.sender, msg.sender);
             requireMaxLtv(marketParams, msg.sender, maxLtv);
         }
 
-        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD - referralFeePct);
+        uint256 referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
         if (referralFeeAssets > 0) {
             IERC20(marketParams.loanToken).safeTransfer(referralFeeRecipient, referralFeeAssets);
         }
-        IERC20(marketParams.loanToken).safeTransfer(msg.sender, maxRepayAssets - assets - referralFeeAssets);
+        IERC20(marketParams.loanToken).safeTransfer(msg.sender, maxRepayAssets - repayAssets - referralFeeAssets);
     }
 
     /// @dev Pulls assets of marketParams.loanToken from msg.sender (optionally via ERC-2612 or Permit2).

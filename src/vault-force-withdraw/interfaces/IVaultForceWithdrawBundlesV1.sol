@@ -30,7 +30,7 @@ interface IVaultForceWithdrawBundlesV1 {
     /// FUNCTIONS ///
     function vaultForceWithdrawBundlesV1IlliquidVaultV1(
         address vault,
-        MarketParams[] memory marketParams,
+        MarketParams[] memory marketParamsList,
         uint256 forceWithdrawAssets,
         SharesPermit memory sharesPermit,
         uint256 deadline
@@ -39,7 +39,7 @@ interface IVaultForceWithdrawBundlesV1 {
     function vaultForceWithdrawBundlesV1IlliquidVaultV2(
         address vault,
         address adapter,
-        MarketParams[] memory marketParams,
+        MarketParams[] memory marketParamsList,
         uint256 forceWithdrawAssets,
         SharesPermit memory sharesPermit,
         uint256 deadline
