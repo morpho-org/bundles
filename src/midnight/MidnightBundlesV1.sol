@@ -375,6 +375,8 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
     }
 
+    /// INTERNAL ///
+
     /// @dev Returns min(x, y, z).
     function min(uint256 x, uint256 y, uint256 z) internal pure returns (uint256) {
         return UtilsLib.min(UtilsLib.min(x, y), z);
