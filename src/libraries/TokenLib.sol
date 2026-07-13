@@ -17,8 +17,6 @@ struct TokenPermit {
     bytes data;
 }
 
-/// @title TokenLib
-/// @notice Generic bundler token plumbing shared across bundles: Permit2/ERC-2612 token pulls and USDT-safe max approvals. Lives outside any single bundle so the boring-but-critical token handling has one canonical copy.
 library TokenLib {
     error ApproveReturnedFalse();
 
