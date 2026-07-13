@@ -83,7 +83,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
     /// HELPERS ///
 
-    /// @dev Wraps a single market into the singleton list expected by vaultBundlesV1ForceWithdrawIlliquidVaultV1.
+    /// @dev Wraps a single market into the singleton list expected by vaultForceWithdrawBundlesV1IlliquidVaultV1.
     function _singleton(MarketParams memory marketParams_) internal pure returns (MarketParams[] memory list) {
         list = new MarketParams[](1);
         list[0] = marketParams_;
@@ -261,7 +261,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
             address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp
         );
 
@@ -283,7 +283,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
         SharesPermit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, type(uint256).max, block.timestamp);
         vm.prank(sigUser);
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
             address(vault), _singleton(marketParams), assets, sharesPermit, block.timestamp
         );
 
@@ -310,7 +310,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
         // Withdraw more than the first market holds so the remainder spills into the second.
         uint256 forceWithdrawAssets = available1 + 20e18;
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
             address(vault), list, forceWithdrawAssets, noSharesPermit, block.timestamp
         );
 
@@ -339,7 +339,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
         // More than the first market holds ⇒ in-kind redeemed across both.
         uint256 forceWithdrawAssets = available1 + 20e18;
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
             address(vault), list, forceWithdrawAssets, noSharesPermit, block.timestamp
         );
 
@@ -401,7 +401,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         list[0] = marketParams;
         list[1] = otherMarket;
 
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
             address(vault), list, assets, noSharesPermit, block.timestamp
         );
 
@@ -416,7 +416,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         _setUpIlliquid(assets);
 
         vm.expectRevert(IVaultForceWithdrawBundlesV1.DeadlinePassed.selector);
-        vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
             address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp - 1
         );
     }

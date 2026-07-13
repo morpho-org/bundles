@@ -43,7 +43,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev Requires the sender to have enough shares to withdraw assets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    function vaultBundlesV1ForceWithdrawIlliquidVaultV1(
+    function vaultForceWithdrawBundlesV1IlliquidVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
         uint256 forceWithdrawAssets,
@@ -94,7 +94,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    function vaultBundlesV1ForceWithdrawIlliquidVaultV2(
+    function vaultForceWithdrawBundlesV1IlliquidVaultV2(
         address vault,
         address adapter,
         MarketParams[] memory marketParams,
@@ -147,7 +147,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and reverts.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
-    function vaultBundlesV1ForceWithdrawLiquidVaultV2(
+    function vaultForceWithdrawBundlesV1LiquidVaultV2(
         address vault,
         address adapter,
         uint256 forceWithdrawAssets,
