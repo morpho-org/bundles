@@ -40,6 +40,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev Pulls collateralAssets of marketParams.collateralToken from msg.sender (optionally via ERC-2612 or Permit2), supplies it as collateral on Blue for msg.sender, then borrows assets of the loan token on behalf of msg.sender, routed via this contract.
+    /// @dev The collateral pull and supply are skipped if collateralAssets is 0.
     /// @dev Total loan assets routed: borrowAssets - referralFeeAssets to msg.sender, referralFeeAssets to referralFeeRecipient.
     /// @dev Fee = borrowAssets * referralFeePct / WAD; net = borrowAssets - fee.
     /// @dev maxLtv caps msg.sender's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
@@ -60,10 +61,12 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
-        TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
+        if (collateralAssets > 0) {
+            TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
+            TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
+            IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
+        }
 
-        IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
         (, uint256 borrowShares) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, msg.sender, address(this));
         require(borrowAssets.mulDivDown(1e27, borrowShares) >= minSharePriceE27, SlippageExceeded());
 
