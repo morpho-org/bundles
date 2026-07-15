@@ -86,6 +86,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
 
     /// @dev Migrates msg.sender's position in sourceVault to a position in destVault, by withdrawing them from sourceVault (routed via this contract) then depositing them into destVault.
     /// @dev sourceVault and destVault can each be a Vault V1 or a Vault V2. Migrating from a Vault V2 to a Vault V1 is not prevented, even though it is not expected to be useful.
+    /// @dev sourceVault and destVault must have the same asset.
     /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract, beforehand or via sharesPermit.
     /// @dev Exactly one of assetsWithdrawn and sharesRedeemed should be non-zero: sourceVault is withdrawn by assets, or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is deposited into destVault.
