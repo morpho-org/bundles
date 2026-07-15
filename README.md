@@ -3,7 +3,7 @@
 Opinionated bundle contracts wrapping Morpho protocols.
 Each bundle exposes a small set of high-level entry points that chain several protocol calls into a single transaction.
 
-## Midnight bundles
+### Midnight bundles
 
 [MidnightBundlesV1](src/midnight/MidnightBundlesV1.sol) contains:
 
@@ -13,7 +13,7 @@ Each bundle exposes a small set of high-level entry points that chain several pr
 - `midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget` — supply collateral, then sell a target loan-asset amount across offers.
 - `midnightBundlesV1RepayAndWithdrawCollateral` — repay debt and withdraw collateral.
 
-## Blue bundles
+### Blue bundles
 
 [BlueBundlesV1](src/blue/BlueBundlesV1.sol) contains:
 
@@ -23,17 +23,26 @@ Each bundle exposes a small set of high-level entry points that chain several pr
 - `blueBundlesV1Withdraw` — withdraw supplied loan assets (optionally by shares).
 - `blueBundlesV1MigrateBorrowPosition` — move a full borrow position (collateral and debt) from one market to another.
 
-## Vault bundles
+### Vault bundles
 
 [VaultBundlesV1](src/vault/VaultBundlesV1.sol) contains:
 
 - `vaultBundlesV1Deposit` — deposit assets into a vault.
 - `vaultBundlesV1Withdraw` — withdraw assets from a vault.
 - `vaultBundlesV1Migrate` — migrate assets from one vault to another.
-## Vault force withdraw bundles
+
+### Vault force withdraw bundles
 
 [VaultForceWithdrawBundlesV1](src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol) contains:
 
-- `vaultBundlesV1ForceWithdrawIlliquidVaultV1` — force withdraw from an illiquid Morpho Vault V1.
-- `vaultBundlesV1ForceWithdrawIlliquidVaultV2` — force withdraw from an illiquid Morpho Vault V2.
-- `vaultBundlesV1ForceWithdrawLiquidVaultV2` — force withdraw from a liquid Morpho Vault V2.
+- `vaultForceWithdrawBundlesV1IlliquidVaultV1` — force withdraw from an illiquid Morpho Vault V1.
+- `vaultForceWithdrawBundlesV1IlliquidVaultV2` — force withdraw from an illiquid Morpho Vault V2.
+- `vaultForceWithdrawBundlesV1LiquidVaultV2` — force withdraw from a liquid Morpho Vault V2.
+
+## Audits
+
+Audits can be found in the [audits](./audits/) folder.
+
+## License
+
+Files in this repository are publicly available under license `GPL-2.0-or-later`, see [`LICENSE`](./LICENSE).
