@@ -35,9 +35,9 @@ Each bundle exposes a small set of high-level entry points that chain several pr
 
 [VaultForceWithdrawBundlesV1](src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol) contains:
 
-- `vaultBundlesV1ForceWithdrawIlliquidVaultV1` — force withdraw from an illiquid Morpho Vault V1.
-- `vaultBundlesV1ForceWithdrawIlliquidVaultV2` — force withdraw from an illiquid Morpho Vault V2.
-- `vaultBundlesV1ForceWithdrawLiquidVaultV2` — force withdraw from a liquid Morpho Vault V2.
+- `vaultForceWithdrawBundlesV1IlliquidVaultV1` — force withdraw from an illiquid Morpho Vault V1.
+- `vaultForceWithdrawBundlesV1IlliquidVaultV2` — force withdraw from an illiquid Morpho Vault V2.
+- `vaultForceWithdrawBundlesV1LiquidVaultV2` — force withdraw from a liquid Morpho Vault V2.
 
 ## Audits
 
