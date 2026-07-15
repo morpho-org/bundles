@@ -78,8 +78,8 @@ interface IBlueBundlesV1 {
     function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
-        uint256 maxSharePriceE27,
-        uint256 minSharePriceE27,
+        uint256 sourceMaxSharePriceE27,
+        uint256 destMinSharePriceE27,
         uint256 maxLtv,
         SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,

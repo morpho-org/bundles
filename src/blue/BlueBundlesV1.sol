@@ -187,13 +187,13 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev The referral fee is borrowed on the destination on top of the repaid assets, adding to the debt.
     /// @dev Fee = repaidAssets * referralFeePct / (WAD - referralFeePct); total borrowed = repaidAssets + fee.
     /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Use destination LLTV to disable.
-    /// @dev maxSharePriceE27 upper-bounds the realized source repay share price; minSharePriceE27 lower-bounds the realized destination borrow share price (both assets per share, scaled by 1e27).
+    /// @dev sourceMaxSharePriceE27 upper-bounds the realized source repay share price; destMinSharePriceE27 lower-bounds the realized destination borrow share price (both assets per share, scaled by 1e27).
     /// @dev Migrating a position without debt reverts on Blue.
     function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
-        uint256 maxSharePriceE27,
-        uint256 minSharePriceE27,
+        uint256 sourceMaxSharePriceE27,
+        uint256 destMinSharePriceE27,
         uint256 maxLtv,
         SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,
@@ -219,10 +219,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             msg.sender,
             referralFeePct,
             referralFeeRecipient,
-            minSharePriceE27
+            destMinSharePriceE27
         );
         (uint256 assets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, msg.sender, data);
-        require(assets.mulDivUp(1e27, position.borrowShares) <= maxSharePriceE27, SlippageExceeded());
+        require(assets.mulDivUp(1e27, position.borrowShares) <= sourceMaxSharePriceE27, SlippageExceeded());
 
         requireMaxLtv(destMarketParams, msg.sender, maxLtv);
     }
@@ -236,7 +236,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             address sender,
             uint256 referralFeePct,
             address referralFeeRecipient,
-            uint256 minSharePriceE27
+            uint256 destMinSharePriceE27
         ) = abi.decode(data, (MarketParams, MarketParams, uint256, address, uint256, address, uint256));
 
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD - referralFeePct);
@@ -247,7 +247,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         TokenLib.forceApproveMax(destMarketParams.collateralToken, BLUE);
         IMorpho(BLUE).supplyCollateral(destMarketParams, collateral, sender, "");
         (, uint256 borrowedShares) = IMorpho(BLUE).borrow(destMarketParams, borrowAssets, 0, sender, address(this));
-        require(borrowAssets.mulDivDown(1e27, borrowedShares) >= minSharePriceE27, SlippageExceeded());
+        require(borrowAssets.mulDivDown(1e27, borrowedShares) >= destMinSharePriceE27, SlippageExceeded());
 
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(destMarketParams.loanToken, referralFeeRecipient, referralFeeAssets);
