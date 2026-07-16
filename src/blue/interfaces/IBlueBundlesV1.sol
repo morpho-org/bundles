@@ -45,7 +45,7 @@ interface IBlueBundlesV1 {
         uint256 repayShares,
         uint256 maxRepayAssets,
         uint256 maxSharePriceE27,
-        uint256 withdrawCollateralAssets,
+        uint256 collateralAssets,
         uint256 maxLtv,
         TokenPermit memory loanTokenPermit,
         SignedAuthorization memory signedAuthorization,

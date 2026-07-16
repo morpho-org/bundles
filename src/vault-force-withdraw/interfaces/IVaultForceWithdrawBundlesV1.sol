@@ -5,6 +5,7 @@ pragma solidity >=0.8.0;
 import {MarketParams} from "../../../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
 
 /// @dev An empty permit (v, r and s all zero) means no permit is submitted.
+/// @dev A permit with an already consumed nonce is not submitted either.
 struct SharesPermit {
     uint256 value;
     uint256 nonce;
