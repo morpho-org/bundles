@@ -563,7 +563,7 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    /// LIQUID WITHDRAWAL ///
+    /// FORCE WITHDRAWAL ///
 
     function testForceWithdrawAdapterNotPartOfVault() public {
         uint256 assets = 100e18;
