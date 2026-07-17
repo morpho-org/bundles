@@ -5,6 +5,7 @@ pragma solidity >=0.8.0;
 import {TokenPermit} from "../../libraries/TokenLib.sol";
 
 /// @dev An empty permit (v, r and s all zero) means no permit is submitted.
+/// @dev A permit with an already consumed nonce is not submitted either.
 struct SharesPermit {
     uint256 value;
     uint256 nonce;
@@ -49,8 +50,8 @@ interface IVaultBundlesV1 {
         address destVault,
         uint256 assetsWithdrawn,
         uint256 sharesRedeemed,
-        uint256 minSharePriceE27,
-        uint256 maxSharePriceE27,
+        uint256 sourceMinSharePriceE27,
+        uint256 destMaxSharePriceE27,
         SharesPermit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,

@@ -504,6 +504,30 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
+    /// @dev collateralAssets = 0 skips the collateral leg: borrows against previously supplied collateral.
+    function testPureBorrow(uint256 borrowAssets, uint256 referralFeePct) public {
+        borrowAssets = bound(borrowAssets, 1, 1e30);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+        uint256 collateral = _collateralFor(borrowAssets);
+        deal(address(collateralToken), user, collateral);
+
+        uint256 expectedFee = borrowAssets * referralFeePct / WAD;
+
+        vm.startPrank(user);
+        collateralToken.approve(address(morpho), collateral);
+        morpho.supplyCollateral(marketParams, collateral, user, "");
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams, 0, borrowAssets, 0, WAD, _noPermit(), _noAuthSig(), referralFeePct, referrer, block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.collateral(id, user), collateral, "collateral");
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
+        assertEq(loanToken.balanceOf(user), borrowAssets - expectedFee, "user net");
+        assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
     /// @dev maxLtv caps the resulting LTV (1:1 price): at the exact-fit ltv the borrow lands on the cap, one wei
     /// less reverts. fitLtv is below the LLTV, so the bundler cap binds before Blue's health check.
     function testSupplyCollateralAndBorrowLtvExceeded() public {

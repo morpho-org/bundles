@@ -13,7 +13,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Designed and audited for Morpho Vault V1 (MetaMorpho) and Morpho Vault V2 (Vault v2 with Morpho registry).
 /// @dev Inherits the token safety requirements of the vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev Gated vaults (Vault V2) require this contract to be permitted by the relevant gates.
+/// @dev Gated vaults (Vault V2) require this contract to be permitted by sendAssetsGate to deposit and by receiveAssetsGate to withdraw.
 /// @dev This contract can approve tokens to arbitrary addresses. This is safe because a token amount pulled is always fully spent in the same transaction, and because the only tokens pulled to this contract are owned by msg.sender.
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
@@ -91,14 +91,14 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is deposited into destVault.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; deposited = withdrawnAssets - fee.
     /// @dev To deposit an amount D in destVault, pass assetsWithdrawn = floor(D * WAD / (WAD - referralFeePct)).
-    /// @dev minSharePriceE27 lower-bounds the realized sourceVault withdraw share price; maxSharePriceE27 upper-bounds the realized destVault deposit share price (both assets per share, scaled by 1e27).
+    /// @dev sourceMinSharePriceE27 lower-bounds the realized sourceVault withdraw share price; destMaxSharePriceE27 upper-bounds the realized destVault deposit share price (both assets per share, scaled by 1e27).
     function vaultBundlesV1Migrate(
         address sourceVault,
         address destVault,
         uint256 assetsWithdrawn,
         uint256 sharesRedeemed,
-        uint256 minSharePriceE27,
-        uint256 maxSharePriceE27,
+        uint256 sourceMinSharePriceE27,
+        uint256 destMaxSharePriceE27,
         SharesPermit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -118,14 +118,14 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         } else {
             assetsWithdrawn = IERC4626(sourceVault).redeem(sharesRedeemed, address(this), msg.sender);
         }
-        require(assetsWithdrawn.mulDivDown(1e27, sharesRedeemed) >= minSharePriceE27, SlippageExceeded());
+        require(assetsWithdrawn.mulDivDown(1e27, sharesRedeemed) >= sourceMinSharePriceE27, SlippageExceeded());
 
         uint256 referralFeeAssets = assetsWithdrawn.mulDivDown(referralFeePct, WAD);
         uint256 toDeposit = assetsWithdrawn - referralFeeAssets;
 
         TokenLib.forceApproveMax(asset, destVault);
         uint256 sharesMinted = IERC4626(destVault).deposit(toDeposit, msg.sender);
-        require(toDeposit.mulDivUp(1e27, sharesMinted) <= maxSharePriceE27, SlippageExceeded());
+        require(toDeposit.mulDivUp(1e27, sharesMinted) <= destMaxSharePriceE27, SlippageExceeded());
 
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
     }
@@ -133,7 +133,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     /// INTERNAL ///
 
     /// @dev The parameters signed by the user should be the same as the inputs of this function.
-    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful shares are already permitted.
+    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful when shares are already permitted.
     /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that case.
     /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until sharesPermit.deadline, as revoking on the vault does not consume the nonce.
     function permitShares(address vault, SharesPermit memory sharesPermit) internal {
