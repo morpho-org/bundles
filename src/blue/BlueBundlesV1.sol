@@ -61,9 +61,11 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
         setAuthorizationWithSig(signedAuthorization);
         TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
-        TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
+        if (collateralAssets > 0) {
+            TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
+            IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
+        }
 
-        IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
         (, uint256 borrowShares) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, msg.sender, address(this));
         require(borrowAssets.mulDivDown(1e27, borrowShares) >= minSharePriceE27, SlippageExceeded());
 
