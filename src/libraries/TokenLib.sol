@@ -35,7 +35,7 @@ library TokenLib {
     }
 
     /// @dev Skips the approval entirely to save gas when the current allowance is already at least 2^95 - 1 (some tokens like COMP and UNI on Ethereum have a max allowance of type(uint96).max).
-    /// @dev Resets to 0 before re-approving to support USDT like tokens.
+    /// @dev Resets to 0 before re-approving to support USDT-like tokens.
     function forceApproveMax(address token, address spender) internal {
         if (IERC20Permit(token).allowance(address(this), spender) >= type(uint96).max / 2) return;
         safeApprove(token, spender, 0);

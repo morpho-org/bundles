@@ -42,8 +42,8 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// FORCE WITHDRAW ILLIQUID VAULT V1 ///
 
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
-    /// @dev Requires Morpho Blue to have more than the assets in liquidity.
-    /// @dev Requires the sender to have enough shares to withdraw assets.
+    /// @dev Requires Morpho Blue to have at least forceWithdrawAssets in loan token balance.
+    /// @dev Requires the sender to have enough shares to withdraw forceWithdrawAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
     function vaultForceWithdrawBundlesV1IlliquidVaultV1(
@@ -57,6 +57,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
 
         permitShares(vault, sharesPermit);
+
         address loanToken = marketParamsList[0].loanToken;
         TokenLib.forceApproveMax(loanToken, BLUE);
 
@@ -91,7 +92,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev Assumes that adapter is a Morpho Blue adapter.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
     /// @dev The assetsToDeallocate amount is floor(forceWithdrawAssets * WAD / (WAD + penalty)).
-    /// @dev Requires Morpho Blue to have more than assetsToDeallocate in loan token balance.
+    /// @dev Requires Morpho Blue to have at least assetsToDeallocate in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw ceil(assets * penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
@@ -109,6 +110,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
 
         permitShares(vault, sharesPermit);
+
         TokenLib.forceApproveMax(marketParamsList[0].loanToken, BLUE);
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
@@ -215,7 +217,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// INTERNAL ///
 
     /// @dev The parameters signed by the user should be the same as the inputs of this function.
-    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful shares are already permitted.
+    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful when shares are already permitted.
     /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that case.
     /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until sharesPermit.deadline, as revoking on the vault does not consume the nonce.
     function permitShares(address vault, SharesPermit memory sharesPermit) internal {

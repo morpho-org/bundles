@@ -19,7 +19,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev For each offer, the buy/sell functions will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer") units.
 /// @dev Only touched offers are checked to point to the same market. The collateral is supplied/withdrawn from the market of the first offer.
-/// @dev Buy/sell functions skip the offer if the take reverted. This allows to not fully revert if more liquidity was available in other offers passed as argument.
+/// @dev Buy/sell functions skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
 /// @dev This bundler and the msg.sender (if different from the taker/onBehalf) should be authorized by taker/onBehalf on Midnight.
 /// @dev msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell and withdraw collateral).
 /// @dev The bundler contract must have an allowance to pull enough tokens from msg.sender.
