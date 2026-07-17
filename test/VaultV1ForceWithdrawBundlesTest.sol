@@ -410,6 +410,32 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         assertApproxEqAbs(morpho.expectedSupplyAssets(otherMarket, address(this)), assets, 2, "in-kind position");
     }
 
+    /// @dev The first list entry can be a market over a different loan token (necessarily disabled in the vault,
+    /// since enabled markets share the vault asset): the flash loan token is derived from the vault, so the foreign
+    /// entry is skipped like any disabled market. Deriving the token from marketParamsList[0] would flash loan the
+    /// wrong token.
+    function testForceWithdrawForeignFirstMarket(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        _setUpIlliquid(assets);
+
+        ERC20Mock foreignToken = new ERC20Mock(18);
+        MarketParams memory foreignMarket =
+            MarketParams(address(foreignToken), address(collateralToken), address(oracle), address(0), LLTV_1);
+        morpho.createMarket(foreignMarket);
+
+        MarketParams[] memory list = new MarketParams[](2);
+        list[0] = foreignMarket;
+        list[1] = marketParams;
+
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+            address(vault), list, assets, noSharesPermit, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertApproxEqAbs(morpho.expectedSupplyAssets(marketParams, address(this)), assets, 1, "supply position");
+        assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
+    }
+
     /// @dev Reverts once `deadline` is in the past (checkDeadline runs before the body).
     function testForceWithdrawIlliquidDeadlinePassed() public {
         uint256 assets = 100e18;
