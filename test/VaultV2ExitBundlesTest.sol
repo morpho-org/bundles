@@ -43,7 +43,7 @@ contract VaultV2ExitBundlesTest is Test {
     uint256 internal constant LLTV_2 = 0.9e18;
     uint256 internal constant PENALTY = 0.01e18;
 
-    uint256 internal constant MIN_ASSETS = 2; // assets == 1 ⇒ deallocatedAssets == 0 (see testForceWithdrawIlliquidTooSmallNoOp).
+    uint256 internal constant MIN_ASSETS = 2; // assets == 1 ⇒ deallocatedAssets == 0 (see testInKindRedemptionTooSmallNoOp).
     uint256 internal constant MAX_ASSETS = 1e24;
 
     IMorpho internal morpho;
@@ -324,7 +324,7 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// AUTHORIZATION & VALIDATION ///
 
-    function testForceWithdrawAdapterNotPartOfVault() public {
+    function testInKindRedemptionAdapterNotPartOfVault() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
@@ -336,7 +336,7 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// @dev A market not allocated through the adapter (supplyShares == 0) is skipped; with no further market in the
     /// list to cover the requested assets, the loop runs past the list and reverts.
-    function testForceWithdrawMarketWithoutAdapterShares() public {
+    function testInKindRedemptionMarketWithoutAdapterShares() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
@@ -349,7 +349,7 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// @dev The single market is allocated through the adapter but holds less than the requested amount; with no
     /// further market in the list to cover the remainder, the loop runs past the list and reverts.
-    function testForceWithdrawNotEnoughAvailable() public {
+    function testInKindRedemptionNotEnoughAvailable() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
@@ -369,7 +369,7 @@ contract VaultV2ExitBundlesTest is Test {
     }
 
     /// @dev assets so small that deallocatedAssets rounds to 0 ⇒ the deallocation loop never runs (no-op).
-    function testForceWithdrawIlliquidTooSmallNoOp() public {
+    function testInKindRedemptionTooSmallNoOp() public {
         uint256 assets = 1;
         _setUpIlliquid(assets);
         assertEq(optimalDeallocateAssets(assets), 0, "precondition");
@@ -397,7 +397,7 @@ contract VaultV2ExitBundlesTest is Test {
         vault.withdraw(assets, address(this), address(this));
     }
 
-    function testForceWithdrawIlliquid(uint256 assets) public {
+    function testInKindRedemption(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
@@ -415,8 +415,8 @@ contract VaultV2ExitBundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
 
-    /// @dev A sender that never approved the bundler can force withdraw in a single transaction via sharesPermit.
-    function testForceWithdrawIlliquidWithSharesPermit(uint256 assets) public {
+    /// @dev A sender that never approved the bundler can exit in a single transaction via sharesPermit.
+    function testInKindRedemptionWithSharesPermit(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
         _setUpIlliquid(assets, sigUser, false);
@@ -435,7 +435,7 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// @dev When the first market does not hold enough, the loop drains it and pulls the remainder from the next
     /// market in the list, leaving the sender an in-kind position in both.
-    function testForceWithdrawIlliquidMultipleMarkets() public {
+    function testInKindRedemptionMultipleMarkets() public {
         uint256 assets1 = 60e18;
         uint256 assets2 = 60e18;
         _setUpIlliquidTwoMarkets(assets1, assets2);
@@ -449,12 +449,12 @@ contract VaultV2ExitBundlesTest is Test {
         uint256 available1 = morpho.expectedSupplyAssets(marketParams, address(adapter));
 
         // Deallocate more than the first market holds, so the remainder must come from the second.
-        uint256 forceWithdrawAssets = 90e18;
-        uint256 deallocate = optimalDeallocateAssets(forceWithdrawAssets);
+        uint256 exitAssets = 90e18;
+        uint256 deallocate = optimalDeallocateAssets(exitAssets);
         assertGt(deallocate, available1, "precondition: one market is not enough");
 
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(adapter), list, forceWithdrawAssets, noSharesPermit, block.timestamp
+            address(vault), address(adapter), list, exitAssets, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -471,7 +471,7 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    function testForceWithdrawSkipsEmptyAdapterMarket() public {
+    function testInKindRedemptionSkipsEmptyAdapterMarket() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
         assertEq(adapter.supplyShares(Id.unwrap(otherMarket.id())), 0, "otherMarket empty in adapter");
@@ -495,7 +495,7 @@ contract VaultV2ExitBundlesTest is Test {
     /// the Blue approval token is derived from the vault, so the foreign entry is skipped like any empty adapter
     /// market. Deriving the token from marketParamsList[0] would approve the wrong token and revert when Blue pulls
     /// the supplied assets.
-    function testForceWithdrawForeignFirstMarket(uint256 assets) public {
+    function testInKindRedemptionForeignFirstMarket(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
@@ -521,7 +521,7 @@ contract VaultV2ExitBundlesTest is Test {
     }
 
     /// @dev Reverts once `deadline` is in the past (checkDeadline runs before the body).
-    function testForceWithdrawIlliquidDeadlinePassed() public {
+    function testInKindRedemptionDeadlinePassed() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
@@ -543,7 +543,7 @@ contract VaultV2ExitBundlesTest is Test {
     /// @dev Passing assets = previewRedeem(balanceOf(sender) - 2) never reverts and
     /// sweeps all but a few assets' worth of the position (on top of the 2 shares). The
     /// 2 shares margin keeps the two ceil-rounded withdrawals from over-burning.
-    function testForceWithdrawSafeExit(uint256 assets, uint256 priceWad) public {
+    function testInKindRedemptionSafeExit(uint256 assets, uint256 priceWad) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         priceWad = bound(priceWad, WAD / 10, 10 * WAD);
         _setUpIlliquid(assets);
@@ -565,7 +565,7 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// LIQUID WITHDRAWAL ///
 
-    function testForceWithdrawLiquidAdapterNotPartOfVault() public {
+    function testForceWithdrawAdapterNotPartOfVault() public {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
 
@@ -576,7 +576,7 @@ contract VaultV2ExitBundlesTest is Test {
     }
 
     /// @dev The adapter's markets hold less than the requested amount; the loop runs past the market list and reverts.
-    function testForceWithdrawLiquidNotEnoughAvailable() public {
+    function testForceWithdrawNotEnoughAvailable() public {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
 
@@ -586,7 +586,7 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    function testForceWithdrawLiquid(uint256 assets) public {
+    function testForceWithdraw(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpLiquid(assets);
 
@@ -603,7 +603,7 @@ contract VaultV2ExitBundlesTest is Test {
     }
 
     /// @dev The fee is deducted from the withdrawn assets; the remainder is sent to the user.
-    function testForceWithdrawLiquidWithReferralFee(uint256 assets, uint256 referralFeePct) public {
+    function testForceWithdrawWithReferralFee(uint256 assets, uint256 referralFeePct) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         referralFeePct = bound(referralFeePct, 0, WAD - 1);
         _setUpLiquid(assets);
@@ -627,7 +627,7 @@ contract VaultV2ExitBundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
 
-    function testForceWithdrawLiquidPctExceeded() public {
+    function testForceWithdrawPctExceeded() public {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
 
@@ -640,7 +640,7 @@ contract VaultV2ExitBundlesTest is Test {
     /// @dev Passing assets = previewRedeem(balanceOf(sender) - 8) sweeps the three markets and leaves the sender with
     /// almost nothing in the vault. The 8 shares margin keeps the ceil-rounded withdrawals (one per penalty plus the
     /// final one) from over-burning.
-    function testForceWithdrawLiquidThreeMarkets() public {
+    function testForceWithdrawThreeMarkets() public {
         _setUpLiquidThreeMarkets(50e18, 30e18, 20e18);
 
         uint256 sharesBefore = vault.balanceOf(address(this));
@@ -664,7 +664,7 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// @dev The first market's liquidity is partially borrowed out, so only its available liquidity is taken from it
     /// and the rest comes from the second market.
-    function testForceWithdrawLiquidMarketLiquidityLimited() public {
+    function testForceWithdrawMarketLiquidityLimited() public {
         _setUpLiquidTwoMarkets(100e18, 100e18);
 
         // Borrow 40 out of the first market ⇒ only 60 of the adapter's 100 position is withdrawable there.
@@ -675,11 +675,11 @@ contract VaultV2ExitBundlesTest is Test {
         morpho.borrow(marketParams, 40e18, 0, borrower, borrower);
         vm.stopPrank();
 
-        uint256 forceWithdrawAssets = 101e18;
-        assertEq(optimalDeallocateAssets(forceWithdrawAssets), 100e18, "precondition");
+        uint256 exitAssets = 101e18;
+        assertEq(optimalDeallocateAssets(exitAssets), 100e18, "precondition");
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), forceWithdrawAssets, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), exitAssets, noSharesPermit, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(this)), 100e18, "user loan token balance");
@@ -689,7 +689,7 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// @dev The liquidity available through the liquidity adapter is withdrawn first, without penalty; only the
     /// remainder is force deallocated.
-    function testForceWithdrawLiquidLiquidityAdapterFirst() public {
+    function testForceWithdrawLiquidityAdapterFirst() public {
         _setUpLiquidTwoMarkets(60e18, 40e18);
 
         vm.prank(allocator);
@@ -711,7 +711,7 @@ contract VaultV2ExitBundlesTest is Test {
     }
 
     /// @dev A request fully covered by the liquidity adapter pays no penalty and never force deallocates.
-    function testForceWithdrawLiquidOnlyLiquidityAdapter() public {
+    function testForceWithdrawOnlyLiquidityAdapter() public {
         _setUpLiquidTwoMarkets(60e18, 40e18);
 
         vm.prank(allocator);
@@ -727,7 +727,7 @@ contract VaultV2ExitBundlesTest is Test {
     }
 
     /// @dev The vault's idle assets are withdrawn first, without penalty; only the remainder is force deallocated.
-    function testForceWithdrawLiquidIdleAssetsFirst() public {
+    function testForceWithdrawIdleAssetsFirst() public {
         deal(address(loanToken), address(this), 100e18);
         loanToken.approve(address(vault), type(uint256).max);
         vault.deposit(100e18, address(this));
@@ -748,7 +748,7 @@ contract VaultV2ExitBundlesTest is Test {
     }
 
     /// @dev Reverts once `deadline` is in the past (checkDeadline runs before the body).
-    function testForceWithdrawLiquidDeadlinePassed() public {
+    function testForceWithdrawDeadlinePassed() public {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
 

@@ -31,7 +31,7 @@ interface IVaultExitBundlesV1 {
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
-        uint256 forceWithdrawAssets,
+        uint256 exitAssets,
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external;
@@ -40,7 +40,7 @@ interface IVaultExitBundlesV1 {
         address vault,
         address adapter,
         MarketParams[] memory marketParamsList,
-        uint256 forceWithdrawAssets,
+        uint256 exitAssets,
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external;
@@ -48,7 +48,7 @@ interface IVaultExitBundlesV1 {
     function vaultExitBundlesV1ForceWithdrawVaultV2(
         address vault,
         address adapter,
-        uint256 forceWithdrawAssets,
+        uint256 exitAssets,
         SharesPermit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
