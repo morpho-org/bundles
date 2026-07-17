@@ -57,8 +57,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
 
         permitShares(vault, sharesPermit);
-
-        address loanToken = marketParamsList[0].loanToken;
+        address loanToken = IMetaMorpho(vault).asset();
         TokenLib.forceApproveMax(loanToken, BLUE);
 
         bytes memory data = abi.encode(vault, marketParamsList, msg.sender);
@@ -110,8 +109,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
 
         permitShares(vault, sharesPermit);
-
-        TokenLib.forceApproveMax(marketParamsList[0].loanToken, BLUE);
+        TokenLib.forceApproveMax(IVaultV2(vault).asset(), BLUE);
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
         uint256 assetsToDeallocate = forceWithdrawAssets.mulDivDown(WAD, WAD + penalty);

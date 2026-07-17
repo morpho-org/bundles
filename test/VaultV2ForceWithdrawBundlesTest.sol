@@ -491,6 +491,35 @@ contract VaultV2ForceWithdrawBundlesTest is Test {
         );
     }
 
+    /// @dev The first list entry can be a market over a different loan token (the adapter holds no position in it):
+    /// the Blue approval token is derived from the vault, so the foreign entry is skipped like any empty adapter
+    /// market. Deriving the token from marketParamsList[0] would approve the wrong token and revert when Blue pulls
+    /// the supplied assets.
+    function testForceWithdrawForeignFirstMarket(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        _setUpIlliquid(assets);
+
+        ERC20Mock foreignToken = new ERC20Mock(18);
+        MarketParams memory foreignMarket =
+            MarketParams(address(foreignToken), address(collateralToken), address(oracle), address(0), LLTV_1);
+        morpho.createMarket(foreignMarket);
+        assertEq(adapter.supplyShares(Id.unwrap(foreignMarket.id())), 0, "foreignMarket empty in adapter");
+
+        MarketParams[] memory list = new MarketParams[](2);
+        list[0] = foreignMarket;
+        list[1] = marketParams;
+
+        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV2(
+            address(vault), address(adapter), list, assets, noSharesPermit, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), 0, "address(this) loan token balance");
+        assertEq(
+            morpho.expectedSupplyAssets(marketParams, address(this)), optimalDeallocateAssets(assets), "supply position"
+        );
+    }
+
     /// @dev Reverts once `deadline` is in the past (checkDeadline runs before the body).
     function testForceWithdrawIlliquidDeadlinePassed() public {
         uint256 assets = 100e18;
