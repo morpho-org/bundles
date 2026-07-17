@@ -22,7 +22,7 @@ import {MarketParamsLib} from "../../lib/metamorpho/lib/morpho-blue/src/librarie
 import {SharesMathLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/UtilsLib.sol";
 
-/// @dev Meant to be used to exit a vault that allocates assets to Morpho Blue.
+/// @dev Meant to be used to exit a vault that allocates assets to Morpho Blue. The user either gets Morpho Blue shares (in-kind redemption) or assets (force withdrawal).
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev Gated vaults (Vault V2) require this contract to be permitted by receiveAssetsGate, as it receives the withdrawn assets.
