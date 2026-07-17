@@ -31,13 +31,13 @@ Each bundle exposes a small set of high-level entry points that chain several pr
 - `vaultBundlesV1Withdraw` — withdraw assets from a vault.
 - `vaultBundlesV1Migrate` — migrate assets from one vault to another.
 
-### Vault force withdraw bundles
+### Vault exit bundles
 
-[VaultForceWithdrawBundlesV1](src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol) contains:
+[VaultExitBundlesV1](src/vault-exit/VaultExitBundlesV1.sol) contains:
 
-- `vaultForceWithdrawBundlesV1IlliquidVaultV1` — force withdraw from an illiquid Morpho Vault V1.
-- `vaultForceWithdrawBundlesV1IlliquidVaultV2` — force withdraw from an illiquid Morpho Vault V2.
-- `vaultForceWithdrawBundlesV1LiquidVaultV2` — force withdraw from a liquid Morpho Vault V2.
+- `vaultExitBundlesV1InKindRedemptionVaultV1` — in-kind redeem from an illiquid Morpho Vault V1.
+- `vaultExitBundlesV1InKindRedemptionVaultV2` — in-kind redeem from an illiquid Morpho Vault V2.
+- `vaultExitBundlesV1ForceWithdrawVaultV2` — force withdraw from a liquid Morpho Vault V2.
 
 ## Audits
 

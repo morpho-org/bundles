@@ -5,11 +5,11 @@ pragma solidity ^0.8.0;
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
-import {VaultForceWithdrawBundlesV1} from "../src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol";
+import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
 import {
-    IVaultForceWithdrawBundlesV1,
+    IVaultExitBundlesV1,
     SharesPermit
-} from "../src/vault-force-withdraw/interfaces/IVaultForceWithdrawBundlesV1.sol";
+} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
 
 import {IMetaMorpho} from "../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
 import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -26,7 +26,7 @@ interface IERC20PermitVault {
     function DOMAIN_SEPARATOR() external view returns (bytes32);
 }
 
-contract VaultV1ForceWithdrawBundlesTest is Test {
+contract VaultV1ExitBundlesTest is Test {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;
@@ -39,7 +39,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
     IMorpho internal morpho;
     IMetaMorpho internal vault;
-    VaultForceWithdrawBundlesV1 internal vaultBundles;
+    VaultExitBundlesV1 internal vaultBundles;
 
     ERC20Mock internal loanToken;
     ERC20Mock internal collateralToken;
@@ -77,13 +77,13 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         morpho.createMarket(marketParams);
         morpho.createMarket(otherMarket);
 
-        vaultBundles = new VaultForceWithdrawBundlesV1(address(morpho));
+        vaultBundles = new VaultExitBundlesV1(address(morpho));
         assertEq(vaultBundles.BLUE(), address(morpho));
     }
 
     /// HELPERS ///
 
-    /// @dev Wraps a single market into the singleton list expected by vaultForceWithdrawBundlesV1IlliquidVaultV1.
+    /// @dev Wraps a single market into the singleton list expected by vaultExitBundlesV1InKindRedemptionVaultV1.
     function _singleton(MarketParams memory marketParams_) internal pure returns (MarketParams[] memory list) {
         list = new MarketParams[](1);
         list[0] = marketParams_;
@@ -242,7 +242,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
     /// AUTHORIZATION & VALIDATION ///
 
     function testOnMorphoFlashLoanOnlyBlue() public {
-        vm.expectRevert(IVaultForceWithdrawBundlesV1.UnauthorizedCallback.selector);
+        vm.expectRevert(IVaultExitBundlesV1.UnauthorizedCallback.selector);
         vaultBundles.onMorphoFlashLoan(1, "");
     }
 
@@ -261,7 +261,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp
         );
 
@@ -283,7 +283,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
         SharesPermit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, type(uint256).max, block.timestamp);
         vm.prank(sigUser);
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), _singleton(marketParams), assets, sharesPermit, block.timestamp
         );
 
@@ -310,7 +310,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
         // Withdraw more than the first market holds so the remainder spills into the second.
         uint256 forceWithdrawAssets = available1 + 20e18;
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), list, forceWithdrawAssets, noSharesPermit, block.timestamp
         );
 
@@ -339,7 +339,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
         // More than the first market holds ⇒ in-kind redeemed across both.
         uint256 forceWithdrawAssets = available1 + 20e18;
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), list, forceWithdrawAssets, noSharesPermit, block.timestamp
         );
 
@@ -401,7 +401,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         list[0] = marketParams;
         list[1] = otherMarket;
 
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), list, assets, noSharesPermit, block.timestamp
         );
 
@@ -427,7 +427,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         list[0] = foreignMarket;
         list[1] = marketParams;
 
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), list, assets, noSharesPermit, block.timestamp
         );
 
@@ -441,8 +441,8 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
-        vm.expectRevert(IVaultForceWithdrawBundlesV1.DeadlinePassed.selector);
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vm.expectRevert(IVaultExitBundlesV1.DeadlinePassed.selector);
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp - 1
         );
     }

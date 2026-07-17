@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IVaultForceWithdrawBundlesV1, SharesPermit} from "./interfaces/IVaultForceWithdrawBundlesV1.sol";
+import {IVaultExitBundlesV1, SharesPermit} from "./interfaces/IVaultExitBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 import {IERC20Permit} from "../libraries/interfaces/IERC20Permit.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
@@ -22,13 +22,13 @@ import {MarketParamsLib} from "../../lib/metamorpho/lib/morpho-blue/src/librarie
 import {SharesMathLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/UtilsLib.sol";
 
-/// @dev Meant to be used to force withdraw assets from a vault that allocates assets to Morpho Blue.
+/// @dev Meant to be used to exit a vault that allocates assets to Morpho Blue.
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev Gated vaults (Vault V2) require this contract to be permitted by receiveAssetsGate, as it receives the withdrawn assets.
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
-contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
+contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
     using MathLib for uint256;
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
@@ -39,14 +39,14 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         BLUE = _blue;
     }
 
-    /// FORCE WITHDRAW ILLIQUID VAULT V1 ///
+    /// IN-KIND REDEMPTION VAULT V1 ///
 
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
     /// @dev Requires Morpho Blue to have at least forceWithdrawAssets in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw forceWithdrawAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    function vaultForceWithdrawBundlesV1IlliquidVaultV1(
+    function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
         uint256 forceWithdrawAssets,
@@ -86,7 +86,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         IMetaMorpho(vault).withdraw(forceWithdrawAssets, address(this), sender);
     }
 
-    /// FORCE WITHDRAW ILLIQUID VAULT V2 ///
+    /// IN-KIND REDEMPTION VAULT V2 ///
 
     /// @dev Assumes that adapter is a Morpho Blue adapter.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
@@ -96,7 +96,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    function vaultForceWithdrawBundlesV1IlliquidVaultV2(
+    function vaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
         address adapter,
         MarketParams[] memory marketParamsList,
@@ -138,7 +138,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
         IVaultV2(vault).withdraw(assets, address(this), sender);
     }
 
-    /// FORCE WITHDRAW LIQUID VAULT V2 ///
+    /// FORCE WITHDRAW VAULT V2 ///
 
     /// @dev Assumes that adapter is a Morpho Blue adapter.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
@@ -148,7 +148,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and reverts.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
-    function vaultForceWithdrawBundlesV1LiquidVaultV2(
+    function vaultExitBundlesV1ForceWithdrawVaultV2(
         address vault,
         address adapter,
         uint256 forceWithdrawAssets,
