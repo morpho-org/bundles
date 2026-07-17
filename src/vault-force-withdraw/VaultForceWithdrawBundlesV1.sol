@@ -42,7 +42,7 @@ contract VaultForceWithdrawBundlesV1 is IVaultForceWithdrawBundlesV1, IMorphoSup
     /// FORCE WITHDRAW ILLIQUID VAULT V1 ///
 
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
-    /// @dev Requires Morpho Blue to have at least forceWithdrawAssets in liquidity.
+    /// @dev Requires Morpho Blue to have at least forceWithdrawAssets in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw forceWithdrawAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
