@@ -15,7 +15,7 @@ struct SharesPermit {
     bytes32 s;
 }
 
-interface IVaultForceWithdrawBundlesV1 {
+interface IVaultExitBundlesV1 {
     /// ERRORS ///
     error AdapterNotPartOfVault();
     error DeadlinePassed();
@@ -28,27 +28,27 @@ interface IVaultForceWithdrawBundlesV1 {
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///
-    function vaultForceWithdrawBundlesV1IlliquidVaultV1(
+    function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
-        uint256 forceWithdrawAssets,
+        uint256 exitAssets,
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external;
 
-    function vaultForceWithdrawBundlesV1IlliquidVaultV2(
+    function vaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
         address adapter,
         MarketParams[] memory marketParamsList,
-        uint256 forceWithdrawAssets,
+        uint256 exitAssets,
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external;
 
-    function vaultForceWithdrawBundlesV1LiquidVaultV2(
+    function vaultExitBundlesV1ForceWithdrawVaultV2(
         address vault,
         address adapter,
-        uint256 forceWithdrawAssets,
+        uint256 exitAssets,
         SharesPermit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,

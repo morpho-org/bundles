@@ -5,11 +5,8 @@ pragma solidity ^0.8.0;
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
-import {VaultForceWithdrawBundlesV1} from "../src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol";
-import {
-    IVaultForceWithdrawBundlesV1,
-    SharesPermit
-} from "../src/vault-force-withdraw/interfaces/IVaultForceWithdrawBundlesV1.sol";
+import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
+import {IVaultExitBundlesV1, SharesPermit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
 
 import {IMetaMorpho} from "../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
 import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -26,7 +23,7 @@ interface IERC20PermitVault {
     function DOMAIN_SEPARATOR() external view returns (bytes32);
 }
 
-contract VaultV1ForceWithdrawBundlesTest is Test {
+contract VaultV1ExitBundlesTest is Test {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;
@@ -39,7 +36,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
     IMorpho internal morpho;
     IMetaMorpho internal vault;
-    VaultForceWithdrawBundlesV1 internal vaultBundles;
+    VaultExitBundlesV1 internal vaultBundles;
 
     ERC20Mock internal loanToken;
     ERC20Mock internal collateralToken;
@@ -77,13 +74,13 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         morpho.createMarket(marketParams);
         morpho.createMarket(otherMarket);
 
-        vaultBundles = new VaultForceWithdrawBundlesV1(address(morpho));
+        vaultBundles = new VaultExitBundlesV1(address(morpho));
         assertEq(vaultBundles.BLUE(), address(morpho));
     }
 
     /// HELPERS ///
 
-    /// @dev Wraps a single market into the singleton list expected by vaultForceWithdrawBundlesV1IlliquidVaultV1.
+    /// @dev Wraps a single market into the singleton list expected by vaultExitBundlesV1InKindRedemptionVaultV1.
     function _singleton(MarketParams memory marketParams_) internal pure returns (MarketParams[] memory list) {
         list = new MarketParams[](1);
         list[0] = marketParams_;
@@ -242,7 +239,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
     /// AUTHORIZATION & VALIDATION ///
 
     function testOnMorphoFlashLoanOnlyBlue() public {
-        vm.expectRevert(IVaultForceWithdrawBundlesV1.UnauthorizedCallback.selector);
+        vm.expectRevert(IVaultExitBundlesV1.UnauthorizedCallback.selector);
         vaultBundles.onMorphoFlashLoan(1, "");
     }
 
@@ -257,11 +254,11 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         vault.withdraw(assets, address(this), address(this));
     }
 
-    function testForceWithdrawIlliquid(uint256 assets) public {
+    function testInKindRedemption(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp
         );
 
@@ -273,8 +270,8 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
 
-    /// @dev A sender that never approved the bundler can force withdraw in a single transaction via sharesPermit.
-    function testForceWithdrawIlliquidWithSharesPermit(uint256 assets) public {
+    /// @dev A sender that never approved the bundler can exit in a single transaction via sharesPermit.
+    function testInKindRedemptionWithSharesPermit(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
         _setUpIlliquid(assets, sigUser, false);
@@ -283,7 +280,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
         SharesPermit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, type(uint256).max, block.timestamp);
         vm.prank(sigUser);
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), _singleton(marketParams), assets, sharesPermit, block.timestamp
         );
 
@@ -291,9 +288,8 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(sigUser), 0, 1, "vault balance");
     }
 
-    /// @dev The markets of the withdraw queue keep some liquidity (only half borrowed out). The force withdraw still
-    /// in-kind redeems the sender across the whole list.
-    function testForceWithdrawNotCompletelyIlliquid() public {
+    /// @dev The markets of the withdraw queue keep some liquidity (only half borrowed out). The exit still in-kind redeems the sender across the whole list.
+    function testInKindRedemptionNotCompletelyIlliquid() public {
         uint256 assets1 = 60e18;
         uint256 assets2 = 60e18;
         _deployVaultTwoMarkets(assets1, assets2);
@@ -309,9 +305,9 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         list[1] = otherMarket;
 
         // Withdraw more than the first market holds so the remainder spills into the second.
-        uint256 forceWithdrawAssets = available1 + 20e18;
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
-            address(vault), list, forceWithdrawAssets, noSharesPermit, block.timestamp
+        uint256 exitAssets = available1 + 20e18;
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
+            address(vault), list, exitAssets, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -322,7 +318,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
     /// @dev The vault's position in the first market is not enough to cover the requested assets, so the redemption
     /// drains it and pulls the remainder from the next market: the sender ends with an in-kind position in both.
-    function testForceWithdrawMultipleMarkets() public {
+    function testInKindRedemptionMultipleMarkets() public {
         uint256 assets1 = 60e18;
         uint256 assets2 = 60e18;
         _deployVaultTwoMarkets(assets1, assets2);
@@ -338,9 +334,9 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         list[1] = otherMarket;
 
         // More than the first market holds ⇒ in-kind redeemed across both.
-        uint256 forceWithdrawAssets = available1 + 20e18;
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
-            address(vault), list, forceWithdrawAssets, noSharesPermit, block.timestamp
+        uint256 exitAssets = available1 + 20e18;
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
+            address(vault), list, exitAssets, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -351,7 +347,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
 
     /// @dev A market can be enabled in the vault yet hold no vault supply. When such a market is reached by the
     /// redemption loop it must be skipped, not cause a revert: supplying 0 to Morpho Blue reverts INCONSISTENT_INPUT.
-    function testForceWithdrawSkipsEnabledEmptyMarket() public {
+    function testInKindRedemptionSkipsEnabledEmptyMarket() public {
         uint256 assets = 60e18;
 
         vault = IMetaMorpho(
@@ -401,7 +397,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         list[0] = marketParams;
         list[1] = otherMarket;
 
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), list, assets, noSharesPermit, block.timestamp
         );
 
@@ -414,7 +410,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
     /// since enabled markets share the vault asset): the flash loan token is derived from the vault, so the foreign
     /// entry is skipped like any disabled market. Deriving the token from marketParamsList[0] would flash loan the
     /// wrong token.
-    function testForceWithdrawForeignFirstMarket(uint256 assets) public {
+    function testInKindRedemptionForeignFirstMarket(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
@@ -427,7 +423,7 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
         list[0] = foreignMarket;
         list[1] = marketParams;
 
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), list, assets, noSharesPermit, block.timestamp
         );
 
@@ -437,12 +433,12 @@ contract VaultV1ForceWithdrawBundlesTest is Test {
     }
 
     /// @dev Reverts once `deadline` is in the past (checkDeadline runs before the body).
-    function testForceWithdrawIlliquidDeadlinePassed() public {
+    function testInKindRedemptionDeadlinePassed() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
-        vm.expectRevert(IVaultForceWithdrawBundlesV1.DeadlinePassed.selector);
-        vaultBundles.vaultForceWithdrawBundlesV1IlliquidVaultV1(
+        vm.expectRevert(IVaultExitBundlesV1.DeadlinePassed.selector);
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
             address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp - 1
         );
     }
