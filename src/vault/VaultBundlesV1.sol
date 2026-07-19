@@ -10,7 +10,7 @@ import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
-/// @dev Designed and audited for Morpho Vault V1 (MetaMorpho V1 or V1.1) and Morpho Vault V2 (Vault v2 with Morpho registry).
+/// @dev Designed and audited for Morpho Vault V1 (MetaMorpho V1 or V1.1) and Morpho Vault V2.
 /// @dev Adapters of Vault V2 that are used with this contract must be either MorphoMarketV1AdapterV2 or MorphoVaultV1Adapter.
 /// @dev Inherits the token safety requirements of the vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
