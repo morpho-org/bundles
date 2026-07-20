@@ -46,10 +46,12 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Requires the sender to have enough shares to withdraw exitAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
+    /// @dev Reverts if the sender's vault share balance decreases by more than maxSharesBurned.
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
+        uint256 maxSharesBurned,
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external {
@@ -60,8 +62,10 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         address loanToken = IMetaMorpho(vault).asset();
         TokenLib.forceApproveMax(loanToken, BLUE);
 
+        uint256 sharesBefore = IERC20(vault).balanceOf(msg.sender);
         bytes memory data = abi.encode(vault, marketParamsList, msg.sender);
         IMorpho(BLUE).flashLoan(loanToken, exitAssets, data);
+        require(sharesBefore - IERC20(vault).balanceOf(msg.sender) <= maxSharesBurned, SharesBurnedExceeded());
     }
 
     function onMorphoFlashLoan(uint256 exitAssets, bytes calldata data) external {
@@ -96,11 +100,13 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
+    /// @dev Reverts if the sender's vault share balance decreases by more than maxSharesBurned.
     function vaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
         address adapter,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
+        uint256 maxSharesBurned,
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external {
@@ -113,6 +119,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
         uint256 assetsToDeallocate = exitAssets.mulDivDown(WAD, WAD + penalty);
+        uint256 sharesBefore = IERC20(vault).balanceOf(msg.sender);
 
         for (uint256 i; assetsToDeallocate > 0; i++) {
             uint256 adapterShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(Id.unwrap(marketParamsList[i].id()));
@@ -127,6 +134,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
                 IMorpho(BLUE).supply(marketParamsList[i], assets, 0, msg.sender, data);
             }
         }
+
+        require(sharesBefore - IERC20(vault).balanceOf(msg.sender) <= maxSharesBurned, SharesBurnedExceeded());
     }
 
     function onMorphoSupply(uint256 assets, bytes calldata data) external {
@@ -148,10 +157,12 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and reverts.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
+    /// @dev Reverts if the sender's vault share balance decreases by more than maxSharesBurned.
     function vaultExitBundlesV1ForceWithdrawVaultV2(
         address vault,
         address adapter,
         uint256 exitAssets,
+        uint256 maxSharesBurned,
         SharesPermit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -163,6 +174,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         require(referralFeePct < WAD, PctExceeded());
 
         permitShares(vault, sharesPermit);
+        uint256 sharesBefore = IERC20(vault).balanceOf(msg.sender);
 
         address asset = IVaultV2(vault).asset();
         uint256 withdrawableAssets = IERC20(asset).balanceOf(vault);
@@ -205,6 +217,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         }
 
         IVaultV2(vault).withdraw(assetsToDeallocate, address(this), msg.sender);
+        require(sharesBefore - IERC20(vault).balanceOf(msg.sender) <= maxSharesBurned, SharesBurnedExceeded());
 
         uint256 withdrawn = assetsToWithdraw + assetsToDeallocate;
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
