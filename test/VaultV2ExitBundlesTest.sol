@@ -783,4 +783,3 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 }
-
