@@ -38,10 +38,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
     /// EXTERNAL ///
 
+    /// @dev Pulls collateralAssets of marketParams.collateralToken from msg.sender (optionally via ERC-2612 or Permit2), supplies it as collateral on Blue for msg.sender, then borrows borrowAssets of the loan token on behalf of msg.sender.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
-    /// @dev Pulls collateralAssets of marketParams.collateralToken from msg.sender (optionally via ERC-2612 or Permit2), supplies it as collateral on Blue for msg.sender, then borrows borrowAssets of the loan token on behalf of msg.sender, routed via this contract.
-    /// @dev Total loan assets routed: borrowAssets - referralFeeAssets to msg.sender, referralFeeAssets to referralFeeRecipient.
-    /// @dev Fee = borrowAssets * referralFeePct / WAD; net = borrowAssets - fee.
+    /// @dev referralFeeAssets = borrowAssets * referralFeePct / WAD; net = borrowAssets - referralFeeAssets.
     /// @dev maxLtv caps msg.sender's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
     function blueBundlesV1SupplyCollateralAndBorrow(
@@ -78,8 +77,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, borrowAssets - referralFeeAssets);
     }
 
+    /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt, reimburses the unused remainder at the end of the call, and withdraws collateral if collateralAssets > 0.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization, if some collateral is withdrawn.
-    /// @dev Pulls maxRepayAssets from msg.sender, reimburses the unused remainder at the end of the call, and withdraws collateral if collateralAssets > 0.
     /// @dev Exactly one of repayAssets and repayShares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as repayShares.
     /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
     /// @dev maxLtv caps msg.sender's resulting LTV after a withdrawal; skipped on a pure repay.
@@ -122,8 +121,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         );
     }
 
-    /// @dev Supply for msg.sender.
-    /// @dev Pulls assets of marketParams.loanToken from msg.sender (optionally via ERC-2612 or Permit2).
+    /// @dev Pulls assets from msg.sender (optionally via ERC-2612 or Permit2) and supplies them to the market for msg.sender.
     /// @dev The referral fee is deducted from assets; the remainder is supplied to the market for msg.sender.
     /// @dev Fee = assets * referralFeePct / WAD; supplied = assets - fee.
     /// @dev maxSharePriceE27 upper-bounds the realized supply share price (supplied assets per share, scaled by 1e27).
@@ -153,8 +151,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         }
     }
 
-    /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev Withdraws from msg.sender's supply position.
+    /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev Exactly one of assets and shares should be non-zero: the position is withdrawn by assets, or by shares. To close the full supply position so no supply shares remain, pass msg.sender's full supply shares as shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
@@ -184,8 +182,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, withdrawn - referralFeeAssets);
     }
 
+    /// @dev Moves the full position of msg.sender (collateral and borrow shares, read from Blue) from the source market to the destination market.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
-    /// @dev Moves the full position of msg.sender (collateral and borrow shares, read from Blue) from the source market to the destination market, pulling no tokens from msg.sender.
     /// @dev The referral fee is borrowed on the destination on top of the repaid assets, adding to the debt.
     /// @dev Fee = repaidAssets * referralFeePct / (WAD - referralFeePct); total borrowed = repaidAssets + fee.
     /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Use destination LLTV to disable.
