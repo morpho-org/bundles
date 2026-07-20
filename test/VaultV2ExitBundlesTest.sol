@@ -46,7 +46,6 @@ contract VaultV2ExitBundlesTest is Test {
     IMorpho internal morpho;
     IVaultV2 internal vault;
     IMorphoMarketV1AdapterV2 internal adapter;
-    IMorphoMarketV1AdapterV2Factory internal adapterFactory;
     VaultExitBundlesV1 internal vaultBundles;
 
     ERC20Mock internal loanToken;
@@ -97,7 +96,7 @@ contract VaultV2ExitBundlesTest is Test {
         vault.setCurator(curator);
         _submitAndExec(abi.encodeCall(IVaultV2.setIsAllocator, (allocator, true)));
 
-        adapterFactory = IMorphoMarketV1AdapterV2Factory(
+        IMorphoMarketV1AdapterV2Factory adapterFactory = IMorphoMarketV1AdapterV2Factory(
             deployCode(
                 "MorphoMarketV1AdapterV2Factory.sol:MorphoMarketV1AdapterV2Factory", abi.encode(morpho, address(0))
             )
@@ -136,6 +135,16 @@ contract VaultV2ExitBundlesTest is Test {
 
     function optimalDeallocateAssets(uint256 assets) internal pure returns (uint256) {
         return assets * WAD / (WAD + PENALTY);
+    }
+
+    function _addSecondAdapter() internal {
+        IMorphoMarketV1AdapterV2Factory secondAdapterFactory = IMorphoMarketV1AdapterV2Factory(
+            deployCode(
+                "MorphoMarketV1AdapterV2Factory.sol:MorphoMarketV1AdapterV2Factory", abi.encode(morpho, address(0))
+            )
+        );
+        address secondAdapter = secondAdapterFactory.createMorphoMarketV1AdapterV2(address(vault));
+        _submitAndExec(abi.encodeCall(IVaultV2.addAdapter, (secondAdapter)));
     }
 
     /// @dev Wraps a single market into the singleton list expected by vaultExitBundlesV1InKindRedemptionVaultV2.
@@ -362,8 +371,7 @@ contract VaultV2ExitBundlesTest is Test {
     }
 
     function testInKindRedemptionInvalidAdaptersLength() public {
-        address secondAdapter = adapterFactory.createMorphoMarketV1AdapterV2(address(vault));
-        _submitAndExec(abi.encodeCall(IVaultV2.addAdapter, (secondAdapter)));
+        _addSecondAdapter();
 
         vm.expectRevert(IVaultExitBundlesV1.InvalidAdaptersLength.selector);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
@@ -574,8 +582,7 @@ contract VaultV2ExitBundlesTest is Test {
     /// FORCE WITHDRAWAL ///
 
     function testForceWithdrawInvalidAdaptersLength() public {
-        address secondAdapter = adapterFactory.createMorphoMarketV1AdapterV2(address(vault));
-        _submitAndExec(abi.encodeCall(IVaultV2.addAdapter, (secondAdapter)));
+        _addSecondAdapter();
 
         vm.expectRevert(IVaultExitBundlesV1.InvalidAdaptersLength.selector);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
@@ -776,3 +783,4 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 }
+
