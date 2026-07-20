@@ -296,12 +296,11 @@ contract ForceWithdrawMarginTest is Test {
 
     /// THEORETICAL BOUND ///
 
-    // Theoretical safe margin (in shares): the exit is split into independent vault withdrawals, each burning
-    // previewWithdraw(assets) shares (mulDivUp, so rounding up by at most one share). The V1 path does a single
-    // withdrawal of exactly forceWithdrawAssets = previewRedeem(balance - margin), a clean round-trip that needs
-    // no margin (0). The illiquid V2 path does two withdrawals per market -- the forceDeallocate penalty and the
-    // deallocated assets -- hence 2N. The liquid V2 path does one upfront liquidity withdrawal, one penalty
-    // withdrawal per market, and one final withdrawal, hence N + 2.
+    // Theoretical safe margin (in shares): the exit is split into independent vault withdrawals.
+    // Each withdrawal burns previewWithdraw(assets) shares (mulDivUp), so it rounds up by at most one share.
+    // The V1 path withdraws forceWithdrawAssets = previewRedeem(balance - margin), so it needs no margin (0).
+    // The illiquid V2 path makes two withdrawals per market (penalty and deallocated assets), hence 2N.
+    // The liquid V2 path makes one upfront withdrawal, one penalty withdrawal per market, and one final withdrawal, hence N + 2.
     function _margin(uint256 scenario, uint256 n) internal pure returns (uint256) {
         if (scenario == V1_ILLIQUID) return 0;
         if (scenario == V2_ILLIQUID) return 2 * n;
