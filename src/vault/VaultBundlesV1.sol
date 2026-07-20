@@ -10,7 +10,8 @@ import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
-/// @dev Designed and audited for Morpho Vault V1 (MetaMorpho) and Morpho Vault V2 (Vault v2 with Morpho registry).
+/// @dev Designed and audited for Vault V1 (MetaMorpho V1 or V1.1) and Vault V2.
+/// @dev Adapters of Vault V2 that are used with this contract must be either MorphoMarketV1AdapterV2 or MorphoVaultV1Adapter.
 /// @dev Inherits the token safety requirements of the vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev Gated vaults (Vault V2) require this contract to be permitted by sendAssetsGate to deposit and by receiveAssetsGate to withdraw.
@@ -84,7 +85,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         SafeTransferLib.safeTransfer(asset, msg.sender, assets - referralFeeAssets);
     }
 
-    /// @dev Migrates msg.sender's position in sourceVault to a position in destVault, by withdrawing them from sourceVault (routed via this contract) then depositing them into destVault.
+    /// @dev Migrates msg.sender's position in sourceVault to a position in destVault, by withdrawing them from sourceVault then depositing them into destVault.
     /// @dev sourceVault and destVault can each be a Vault V1 or a Vault V2. Migrating from a Vault V2 to a Vault V1 is not prevented, even though it is not expected to be useful.
     /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract, beforehand or via sharesPermit.
     /// @dev Exactly one of assetsWithdrawn and sharesRedeemed should be non-zero: sourceVault is withdrawn by assets, or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as shares.
