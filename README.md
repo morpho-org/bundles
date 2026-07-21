@@ -37,6 +37,12 @@ Users are still expected to look at the inputs of the entry-points, to decide wh
 - `vaultBundlesV1Withdraw` — withdraw assets from a vault.
 - `vaultBundlesV1Migrate` — migrate assets from one vault to another.
 
+### Midnight-to-Blue bundles
+
+[MidnightToBlueBundlesV1](src/midnight-to-blue/MidnightToBlueBundlesV1.sol) contains:
+
+- `midnightToBlueBundlesV1MigrateBorrowPosition` — migrate a full borrow position (debt + one collateral) from a Midnight fixed-rate market to a Morpho Blue variable-rate market in one transaction. No flash loan: the destination Blue borrow is taken inside Midnight's `onRepay` callback and funds the Midnight repay.
+
 ### Vault exit bundles
 
 [VaultExitBundlesV1](src/vault-exit/VaultExitBundlesV1.sol) contains:
