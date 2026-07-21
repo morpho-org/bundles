@@ -274,8 +274,8 @@ contract VaultExitMarginTest is Test {
             SharesPermit({value: 0, nonce: 0, deadline: 0, v: 0, r: bytes32(0), s: bytes32(0)});
 
         if (scenario == V1_ILLIQUID) {
-            try exitBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-                vaultAddr, adapterAddr, fWA, noSharesPermit, 0, address(0), block.timestamp
+            try exitBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
+                vaultAddr, marketList, fWA, noSharesPermit, block.timestamp
             ) {
                 return true;
             } catch {
