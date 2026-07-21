@@ -43,6 +43,8 @@ contract VaultV2ExitBundlesTest is Test {
     uint256 internal constant MIN_ASSETS = 2; // assets == 1 ⇒ deallocatedAssets == 0 (see testInKindRedemptionTooSmallNoOp).
     uint256 internal constant MAX_ASSETS = 1e24;
 
+    uint256 internal constant RAY = 1e27;
+
     IMorpho internal morpho;
     IVaultV2 internal vault;
     IMorphoMarketV1AdapterV2 internal adapter;
@@ -327,13 +329,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         vm.expectRevert(IVaultExitBundlesV1.AdapterNotPartOfVault.selector);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault),
-            makeAddr("notAdapter"),
-            _singleton(marketParams),
-            assets,
-            type(uint256).max,
-            noSharesPermit,
-            block.timestamp
+            address(vault), makeAddr("notAdapter"), _singleton(marketParams), assets, 0, noSharesPermit, block.timestamp
         );
     }
 
@@ -346,13 +342,7 @@ contract VaultV2ExitBundlesTest is Test {
         // otherMarket was never allocated through the adapter ⇒ supplyShares == 0.
         vm.expectRevert();
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault),
-            address(adapter),
-            _singleton(otherMarket),
-            assets,
-            type(uint256).max,
-            noSharesPermit,
-            block.timestamp
+            address(vault), address(adapter), _singleton(otherMarket), assets, 0, noSharesPermit, block.timestamp
         );
     }
 
@@ -368,13 +358,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         vm.expectRevert();
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault),
-            address(adapter),
-            _singleton(marketParams),
-            tooMuch,
-            type(uint256).max,
-            noSharesPermit,
-            block.timestamp
+            address(vault), address(adapter), _singleton(marketParams), tooMuch, 0, noSharesPermit, block.timestamp
         );
     }
 
@@ -391,13 +375,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         uint256 sharesBefore = vault.balanceOf(address(this));
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault),
-            address(adapter),
-            _singleton(marketParams),
-            assets,
-            type(uint256).max,
-            noSharesPermit,
-            block.timestamp
+            address(vault), address(adapter), _singleton(marketParams), assets, 0, noSharesPermit, block.timestamp
         );
 
         assertEq(vault.balanceOf(address(this)), sharesBefore, "vault balance unchanged");
@@ -423,13 +401,7 @@ contract VaultV2ExitBundlesTest is Test {
         _setUpIlliquid(assets);
 
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault),
-            address(adapter),
-            _singleton(marketParams),
-            assets,
-            type(uint256).max,
-            noSharesPermit,
-            block.timestamp
+            address(vault), address(adapter), _singleton(marketParams), assets, 0, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -453,13 +425,7 @@ contract VaultV2ExitBundlesTest is Test {
         SharesPermit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, type(uint256).max, block.timestamp);
         vm.prank(sigUser);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault),
-            address(adapter),
-            _singleton(marketParams),
-            assets,
-            type(uint256).max,
-            sharesPermit,
-            block.timestamp
+            address(vault), address(adapter), _singleton(marketParams), assets, 0, sharesPermit, block.timestamp
         );
 
         assertEq(morpho.expectedSupplyAssets(marketParams, sigUser), optimalDeallocateAssets(assets), "supply position");
@@ -487,7 +453,7 @@ contract VaultV2ExitBundlesTest is Test {
         assertGt(deallocate, available1, "precondition: one market is not enough");
 
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(adapter), list, exitAssets, type(uint256).max, noSharesPermit, block.timestamp
+            address(vault), address(adapter), list, exitAssets, 0, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -514,7 +480,7 @@ contract VaultV2ExitBundlesTest is Test {
         list[1] = marketParams;
 
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(adapter), list, assets, type(uint256).max, noSharesPermit, block.timestamp
+            address(vault), address(adapter), list, assets, 0, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -543,7 +509,7 @@ contract VaultV2ExitBundlesTest is Test {
         list[1] = marketParams;
 
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(adapter), list, assets, type(uint256).max, noSharesPermit, block.timestamp
+            address(vault), address(adapter), list, assets, 0, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -560,13 +526,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         vm.expectRevert(IVaultExitBundlesV1.DeadlinePassed.selector);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault),
-            address(adapter),
-            _singleton(marketParams),
-            assets,
-            type(uint256).max,
-            noSharesPermit,
-            block.timestamp - 1
+            address(vault), address(adapter), _singleton(marketParams), assets, 0, noSharesPermit, block.timestamp - 1
         );
     }
 
@@ -594,13 +554,7 @@ contract VaultV2ExitBundlesTest is Test {
         vm.assume(optimalDeallocateAssets(amount) > 0);
 
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault),
-            address(adapter),
-            _singleton(marketParams),
-            amount,
-            type(uint256).max,
-            noSharesPermit,
-            block.timestamp
+            address(vault), address(adapter), _singleton(marketParams), amount, 0, noSharesPermit, block.timestamp
         );
 
         assertLe(
@@ -608,38 +562,39 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    /// @dev The exit reverts when it must burn more shares than maxSharesBurned (e.g. the share price dropped after
-    /// the bound was computed).
-    function testInKindRedemptionSharesBurnedExceeded() public {
+    /// @dev The exit reverts when the shares are burned at a price below minSharePriceE27 (e.g. the share price
+    /// dropped after the bound was computed).
+    function testInKindRedemptionSlippageExceeded() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
-        uint256 maxSharesBurned = vault.previewWithdraw(assets) / 2;
-        vm.expectRevert(IVaultExitBundlesV1.SharesBurnedExceeded.selector);
+        uint256 minSharePriceE27 = 2 * (assets * RAY / vault.previewWithdraw(assets));
+        vm.expectRevert(IVaultExitBundlesV1.SlippageExceeded.selector);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
             address(vault),
             address(adapter),
             _singleton(marketParams),
             assets,
-            maxSharesBurned,
+            minSharePriceE27,
             noSharesPermit,
             block.timestamp
         );
     }
 
-    /// @dev previewWithdraw(exitAssets) quoted before the call is a sufficient maxSharesBurned, up to the 2 shares
-    /// margin of the two ceil-rounded withdrawals (penalty and assets).
-    function testInKindRedemptionTightSharesBound(uint256 assets) public {
+    /// @dev The share price quoted with previewWithdraw before the call is a sufficient minSharePriceE27, up to the
+    /// ceil-rounding dust of the two withdrawals (penalty and assets): the penalty counts as assets paid, so it does
+    /// not lower the price.
+    function testInKindRedemptionTightPriceBound(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
-        uint256 maxSharesBurned = vault.previewWithdraw(assets) + 2;
+        uint256 minSharePriceE27 = (assets - 2) * RAY / (vault.previewWithdraw(assets) + 2);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
             address(vault),
             address(adapter),
             _singleton(marketParams),
             assets,
-            maxSharesBurned,
+            minSharePriceE27,
             noSharesPermit,
             block.timestamp
         );
@@ -655,14 +610,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         vm.expectRevert(IVaultExitBundlesV1.AdapterNotPartOfVault.selector);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault),
-            makeAddr("notAdapter"),
-            assets,
-            type(uint256).max,
-            noSharesPermit,
-            0,
-            address(0),
-            block.timestamp
+            address(vault), makeAddr("notAdapter"), assets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
     }
 
@@ -673,14 +621,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         vm.expectRevert();
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault),
-            address(adapter),
-            2 * assets,
-            type(uint256).max,
-            noSharesPermit,
-            0,
-            address(0),
-            block.timestamp
+            address(vault), address(adapter), 2 * assets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
     }
 
@@ -689,7 +630,7 @@ contract VaultV2ExitBundlesTest is Test {
         _setUpLiquid(assets);
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), assets, type(uint256).max, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), assets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -713,7 +654,7 @@ contract VaultV2ExitBundlesTest is Test {
             address(vault),
             address(adapter),
             assets,
-            type(uint256).max,
+            0,
             noSharesPermit,
             referralFeePct,
             referralFeeRecipient,
@@ -732,14 +673,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         vm.expectRevert(IVaultExitBundlesV1.PctExceeded.selector);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault),
-            address(adapter),
-            assets,
-            type(uint256).max,
-            noSharesPermit,
-            WAD,
-            referralFeeRecipient,
-            block.timestamp
+            address(vault), address(adapter), assets, 0, noSharesPermit, WAD, referralFeeRecipient, block.timestamp
         );
     }
 
@@ -755,7 +689,7 @@ contract VaultV2ExitBundlesTest is Test {
         assertGt(deallocate, 80e18, "precondition: all three markets are needed");
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), amount, type(uint256).max, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), amount, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(this)), deallocate, "user loan token balance");
@@ -785,14 +719,7 @@ contract VaultV2ExitBundlesTest is Test {
         assertEq(optimalDeallocateAssets(exitAssets), 100e18, "precondition");
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault),
-            address(adapter),
-            exitAssets,
-            type(uint256).max,
-            noSharesPermit,
-            0,
-            address(0),
-            block.timestamp
+            address(vault), address(adapter), exitAssets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(this)), 100e18, "user loan token balance");
@@ -809,7 +736,7 @@ contract VaultV2ExitBundlesTest is Test {
         vault.setLiquidityAdapterAndData(address(adapter), abi.encode(marketParams));
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), 80e18, type(uint256).max, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), 80e18, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         // 60 comes penalty-free through the liquidity adapter, the remaining 20 pays the penalty.
@@ -831,7 +758,7 @@ contract VaultV2ExitBundlesTest is Test {
         vault.setLiquidityAdapterAndData(address(adapter), abi.encode(marketParams));
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), 50e18, type(uint256).max, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), 50e18, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(this)), 50e18, "user loan token balance");
@@ -853,7 +780,7 @@ contract VaultV2ExitBundlesTest is Test {
         deal(address(loanToken), address(this), 0);
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), 40e18, type(uint256).max, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), 40e18, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         // 30 comes penalty-free from the idle assets, the remaining 10 pays the penalty.
@@ -867,39 +794,33 @@ contract VaultV2ExitBundlesTest is Test {
 
         vm.expectRevert(IVaultExitBundlesV1.DeadlinePassed.selector);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault),
-            address(adapter),
-            assets,
-            type(uint256).max,
-            noSharesPermit,
-            0,
-            address(0),
-            block.timestamp - 1
+            address(vault), address(adapter), assets, 0, noSharesPermit, 0, address(0), block.timestamp - 1
         );
     }
 
-    /// @dev The withdrawal reverts when it must burn more shares than maxSharesBurned (e.g. the share price dropped
-    /// after the bound was computed).
-    function testForceWithdrawSharesBurnedExceeded() public {
+    /// @dev The withdrawal reverts when the shares are burned at a price below minSharePriceE27 (e.g. the share
+    /// price dropped after the bound was computed).
+    function testForceWithdrawSlippageExceeded() public {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
 
-        uint256 maxSharesBurned = vault.previewWithdraw(assets) / 2;
-        vm.expectRevert(IVaultExitBundlesV1.SharesBurnedExceeded.selector);
+        uint256 minSharePriceE27 = 2 * (assets * RAY / vault.previewWithdraw(assets));
+        vm.expectRevert(IVaultExitBundlesV1.SlippageExceeded.selector);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), assets, maxSharesBurned, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), assets, minSharePriceE27, noSharesPermit, 0, address(0), block.timestamp
         );
     }
 
-    /// @dev previewWithdraw(exitAssets) quoted before the call is a sufficient maxSharesBurned, up to the 2 shares
-    /// margin of the two ceil-rounded withdrawals (penalty and assets).
-    function testForceWithdrawTightSharesBound(uint256 assets) public {
+    /// @dev The share price quoted with previewWithdraw before the call is a sufficient minSharePriceE27, up to the
+    /// ceil-rounding dust of the two withdrawals (penalty and assets): the penalty counts as assets paid, so it does
+    /// not lower the price.
+    function testForceWithdrawTightPriceBound(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpLiquid(assets);
 
-        uint256 maxSharesBurned = vault.previewWithdraw(assets) + 2;
+        uint256 minSharePriceE27 = (assets - 2) * RAY / (vault.previewWithdraw(assets) + 2);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), assets, maxSharesBurned, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), assets, minSharePriceE27, noSharesPermit, 0, address(0), block.timestamp
         );
 
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");

@@ -34,6 +34,8 @@ contract VaultV1ExitBundlesTest is Test {
     uint256 internal constant MIN_ASSETS = 2;
     uint256 internal constant MAX_ASSETS = 1e24;
 
+    uint256 internal constant RAY = 1e27;
+
     IMorpho internal morpho;
     IMetaMorpho internal vault;
     VaultExitBundlesV1 internal vaultBundles;
@@ -259,7 +261,7 @@ contract VaultV1ExitBundlesTest is Test {
         _setUpIlliquid(assets);
 
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-            address(vault), _singleton(marketParams), assets, type(uint256).max, noSharesPermit, block.timestamp
+            address(vault), _singleton(marketParams), assets, 0, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -281,7 +283,7 @@ contract VaultV1ExitBundlesTest is Test {
         SharesPermit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, type(uint256).max, block.timestamp);
         vm.prank(sigUser);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-            address(vault), _singleton(marketParams), assets, type(uint256).max, sharesPermit, block.timestamp
+            address(vault), _singleton(marketParams), assets, 0, sharesPermit, block.timestamp
         );
 
         assertApproxEqAbs(morpho.expectedSupplyAssets(marketParams, sigUser), assets, 1, "supply position");
@@ -307,7 +309,7 @@ contract VaultV1ExitBundlesTest is Test {
         // Withdraw more than the first market holds so the remainder spills into the second.
         uint256 exitAssets = available1 + 20e18;
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-            address(vault), list, exitAssets, type(uint256).max, noSharesPermit, block.timestamp
+            address(vault), list, exitAssets, 0, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -336,7 +338,7 @@ contract VaultV1ExitBundlesTest is Test {
         // More than the first market holds ⇒ in-kind redeemed across both.
         uint256 exitAssets = available1 + 20e18;
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-            address(vault), list, exitAssets, type(uint256).max, noSharesPermit, block.timestamp
+            address(vault), list, exitAssets, 0, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -398,7 +400,7 @@ contract VaultV1ExitBundlesTest is Test {
         list[1] = otherMarket;
 
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-            address(vault), list, assets, type(uint256).max, noSharesPermit, block.timestamp
+            address(vault), list, assets, 0, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -424,7 +426,7 @@ contract VaultV1ExitBundlesTest is Test {
         list[1] = marketParams;
 
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-            address(vault), list, assets, type(uint256).max, noSharesPermit, block.timestamp
+            address(vault), list, assets, 0, noSharesPermit, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -439,31 +441,31 @@ contract VaultV1ExitBundlesTest is Test {
 
         vm.expectRevert(IVaultExitBundlesV1.DeadlinePassed.selector);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-            address(vault), _singleton(marketParams), assets, type(uint256).max, noSharesPermit, block.timestamp - 1
+            address(vault), _singleton(marketParams), assets, 0, noSharesPermit, block.timestamp - 1
         );
     }
 
-    /// @dev The exit reverts when it must burn more shares than maxSharesBurned.
-    function testInKindRedemptionSharesBurnedExceeded() public {
+    /// @dev The exit reverts when the shares are burned at a price below minSharePriceE27.
+    function testInKindRedemptionSlippageExceeded() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
 
-        uint256 maxSharesBurned = vault.previewWithdraw(assets) / 2;
-        vm.expectRevert(IVaultExitBundlesV1.SharesBurnedExceeded.selector);
+        uint256 minSharePriceE27 = 2 * (assets * RAY / vault.previewWithdraw(assets));
+        vm.expectRevert(IVaultExitBundlesV1.SlippageExceeded.selector);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-            address(vault), _singleton(marketParams), assets, maxSharesBurned, noSharesPermit, block.timestamp
+            address(vault), _singleton(marketParams), assets, minSharePriceE27, noSharesPermit, block.timestamp
         );
     }
 
-    /// @dev previewWithdraw(exitAssets) quoted before the call is a sufficient maxSharesBurned: the in-kind supplies
-    /// can only round the vault's assets up, so the withdrawal never burns more shares than previewed.
-    function testInKindRedemptionTightSharesBound(uint256 assets) public {
+    /// @dev The share price quoted with previewWithdraw before the call is a sufficient minSharePriceE27: the in-kind
+    /// supplies can only round the vault's assets up, so the shares are never burned at a lower price.
+    function testInKindRedemptionTightPriceBound(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
-        uint256 maxSharesBurned = vault.previewWithdraw(assets);
+        uint256 minSharePriceE27 = assets * RAY / vault.previewWithdraw(assets);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-            address(vault), _singleton(marketParams), assets, maxSharesBurned, noSharesPermit, block.timestamp
+            address(vault), _singleton(marketParams), assets, minSharePriceE27, noSharesPermit, block.timestamp
         );
 
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");

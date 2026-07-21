@@ -22,7 +22,7 @@ interface IVaultExitBundlesV1 {
     error LiquidityAdapterMismatch();
     error MorphoMismatch();
     error PctExceeded();
-    error SharesBurnedExceeded();
+    error SlippageExceeded();
     error UnauthorizedCallback();
 
     /// STORAGE GETTERS ///
@@ -33,7 +33,7 @@ interface IVaultExitBundlesV1 {
         address vault,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        uint256 maxSharesBurned,
+        uint256 minSharePriceE27,
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external;
@@ -43,7 +43,7 @@ interface IVaultExitBundlesV1 {
         address adapter,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        uint256 maxSharesBurned,
+        uint256 minSharePriceE27,
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external;
@@ -52,7 +52,7 @@ interface IVaultExitBundlesV1 {
         address vault,
         address adapter,
         uint256 exitAssets,
-        uint256 maxSharesBurned,
+        uint256 minSharePriceE27,
         SharesPermit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
