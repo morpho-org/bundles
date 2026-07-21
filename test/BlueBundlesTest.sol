@@ -708,17 +708,15 @@ contract BlueBundlesTest is Test {
         assertEq(collateralToken.balanceOf(user), collateral, "collateral to user");
     }
 
-    /// @dev With remaining debt the withdrawal still reads the oracle (in Blue's health check): a broken oracle
-    /// blocks any exit that leaves debt behind.
-    function testRepayAndWithdrawCollateralPartialBrokenOracleReverts() public {
+    /// @dev With maxLtv at WAD the bundler's maxLtv check short-circuits before its oracle call: the only price
+    /// read is Blue's health check in withdrawCollateral.
+    function testRepayAndWithdrawCollateralMaxLtvWadSkipsOracle() public {
         _openBorrow(user, 100e18);
-
-        vm.mockCallRevert(address(oracle), abi.encodeWithSelector(IOracle.price.selector), "oracle down");
 
         deal(address(loanToken), user, 30e18);
         vm.startPrank(user);
         loanToken.approve(address(blueBundles), 30e18);
-        vm.expectRevert(bytes("oracle down"));
+        vm.expectCall(address(oracle), abi.encodeWithSelector(IOracle.price.selector), 1);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
             marketParams,
             30e18,
@@ -734,6 +732,9 @@ contract BlueBundlesTest is Test {
             block.timestamp
         );
         vm.stopPrank();
+
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), 70e18, "remaining debt");
+        assertEq(morpho.collateral(id, user), 190e18, "remaining collateral");
     }
 
     function testRepayWithReferralFee(uint256 borrowAssets, uint256 repayAssets, uint256 referralFeePct) public {
