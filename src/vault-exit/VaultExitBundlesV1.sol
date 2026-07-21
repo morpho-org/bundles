@@ -119,10 +119,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 assetsToDeallocate = exitAssets.mulDivDown(WAD, WAD + penalty);
 
         for (uint256 i; assetsToDeallocate > 0; i++) {
-            uint256 adapterShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(Id.unwrap(marketParamsList[i].id()));
-            (uint256 totalSupplyAssets, uint256 totalSupplyShares,,) =
-                MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParamsList[i]);
-            uint256 adapterAssets = adapterShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
+            bytes32 marketId = Id.unwrap(marketParamsList[i].id());
+            uint256 adapterAssets = IMorphoMarketV1AdapterV2(adapter).expectedSupplyAssets(marketId);
             uint256 assets = UtilsLib.min(adapterAssets, assetsToDeallocate);
             assetsToDeallocate -= assets;
 
