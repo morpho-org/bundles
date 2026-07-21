@@ -212,14 +212,13 @@ contract VaultExitMarginTest is Test {
         vm.prank(allocator);
         vault.setMaxRate(MAX_MAX_RATE);
 
-        _increaseCaps(abi.encode("this", address(adapter)));
-        _increaseCaps(abi.encode("collateralToken", address(collateralToken)));
-
+        _setMaxCaps(abi.encode("this", address(adapter)));
+        _setMaxCaps(abi.encode("collateralToken", address(collateralToken)));
         for (uint256 i = 0; i < n; i++) {
             MarketParams memory m = _market(i);
             morpho.createMarket(m);
             marketList.push(m);
-            _increaseCaps(abi.encode("this/marketParams", address(adapter), m));
+            _setMaxCaps(abi.encode("this/marketParams", address(adapter), m));
         }
 
         _submitAndExec(abi.encodeCall(IVaultV2.setForceDeallocatePenalty, (address(adapter), PENALTY)));
@@ -250,7 +249,7 @@ contract VaultExitMarginTest is Test {
         require(success, "exec failed");
     }
 
-    function _increaseCaps(bytes memory idData) internal {
+    function _setMaxCaps(bytes memory idData) internal {
         _submitAndExec(abi.encodeCall(IVaultV2.increaseAbsoluteCap, (idData, type(uint128).max)));
         _submitAndExec(abi.encodeCall(IVaultV2.increaseRelativeCap, (idData, WAD)));
     }
