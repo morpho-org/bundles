@@ -674,6 +674,69 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.collateral(id, user), 200e18, "collateral unchanged");
     }
 
+    /// @dev The oracle is never read on a full exit: with zero debt the maxLtv check short-circuits before the
+    /// oracle call (mirroring Blue's health check), so a full repay + withdraw works out of a market whose oracle is
+    /// broken, even with a binding maxLtv.
+    function testRepayAndWithdrawCollateralFullExitBrokenOracle() public {
+        uint256 borrowAssets = 100e18;
+        _openBorrow(user, borrowAssets);
+        uint256 collateral = morpho.collateral(id, user);
+
+        vm.mockCallRevert(address(oracle), abi.encodeWithSelector(IOracle.price.selector), "oracle down");
+
+        deal(address(loanToken), user, borrowAssets);
+        vm.startPrank(user);
+        loanToken.approve(address(blueBundles), borrowAssets);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams,
+            0,
+            morpho.borrowShares(id, user),
+            borrowAssets,
+            type(uint256).max,
+            collateral,
+            0.5e18, // binding maxLtv (< LLTV): the check runs and must not read the oracle
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.borrowShares(id, user), 0, "debt");
+        assertEq(morpho.collateral(id, user), 0, "remaining collateral");
+        assertEq(collateralToken.balanceOf(user), collateral, "collateral to user");
+    }
+
+    /// @dev With maxLtv at WAD the bundler's maxLtv check short-circuits before its oracle call: the only price
+    /// read is Blue's health check in withdrawCollateral.
+    function testRepayAndWithdrawCollateralMaxLtvWadSkipsOracle() public {
+        _openBorrow(user, 100e18);
+
+        deal(address(loanToken), user, 30e18);
+        vm.startPrank(user);
+        loanToken.approve(address(blueBundles), 30e18);
+        vm.expectCall(address(oracle), abi.encodeWithSelector(IOracle.price.selector), 1);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams,
+            30e18,
+            0,
+            30e18,
+            type(uint256).max,
+            10e18,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), 70e18, "remaining debt");
+        assertEq(morpho.collateral(id, user), 190e18, "remaining collateral");
+    }
+
     function testRepayWithReferralFee(uint256 borrowAssets, uint256 repayAssets, uint256 referralFeePct) public {
         borrowAssets = bound(borrowAssets, 1, 1e30);
         referralFeePct = bound(referralFeePct, 0, WAD - 1);
