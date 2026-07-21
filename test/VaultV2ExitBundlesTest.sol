@@ -581,13 +581,22 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// FORCE WITHDRAWAL ///
 
-    function testForceWithdrawInvalidAdaptersLength() public {
+    /// @dev Force withdraw only touches the adapter it is given, so a vault with more than one adapter is supported.
+    function testForceWithdrawMultipleAdapters(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        _setUpLiquid(assets);
         _addSecondAdapter();
 
-        vm.expectRevert(IVaultExitBundlesV1.InvalidAdaptersLength.selector);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), 0, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), assets, noSharesPermit, 0, address(0), block.timestamp
         );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
+        assertEq(loanToken.balanceOf(address(adapter)), 0, "adapter loan token balance");
+        // The user leaves the vault with the deallocated assets.
+        assertEq(loanToken.balanceOf(address(this)), optimalDeallocateAssets(assets), "user loan token balance");
+        assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
 
     function testForceWithdrawAdapterNotPartOfVault() public {
