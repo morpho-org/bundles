@@ -17,9 +17,6 @@ struct TokenPermit {
     bytes data;
 }
 
-/// @title TokenLib
-/// @notice Generic bundler token plumbing shared across bundles: Permit2/ERC-2612 token pulls and USDT-safe max
-/// approvals. Lives outside any single bundle so the boring-but-critical token handling has one canonical copy.
 library TokenLib {
     error ApproveReturnedFalse();
 
@@ -37,9 +34,8 @@ library TokenLib {
         require(returndata.length == 0 || abi.decode(returndata, (bool)), ApproveReturnedFalse());
     }
 
-    /// @dev Skips the approval entirely to save gas when the current allowance is already at least 2^95 - 1
-    /// (some tokens like COMP and UNI on Ethereum have a max allowance of type(uint96).max).
-    /// @dev Resets to 0 before re-approving to support USDT like tokens.
+    /// @dev Skips the approval entirely to save gas when the current allowance is already at least 2^95 - 1 (some tokens like COMP and UNI on Ethereum have a max allowance of type(uint96).max).
+    /// @dev Resets to 0 before re-approving to support USDT-like tokens.
     function forceApproveMax(address token, address spender) internal {
         if (IERC20Permit(token).allowance(address(this), spender) >= type(uint96).max / 2) return;
         safeApprove(token, spender, 0);

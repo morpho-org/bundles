@@ -5,7 +5,8 @@ pragma solidity ^0.8.0;
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
-import {VaultForceWithdrawBundlesV1} from "../src/vault-force-withdraw/VaultForceWithdrawBundlesV1.sol";
+import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
+import {SharesPermit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
 
 import {IMetaMorpho} from "../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
 import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -28,8 +29,8 @@ interface IVault {
     function previewRedeem(uint256 shares) external view returns (uint256);
 }
 
-/// @dev Harness verifying the theoretical safety margin `shares` for which forceWithdrawAssets = previewRedeem(balanceOf(sender) - shares) does not revert, for the three forceWithdraw entry points and a varying number of markets.
-contract ForceWithdrawMarginTest is Test {
+/// @dev Harness verifying the theoretical safety margin `shares` for which exitAssets = previewRedeem(balanceOf(sender) - shares) does not revert, for the three forceWithdraw entry points and a varying number of markets.
+contract VaultExitMarginTest is Test {
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
 
@@ -41,7 +42,7 @@ contract ForceWithdrawMarginTest is Test {
     uint256 internal constant PER_MARKET = 100e18;
 
     IMorpho internal morpho;
-    VaultForceWithdrawBundlesV1 internal vaultBundles;
+    VaultExitBundlesV1 internal exitBundles;
     ERC20Mock internal loanToken;
     ERC20Mock internal collateralToken;
     OracleMock internal oracle;
@@ -74,7 +75,7 @@ contract ForceWithdrawMarginTest is Test {
         morpho.enableLltv(0.95e18); // dedicated to the global-liquidity market
         vm.stopPrank();
 
-        vaultBundles = new VaultForceWithdrawBundlesV1(address(morpho));
+        exitBundles = new VaultExitBundlesV1(address(morpho));
         baseSnap = vm.snapshotState();
     }
 
@@ -185,7 +186,7 @@ contract ForceWithdrawMarginTest is Test {
         }
         _fundGlobalLiquidity(4 * _total(n));
 
-        IVaultV2(vaultAddr).approve(address(vaultBundles), type(uint256).max); // ERC20 approve, same selector
+        IVaultV2(vaultAddr).approve(address(exitBundles), type(uint256).max); // ERC20 approve, same selector
         deal(address(loanToken), address(this), 0);
     }
 
@@ -238,7 +239,7 @@ contract ForceWithdrawMarginTest is Test {
         if (illiquid) _fundGlobalLiquidity(4 * _total(n));
 
         _setSharePrice(cfgPriceWad); // non-round vault share/asset ratio
-        vault.approve(address(vaultBundles), type(uint256).max);
+        vault.approve(address(exitBundles), type(uint256).max);
         deal(address(loanToken), address(this), 0);
     }
 
@@ -270,23 +271,29 @@ contract ForceWithdrawMarginTest is Test {
         if (margin >= bal) return false;
         uint256 fWA = IVault(vaultAddr).previewRedeem(bal - margin);
         if (fWA == 0) return false;
+        SharesPermit memory noSharesPermit =
+            SharesPermit({value: 0, nonce: 0, deadline: 0, v: 0, r: bytes32(0), s: bytes32(0)});
 
         if (scenario == V1_ILLIQUID) {
-            try vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV1(vaultAddr, marketList, fWA, block.timestamp) {
+            try exitBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+                vaultAddr, adapterAddr, fWA, noSharesPermit, 0, address(0), block.timestamp
+            ) {
                 return true;
             } catch {
                 return false;
             }
         } else if (scenario == V2_ILLIQUID) {
-            try vaultBundles.vaultBundlesV1ForceWithdrawIlliquidVaultV2(
-                vaultAddr, adapterAddr, marketList, fWA, block.timestamp
+            try exitBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+                vaultAddr, adapterAddr, marketList, fWA, noSharesPermit, block.timestamp
             ) {
                 return true;
             } catch {
                 return false;
             }
         } else {
-            try vaultBundles.vaultBundlesV1ForceWithdrawLiquidVaultV2(vaultAddr, adapterAddr, fWA, block.timestamp) {
+            try exitBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+                vaultAddr, adapterAddr, fWA, noSharesPermit, 0, address(0), block.timestamp
+            ) {
                 return true;
             } catch {
                 return false;
@@ -298,7 +305,7 @@ contract ForceWithdrawMarginTest is Test {
 
     // Theoretical safe margin (in shares): the exit is split into independent vault withdrawals.
     // Each withdrawal burns previewWithdraw(assets) shares (mulDivUp), so it rounds up by at most one share.
-    // The V1 path withdraws forceWithdrawAssets = previewRedeem(balance - margin), so it needs no margin (0).
+    // The V1 path withdraws exitAssets = previewRedeem(balance - margin), so it needs no margin (0).
     // The illiquid V2 path makes two withdrawals per market (penalty and deallocated assets), hence 2N.
     // The liquid V2 path makes one upfront withdrawal, one penalty withdrawal per market, and one final withdrawal, hence N + 2.
     function _margin(uint256 scenario, uint256 n) internal pure returns (uint256) {
