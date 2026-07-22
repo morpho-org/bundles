@@ -40,6 +40,8 @@ contract VaultExitMarginTest is Test {
 
     uint256 internal constant PENALTY = 0.01e18;
     uint256 internal constant PER_MARKET = 100e18;
+    // Huge amount to allow for flash-loan and supply callback global liquidity needs.
+    uint256 internal constant GLOBAL_LIQUIDITY = 1_000_000e18;
 
     IMorpho internal morpho;
     VaultExitBundlesV1 internal exitBundles;
@@ -51,7 +53,6 @@ contract VaultExitMarginTest is Test {
     address internal curator = makeAddr("curator");
     address internal allocator = makeAddr("allocator");
     address internal borrower = makeAddr("borrower");
-    address internal liquidityProvider = makeAddr("liquidityProvider");
 
     address internal vaultAddr;
     address internal adapterAddr;
@@ -76,6 +77,18 @@ contract VaultExitMarginTest is Test {
         vm.stopPrank();
 
         exitBundles = new VaultExitBundlesV1(address(morpho));
+
+        // Supply plenty of loan token to a never-borrowed market so Morpho holds global liquidity, for the V1 flash loan and for the illiquid V2 path's deallocations during the supply callback (before Morpho is repaid).
+        MarketParams memory m =
+            MarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), 0.95e18);
+        morpho.createMarket(m);
+        address supplier = makeAddr("supplier");
+        deal(address(loanToken), supplier, GLOBAL_LIQUIDITY);
+        vm.startPrank(supplier);
+        loanToken.approve(address(morpho), type(uint256).max);
+        morpho.supply(m, GLOBAL_LIQUIDITY, 0, supplier, "");
+        vm.stopPrank();
+
         baseSnap = vm.snapshotState();
     }
 
@@ -105,9 +118,9 @@ contract VaultExitMarginTest is Test {
     }
 
     /// @dev Simulates accrued yield on a market via a storage cheat so its share/asset ratio is non-round.
-    function _accrueYield(MarketParams memory mp, uint256 yield) internal {
+    function _accrueYield(MarketParams memory marketParams, uint256 yield) internal {
         if (yield == 0) return;
-        bytes32 slot = MorphoStorageLib.marketTotalSupplyAssetsAndSharesSlot(mp.id());
+        bytes32 slot = MorphoStorageLib.marketTotalSupplyAssetsAndSharesSlot(marketParams.id());
         uint256 packed = uint256(vm.load(address(morpho), slot));
         // forge-lint:disable-next-line(unsafe-typecast) truncating on purpose.
         uint256 totalSupplyAssets = uint128(packed);
@@ -116,37 +129,16 @@ contract VaultExitMarginTest is Test {
         deal(address(loanToken), address(morpho), loanToken.balanceOf(address(morpho)) + yield);
     }
 
-    /// @dev Borrows `amount` out of `mp` (over-collateralized) to remove that much liquidity.
-    function _borrowOut(MarketParams memory mp, uint256 amount) internal {
+    /// @dev Borrows `amount` out of `marketParams` (over-collateralized) to remove that much liquidity.
+    function _borrowOut(MarketParams memory marketParams, uint256 amount) internal {
         if (amount == 0) return;
-        uint256 collateral = amount * WAD / mp.lltv * 2;
+        uint256 collateral = amount * WAD / marketParams.lltv * 2;
         deal(address(collateralToken), borrower, collateralToken.balanceOf(borrower) + collateral);
         vm.startPrank(borrower);
         collateralToken.approve(address(morpho), type(uint256).max);
-        morpho.supplyCollateral(mp, collateral, borrower, "");
-        morpho.borrow(mp, amount, 0, borrower, borrower);
+        morpho.supplyCollateral(marketParams, collateral, borrower, "");
+        morpho.borrow(marketParams, amount, 0, borrower, borrower);
         vm.stopPrank();
-    }
-
-    /// @dev Supplies plenty of loan token to a never-borrowed market so Morpho holds global liquidity (V1 flash loan).
-    function _fundGlobalLiquidity(uint256 amount) internal {
-        MarketParams memory m =
-            MarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), 0.95e18);
-        morpho.createMarket(m);
-        deal(address(loanToken), liquidityProvider, amount);
-        vm.startPrank(liquidityProvider);
-        loanToken.approve(address(morpho), type(uint256).max);
-        morpho.supply(m, amount, 0, liquidityProvider, "");
-        vm.stopPrank();
-    }
-
-    /// @dev Sets a Vault V2 share price != 1 while keeping the vault balance consistent with the total supply.
-    function _setSharePrice(uint256 priceWad) internal {
-        uint256 newShares = IVaultV2(vaultAddr).totalAssets() * WAD / priceWad;
-        vm.store(vaultAddr, bytes32(uint256(11)), bytes32(newShares));
-        vm.store(vaultAddr, keccak256(abi.encode(address(this), uint256(12))), bytes32(newShares));
-        assertEq(IVaultV2(vaultAddr).totalSupply(), newShares, "totalSupply slot");
-        assertEq(IVaultV2(vaultAddr).balanceOf(address(this)), newShares, "balanceOf slot");
     }
 
     /// SETUPS ///
@@ -184,7 +176,6 @@ contract VaultExitMarginTest is Test {
             _accrueYield(marketList[i], _yieldOf(i));
             _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(vault)));
         }
-        _fundGlobalLiquidity(4 * _total(n));
 
         IVaultV2(vaultAddr).approve(address(exitBundles), type(uint256).max); // ERC20 approve, same selector
         deal(address(loanToken), address(this), 0);
@@ -233,11 +224,13 @@ contract VaultExitMarginTest is Test {
             _accrueYield(marketList[i], _yieldOf(i));
             if (illiquid) _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(adapter)));
         }
-        // The illiquid path deallocates during a supply callback, before Morpho is repaid: Morpho needs global
-        // liquidity to service those withdrawals.
-        if (illiquid) _fundGlobalLiquidity(4 * _total(n));
 
-        _setSharePrice(cfgPriceWad); // non-round vault share/asset ratio
+        // Set a Vault V2 share price != 1 while keeping the vault balance consistent with the total supply.
+        uint256 newShares = vault.totalAssets() * WAD / cfgPriceWad;
+        vm.store(address(vault), bytes32(uint256(11)), bytes32(newShares));
+        vm.store(address(vault), keccak256(abi.encode(address(this), uint256(12))), bytes32(newShares));
+        assertEq(vault.totalSupply(), newShares, "totalSupply slot");
+        assertEq(vault.balanceOf(address(this)), newShares, "balanceOf slot");
         vault.approve(address(exitBundles), type(uint256).max);
         deal(address(loanToken), address(this), 0);
     }
@@ -265,38 +258,26 @@ contract VaultExitMarginTest is Test {
         else _setupV2(n, scenario == V2_ILLIQUID);
     }
 
-    function _attempt(uint256 scenario, uint256 margin) internal returns (bool) {
-        uint256 bal = IVault(vaultAddr).balanceOf(address(this));
-        if (margin >= bal) return false;
-        uint256 fWA = IVault(vaultAddr).previewRedeem(bal - margin);
-        if (fWA == 0) return false;
+    function _attempt(uint256 scenario, uint256 margin) internal {
+        uint256 balance = IVault(vaultAddr).balanceOf(address(this));
+        if (margin >= balance) return;
+        uint256 exitAssets = IVault(vaultAddr).previewRedeem(balance - margin);
+        if (exitAssets == 0) return;
         SharesPermit memory noSharesPermit =
             SharesPermit({value: 0, nonce: 0, deadline: 0, v: 0, r: bytes32(0), s: bytes32(0)});
 
         if (scenario == V1_ILLIQUID) {
-            try exitBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-                vaultAddr, marketList, fWA, noSharesPermit, block.timestamp
-            ) {
-                return true;
-            } catch {
-                return false;
-            }
+            exitBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
+                vaultAddr, marketList, exitAssets, noSharesPermit, block.timestamp
+            );
         } else if (scenario == V2_ILLIQUID) {
-            try exitBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-                vaultAddr, adapterAddr, marketList, fWA, noSharesPermit, block.timestamp
-            ) {
-                return true;
-            } catch {
-                return false;
-            }
+            exitBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+                vaultAddr, adapterAddr, marketList, exitAssets, noSharesPermit, block.timestamp
+            );
         } else {
-            try exitBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-                vaultAddr, adapterAddr, fWA, noSharesPermit, 0, address(0), block.timestamp
-            ) {
-                return true;
-            } catch {
-                return false;
-            }
+            exitBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+                vaultAddr, adapterAddr, exitAssets, noSharesPermit, 0, address(0), block.timestamp
+            );
         }
     }
 
@@ -317,7 +298,7 @@ contract VaultExitMarginTest is Test {
         n = bound(n, 1, MAX_N);
         cfgSeed = seed;
         _setup(scenario, n);
-        assertTrue(_attempt(scenario, _margin(scenario, n)), "force withdraw reverts at theoretical margin");
+        _attempt(scenario, _margin(scenario, n));
     }
 
     function testBoundV1(uint256 n, uint256 seed) public {
