@@ -54,8 +54,8 @@ contract VaultExitMarginTest is Test {
     address internal allocator = makeAddr("allocator");
     address internal borrower = makeAddr("borrower");
 
-    address internal vaultAddr;
-    address internal adapterAddr;
+    address internal vault;
+    address internal adapter;
     MarketParams[] internal marketList;
     uint256 internal cfgSeed;
 
@@ -137,12 +137,14 @@ contract VaultExitMarginTest is Test {
     /// SETUPS ///
 
     function _setupV1(uint256 n) internal {
-        IMetaMorpho vault = IMetaMorpho(
-            deployCode(
-                "MetaMorpho.sol:MetaMorpho", abi.encode(owner, address(morpho), 1 days, address(loanToken), "V1", "V1")
+        vault = address(
+            IMetaMorpho(
+                deployCode(
+                    "MetaMorpho.sol:MetaMorpho",
+                    abi.encode(owner, address(morpho), 1 days, address(loanToken), "V1", "V1")
+                )
             )
         );
-        vaultAddr = address(vault);
 
         Id[] memory queue = new Id[](n);
         vm.startPrank(owner);
@@ -151,36 +153,35 @@ contract VaultExitMarginTest is Test {
             morpho.createMarket(m);
             marketList.push(m);
             // forge-lint:disable-next-line(unsafe-typecast)
-            vault.submitCap(m, uint184(_amt(i)));
+            IMetaMorpho(vault).submitCap(m, uint184(_amt(i)));
             queue[i] = m.id();
         }
         vm.warp(block.timestamp + 1 days);
         for (uint256 i = 0; i < n; i++) {
-            vault.acceptCap(marketList[i]);
+            IMetaMorpho(vault).acceptCap(marketList[i]);
         }
-        vault.setSupplyQueue(queue);
+        IMetaMorpho(vault).setSupplyQueue(queue);
         vm.stopPrank();
 
         deal(address(loanToken), address(this), _total(n));
-        loanToken.approve(address(vault), type(uint256).max);
-        vault.deposit(_total(n), address(this));
+        loanToken.approve(vault, type(uint256).max);
+        IMetaMorpho(vault).deposit(_total(n), address(this));
 
         for (uint256 i = 0; i < n; i++) {
             _accrueYield(marketList[i]);
             _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(vault)));
         }
 
-        IVaultV2(vaultAddr).approve(address(exitBundles), type(uint256).max); // ERC20 approve, same selector
+        IVaultV2(vault).approve(address(exitBundles), type(uint256).max); // ERC20 approve, same selector
         deal(address(loanToken), address(this), 0);
     }
 
     function _setupV2(uint256 n, bool illiquid) internal {
         IVaultV2Factory vaultFactory = IVaultV2Factory(deployCode("VaultV2Factory.sol:VaultV2Factory"));
-        IVaultV2 vault = IVaultV2(vaultFactory.createVaultV2(owner, address(loanToken), bytes32(0)));
-        vaultAddr = address(vault);
+        vault = address(IVaultV2(vaultFactory.createVaultV2(owner, address(loanToken), bytes32(0))));
 
         vm.prank(owner);
-        vault.setCurator(curator);
+        IVaultV2(vault).setCurator(curator);
         _submitAndExec(abi.encodeCall(IVaultV2.setIsAllocator, (allocator, true)));
 
         IMorphoMarketV1AdapterV2Factory adapterFactory = IMorphoMarketV1AdapterV2Factory(
@@ -188,50 +189,48 @@ contract VaultExitMarginTest is Test {
                 "MorphoMarketV1AdapterV2Factory.sol:MorphoMarketV1AdapterV2Factory", abi.encode(morpho, address(0))
             )
         );
-        IMorphoMarketV1AdapterV2 adapter =
-            IMorphoMarketV1AdapterV2(adapterFactory.createMorphoMarketV1AdapterV2(address(vault)));
-        adapterAddr = address(adapter);
-        _submitAndExec(abi.encodeCall(IVaultV2.addAdapter, (address(adapter))));
+        adapter = address(IMorphoMarketV1AdapterV2(adapterFactory.createMorphoMarketV1AdapterV2(address(vault))));
+        _submitAndExec(abi.encodeCall(IVaultV2.addAdapter, (adapter)));
 
         vm.prank(allocator);
-        vault.setMaxRate(MAX_MAX_RATE);
+        IVaultV2(vault).setMaxRate(MAX_MAX_RATE);
 
-        _setMaxCaps(abi.encode("this", address(adapter)));
+        _setMaxCaps(abi.encode("this", adapter));
         _setMaxCaps(abi.encode("collateralToken", address(collateralToken)));
         for (uint256 i = 0; i < n; i++) {
             MarketParams memory m = _market(i);
             morpho.createMarket(m);
             marketList.push(m);
-            _setMaxCaps(abi.encode("this/marketParams", address(adapter), m));
+            _setMaxCaps(abi.encode("this/marketParams", adapter, m));
         }
 
-        _submitAndExec(abi.encodeCall(IVaultV2.setForceDeallocatePenalty, (address(adapter), PENALTY)));
+        _submitAndExec(abi.encodeCall(IVaultV2.setForceDeallocatePenalty, (adapter, PENALTY)));
 
         deal(address(loanToken), address(this), _total(n));
         loanToken.approve(address(vault), type(uint256).max);
-        vault.deposit(_total(n), address(this));
+        IVaultV2(vault).deposit(_total(n), address(this));
 
         for (uint256 i = 0; i < n; i++) {
             vm.prank(allocator);
-            vault.allocate(address(adapter), abi.encode(marketList[i]), _amt(i));
+            IVaultV2(vault).allocate(adapter, abi.encode(marketList[i]), _amt(i));
             _accrueYield(marketList[i]);
             if (illiquid) _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(adapter)));
         }
 
         // Set a Vault V2 share price != 1 while keeping the vault balance consistent with the total supply.
-        uint256 newShares = vault.totalAssets() * WAD / 1.07e18;
+        uint256 newShares = IVaultV2(vault).totalAssets() * WAD / 1.07e18;
         vm.store(address(vault), bytes32(uint256(11)), bytes32(newShares));
         vm.store(address(vault), keccak256(abi.encode(address(this), uint256(12))), bytes32(newShares));
-        assertEq(vault.totalSupply(), newShares, "totalSupply slot");
-        assertEq(vault.balanceOf(address(this)), newShares, "balanceOf slot");
-        vault.approve(address(exitBundles), type(uint256).max);
+        assertEq(IVaultV2(vault).totalSupply(), newShares, "totalSupply slot");
+        assertEq(IVaultV2(vault).balanceOf(address(this)), newShares, "balanceOf slot");
+        IVaultV2(vault).approve(address(exitBundles), type(uint256).max);
         deal(address(loanToken), address(this), 0);
     }
 
     function _submitAndExec(bytes memory data) internal {
         vm.prank(curator);
-        IVaultV2(vaultAddr).submit(data);
-        (bool success,) = vaultAddr.call(data);
+        IVaultV2(vault).submit(data);
+        (bool success,) = vault.call(data);
         require(success, "exec failed");
     }
 
@@ -250,24 +249,24 @@ contract VaultExitMarginTest is Test {
     }
 
     function _attempt(uint256 scenario, uint256 margin) internal {
-        uint256 balance = IVault(vaultAddr).balanceOf(address(this));
+        uint256 balance = IVault(vault).balanceOf(address(this));
         if (margin >= balance) return;
-        uint256 exitAssets = IVault(vaultAddr).previewRedeem(balance - margin);
+        uint256 exitAssets = IVault(vault).previewRedeem(balance - margin);
         if (exitAssets == 0) return;
         SharesPermit memory noSharesPermit =
             SharesPermit({value: 0, nonce: 0, deadline: 0, v: 0, r: bytes32(0), s: bytes32(0)});
 
         if (scenario == V1_ILLIQUID) {
             exitBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-                vaultAddr, marketList, exitAssets, noSharesPermit, block.timestamp
+                vault, marketList, exitAssets, noSharesPermit, block.timestamp
             );
         } else if (scenario == V2_ILLIQUID) {
             exitBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-                vaultAddr, adapterAddr, marketList, exitAssets, noSharesPermit, block.timestamp
+                vault, adapter, marketList, exitAssets, noSharesPermit, block.timestamp
             );
         } else {
             exitBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-                vaultAddr, adapterAddr, exitAssets, noSharesPermit, 0, address(0), block.timestamp
+                vault, adapter, exitAssets, noSharesPermit, 0, address(0), block.timestamp
             );
         }
     }
