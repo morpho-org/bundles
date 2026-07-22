@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "../lib/forge-std/src/Test.sol";
+import {Test, StdStorage, stdStorage} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
 import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
@@ -28,6 +28,7 @@ import {
 contract VaultExitMarginTest is Test {
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
+    using stdStorage for StdStorage;
 
     uint256 internal constant V1_ILLIQUID = 0;
     uint256 internal constant V2_ILLIQUID = 1;
@@ -36,6 +37,7 @@ contract VaultExitMarginTest is Test {
 
     uint256 internal constant PENALTY = 0.01e18;
     uint256 internal constant PER_MARKET = 100e18;
+    uint256 internal constant SHARE_PRICE = 1.07e18; // non-round vault share/asset ratio
     // Huge amount to allow for flash-loan and supply callback global liquidity needs.
     uint256 internal constant GLOBAL_LIQUIDITY = 1_000_000e18;
     SharesPermit internal noSharesPermit =
@@ -96,7 +98,7 @@ contract VaultExitMarginTest is Test {
 
     // Per-market allocation, distinct per market to stress rounding.
     function _amt(uint256 i) internal pure returns (uint256) {
-        return 1e18 + uint256(keccak256(abi.encode(i, "a"))) % PER_MARKET;
+        return 1e18 + uint256(keccak256(abi.encode(i))) % PER_MARKET;
     }
 
     function _total(uint256 numberOfMarkets) internal pure returns (uint256 s) {
@@ -113,7 +115,7 @@ contract VaultExitMarginTest is Test {
         // forge-lint:disable-next-line(unsafe-typecast) truncating on purpose.
         uint256 totalSupplyAssets = uint128(packed);
         uint256 totalSupplyShares = packed >> 128;
-        uint256 yield = uint256(keccak256(abi.encode(Id.unwrap(marketParams.id()), "y"))) % totalSupplyAssets;
+        uint256 yield = uint256(keccak256(abi.encode(Id.unwrap(marketParams.id())))) % totalSupplyAssets;
         if (yield == 0) return;
         vm.store(address(morpho), slot, bytes32((totalSupplyShares << 128) | (totalSupplyAssets + yield)));
         deal(address(loanToken), address(morpho), loanToken.balanceOf(address(morpho)) + yield);
@@ -169,6 +171,14 @@ contract VaultExitMarginTest is Test {
             _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(vault)));
         }
 
+        // Set the vault share price to SHARE_PRICE, keeping the sole holder's balance equal to the total supply.
+        uint256 newShares = IMetaMorpho(vault).totalAssets() * WAD / SHARE_PRICE;
+        stdstore.target(vault).sig("totalSupply()").checked_write(newShares);
+        stdstore.target(vault).sig("balanceOf(address)").with_key(address(this)).checked_write(newShares);
+        assertApproxEqAbs(
+            IMetaMorpho(vault).totalAssets() * WAD / IMetaMorpho(vault).totalSupply(), SHARE_PRICE, 1, "share price"
+        );
+
         IMetaMorpho(vault).approve(address(exitBundles), type(uint256).max);
         deal(address(loanToken), address(this), 0);
     }
@@ -214,12 +224,14 @@ contract VaultExitMarginTest is Test {
             if (illiquid) _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(adapter)));
         }
 
-        // Set a Vault V2 share price != 1 while keeping the vault balance consistent with the total supply.
-        uint256 newShares = IVaultV2(vault).totalAssets() * WAD / 1.07e18;
-        vm.store(address(vault), bytes32(uint256(11)), bytes32(newShares));
-        vm.store(address(vault), keccak256(abi.encode(address(this), uint256(12))), bytes32(newShares));
-        assertEq(IVaultV2(vault).totalSupply(), newShares, "totalSupply slot");
-        assertEq(IVaultV2(vault).balanceOf(address(this)), newShares, "balanceOf slot");
+        // Set the vault share price to SHARE_PRICE, keeping the sole holder's balance equal to the total supply.
+        uint256 newShares = IVaultV2(vault).totalAssets() * WAD / SHARE_PRICE;
+        stdstore.target(vault).sig("totalSupply()").checked_write(newShares);
+        stdstore.target(vault).sig("balanceOf(address)").with_key(address(this)).checked_write(newShares);
+        assertApproxEqAbs(
+            IVaultV2(vault).totalAssets() * WAD / IVaultV2(vault).totalSupply(), SHARE_PRICE, 1, "share price"
+        );
+
         IVaultV2(vault).approve(address(exitBundles), type(uint256).max);
         deal(address(loanToken), address(this), 0);
     }
@@ -249,7 +261,7 @@ contract VaultExitMarginTest is Test {
         return numberOfMarkets + 2;
     }
 
-    function testBoundV1(uint256 numberOfMarkets) public {
+    function testMarginV1(uint256 numberOfMarkets) public {
         numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
         _setupV1(numberOfMarkets);
 
@@ -264,7 +276,7 @@ contract VaultExitMarginTest is Test {
         );
     }
 
-    function testBoundV2Illiquid(uint256 numberOfMarkets) public {
+    function testMarginV2Illiquid(uint256 numberOfMarkets) public {
         numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
         _setupV2(numberOfMarkets, true);
 
@@ -279,7 +291,7 @@ contract VaultExitMarginTest is Test {
         );
     }
 
-    function testBoundV2Liquid(uint256 numberOfMarkets) public {
+    function testMarginV2Liquid(uint256 numberOfMarkets) public {
         numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
         _setupV2(numberOfMarkets, false);
 
