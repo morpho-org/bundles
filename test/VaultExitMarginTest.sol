@@ -24,11 +24,6 @@ import {
     IMorphoMarketV1AdapterV2Factory
 } from "../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2Factory.sol";
 
-interface IVault {
-    function balanceOf(address account) external view returns (uint256);
-    function previewRedeem(uint256 shares) external view returns (uint256);
-}
-
 /// @dev Harness verifying the theoretical safety margin `shares` for which exitAssets = previewRedeem(balanceOf(sender) - shares) does not revert, for the three exit functions and a varying number of markets.
 contract VaultExitMarginTest is Test {
     using MarketParamsLib for MarketParams;
@@ -37,11 +32,14 @@ contract VaultExitMarginTest is Test {
     uint256 internal constant V1_ILLIQUID = 0;
     uint256 internal constant V2_ILLIQUID = 1;
     uint256 internal constant V2_LIQUID = 2;
+    uint256 internal constant MAX_NUMBER_OF_MARKETS = 20;
 
     uint256 internal constant PENALTY = 0.01e18;
     uint256 internal constant PER_MARKET = 100e18;
     // Huge amount to allow for flash-loan and supply callback global liquidity needs.
     uint256 internal constant GLOBAL_LIQUIDITY = 1_000_000e18;
+    SharesPermit internal noSharesPermit =
+        SharesPermit({value: 0, nonce: 0, deadline: 0, v: 0, r: bytes32(0), s: bytes32(0)});
 
     IMorpho internal morpho;
     VaultExitBundlesV1 internal exitBundles;
@@ -102,8 +100,8 @@ contract VaultExitMarginTest is Test {
         return 1e18 + uint256(keccak256(abi.encode(cfgSeed, i, "a"))) % PER_MARKET;
     }
 
-    function _total(uint256 n) internal view returns (uint256 s) {
-        for (uint256 i = 0; i < n; i++) {
+    function _total(uint256 numberOfMarkets) internal view returns (uint256 s) {
+        for (uint256 i = 0; i < numberOfMarkets; i++) {
             s += _amt(i);
         }
     }
@@ -136,7 +134,7 @@ contract VaultExitMarginTest is Test {
 
     /// SETUPS ///
 
-    function _setupV1(uint256 n) internal {
+    function _setupV1(uint256 numberOfMarkets) internal {
         vault = address(
             IMetaMorpho(
                 deployCode(
@@ -146,9 +144,9 @@ contract VaultExitMarginTest is Test {
             )
         );
 
-        Id[] memory queue = new Id[](n);
+        Id[] memory queue = new Id[](numberOfMarkets);
         vm.startPrank(owner);
-        for (uint256 i = 0; i < n; i++) {
+        for (uint256 i = 0; i < numberOfMarkets; i++) {
             MarketParams memory m = _market(i);
             morpho.createMarket(m);
             marketList.push(m);
@@ -157,26 +155,26 @@ contract VaultExitMarginTest is Test {
             queue[i] = m.id();
         }
         vm.warp(block.timestamp + 1 days);
-        for (uint256 i = 0; i < n; i++) {
+        for (uint256 i = 0; i < numberOfMarkets; i++) {
             IMetaMorpho(vault).acceptCap(marketList[i]);
         }
         IMetaMorpho(vault).setSupplyQueue(queue);
         vm.stopPrank();
 
-        deal(address(loanToken), address(this), _total(n));
+        deal(address(loanToken), address(this), _total(numberOfMarkets));
         loanToken.approve(vault, type(uint256).max);
-        IMetaMorpho(vault).deposit(_total(n), address(this));
+        IMetaMorpho(vault).deposit(_total(numberOfMarkets), address(this));
 
-        for (uint256 i = 0; i < n; i++) {
+        for (uint256 i = 0; i < numberOfMarkets; i++) {
             _accrueYield(marketList[i]);
             _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(vault)));
         }
 
-        IVaultV2(vault).approve(address(exitBundles), type(uint256).max); // ERC20 approve, same selector
+        IMetaMorpho(vault).approve(address(exitBundles), type(uint256).max);
         deal(address(loanToken), address(this), 0);
     }
 
-    function _setupV2(uint256 n, bool illiquid) internal {
+    function _setupV2(uint256 numberOfMarkets, bool illiquid) internal {
         IVaultV2Factory vaultFactory = IVaultV2Factory(deployCode("VaultV2Factory.sol:VaultV2Factory"));
         vault = address(IVaultV2(vaultFactory.createVaultV2(owner, address(loanToken), bytes32(0))));
 
@@ -197,7 +195,7 @@ contract VaultExitMarginTest is Test {
 
         _setMaxCaps(abi.encode("this", adapter));
         _setMaxCaps(abi.encode("collateralToken", address(collateralToken)));
-        for (uint256 i = 0; i < n; i++) {
+        for (uint256 i = 0; i < numberOfMarkets; i++) {
             MarketParams memory m = _market(i);
             morpho.createMarket(m);
             marketList.push(m);
@@ -206,11 +204,11 @@ contract VaultExitMarginTest is Test {
 
         _submitAndExec(abi.encodeCall(IVaultV2.setForceDeallocatePenalty, (adapter, PENALTY)));
 
-        deal(address(loanToken), address(this), _total(n));
+        deal(address(loanToken), address(this), _total(numberOfMarkets));
         loanToken.approve(address(vault), type(uint256).max);
-        IVaultV2(vault).deposit(_total(n), address(this));
+        IVaultV2(vault).deposit(_total(numberOfMarkets), address(this));
 
-        for (uint256 i = 0; i < n; i++) {
+        for (uint256 i = 0; i < numberOfMarkets; i++) {
             vm.prank(allocator);
             IVaultV2(vault).allocate(adapter, abi.encode(marketList[i]), _amt(i));
             _accrueYield(marketList[i]);
@@ -239,38 +237,6 @@ contract VaultExitMarginTest is Test {
         _submitAndExec(abi.encodeCall(IVaultV2.increaseRelativeCap, (idData, WAD)));
     }
 
-    /// ATTEMPT ///
-
-    uint256 internal constant MAX_N = 20;
-
-    function _setup(uint256 scenario, uint256 n) internal {
-        if (scenario == V1_ILLIQUID) _setupV1(n);
-        else _setupV2(n, scenario == V2_ILLIQUID);
-    }
-
-    function _attempt(uint256 scenario, uint256 margin) internal {
-        uint256 balance = IVault(vault).balanceOf(address(this));
-        if (margin >= balance) return;
-        uint256 exitAssets = IVault(vault).previewRedeem(balance - margin);
-        if (exitAssets == 0) return;
-        SharesPermit memory noSharesPermit =
-            SharesPermit({value: 0, nonce: 0, deadline: 0, v: 0, r: bytes32(0), s: bytes32(0)});
-
-        if (scenario == V1_ILLIQUID) {
-            exitBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-                vault, marketList, exitAssets, noSharesPermit, block.timestamp
-            );
-        } else if (scenario == V2_ILLIQUID) {
-            exitBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
-                vault, adapter, marketList, exitAssets, noSharesPermit, block.timestamp
-            );
-        } else {
-            exitBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-                vault, adapter, exitAssets, noSharesPermit, 0, address(0), block.timestamp
-            );
-        }
-    }
-
     /// THEORETICAL BOUND ///
 
     // Theoretical safe margin (in shares): the exit is split into independent vault withdrawals.
@@ -278,28 +244,57 @@ contract VaultExitMarginTest is Test {
     // The V1 path withdraws exitAssets = previewRedeem(balance - margin), so it needs no margin (0).
     // The illiquid V2 path makes two withdrawals per market (penalty and deallocated assets), hence 2N.
     // The liquid V2 path makes one upfront withdrawal, one penalty withdrawal per market, and one final withdrawal, hence N + 2.
-    function _margin(uint256 scenario, uint256 n) internal pure returns (uint256) {
+    function _margin(uint256 scenario, uint256 numberOfMarkets) internal pure returns (uint256) {
         if (scenario == V1_ILLIQUID) return 0;
-        if (scenario == V2_ILLIQUID) return 2 * n;
-        return n + 2;
+        if (scenario == V2_ILLIQUID) return 2 * numberOfMarkets;
+        return numberOfMarkets + 2;
     }
 
-    function _checkBound(uint256 scenario, uint256 n, uint256 seed) internal {
-        n = bound(n, 1, MAX_N);
+    function testBoundV1(uint256 numberOfMarkets, uint256 seed) public {
+        numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
         cfgSeed = seed;
-        _setup(scenario, n);
-        _attempt(scenario, _margin(scenario, n));
+        _setupV1(numberOfMarkets);
+
+        uint256 margin = _margin(V1_ILLIQUID, numberOfMarkets);
+        uint256 balance = IMetaMorpho(vault).balanceOf(address(this));
+        if (margin >= balance) return;
+        uint256 exitAssets = IMetaMorpho(vault).previewRedeem(balance - margin);
+        if (exitAssets == 0) return;
+
+        exitBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
+            vault, marketList, exitAssets, noSharesPermit, block.timestamp
+        );
     }
 
-    function testBoundV1(uint256 n, uint256 seed) public {
-        _checkBound(V1_ILLIQUID, n, seed);
+    function testBoundV2Illiquid(uint256 numberOfMarkets, uint256 seed) public {
+        numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
+        cfgSeed = seed;
+        _setupV2(numberOfMarkets, true);
+
+        uint256 margin = _margin(V2_ILLIQUID, numberOfMarkets);
+        uint256 balance = IVaultV2(vault).balanceOf(address(this));
+        if (margin >= balance) return;
+        uint256 exitAssets = IVaultV2(vault).previewRedeem(balance - margin);
+        if (exitAssets == 0) return;
+
+        exitBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            vault, adapter, marketList, exitAssets, noSharesPermit, block.timestamp
+        );
     }
 
-    function testBoundV2Illiquid(uint256 n, uint256 seed) public {
-        _checkBound(V2_ILLIQUID, n, seed);
-    }
+    function testBoundV2Liquid(uint256 numberOfMarkets, uint256 seed) public {
+        numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
+        cfgSeed = seed;
+        _setupV2(numberOfMarkets, false);
 
-    function testBoundV2Liquid(uint256 n, uint256 seed) public {
-        _checkBound(V2_LIQUID, n, seed);
+        uint256 margin = _margin(V2_LIQUID, numberOfMarkets);
+        uint256 balance = IVaultV2(vault).balanceOf(address(this));
+        if (margin >= balance) return;
+        uint256 exitAssets = IVaultV2(vault).previewRedeem(balance - margin);
+        if (exitAssets == 0) return;
+
+        exitBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            vault, adapter, exitAssets, noSharesPermit, 0, address(0), block.timestamp
+        );
     }
 }
