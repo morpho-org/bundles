@@ -92,7 +92,6 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// IN-KIND REDEMPTION VAULT V2 ///
 
     /// @dev Exit from a Vault V2 and get Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
-    /// @dev Assumes that adapter is a Morpho Blue adapter.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
     /// @dev The assetsToDeallocate amount is floor(exitAssets * WAD / (WAD + penalty)).
     /// @dev Requires Morpho Blue to have at least assetsToDeallocate in loan token balance.
@@ -109,6 +108,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
+        require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
 
@@ -146,7 +146,6 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     /// @dev Withdraw from a Vault V2, even if the vault doesn't have enough idle and liquidity adapter assets.
     /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and reverts.
-    /// @dev Assumes that adapter is a Morpho Blue adapter.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
     /// @dev Starts by withdrawing without penalty everything the vault can pay: its idle assets and the liquidity available through the liquidity adapter.
     /// @dev The assetsToDeallocate amount is floor((exitAssets - assetsToWithdraw) * WAD / (WAD + penalty)), where assetsToWithdraw is the amount withdrawn without penalty.
@@ -163,6 +162,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
+        require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
         require(referralFeePct < WAD, PctExceeded());
@@ -173,7 +173,6 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 withdrawableAssets = IERC20(asset).balanceOf(vault);
         address liquidityAdapter = IVaultV2(vault).liquidityAdapter();
         if (liquidityAdapter != address(0)) {
-            require(liquidityAdapter == adapter, LiquidityAdapterMismatch());
             MarketParams memory liquidityMarketParams = abi.decode(IVaultV2(vault).liquidityData(), (MarketParams));
             uint256 liquidityAdapterShares =
                 IMorphoMarketV1AdapterV2(liquidityAdapter).supplyShares(Id.unwrap(liquidityMarketParams.id()));

@@ -19,7 +19,7 @@ interface IVaultExitBundlesV1 {
     /// ERRORS ///
     error AdapterNotPartOfVault();
     error DeadlinePassed();
-    error LiquidityAdapterMismatch();
+    error InvalidAdaptersLength();
     error MorphoMismatch();
     error PctExceeded();
     error UnauthorizedCallback();

@@ -137,6 +137,16 @@ contract VaultV2ExitBundlesTest is Test {
         return assets * WAD / (WAD + PENALTY);
     }
 
+    function _addSecondAdapter() internal {
+        IMorphoMarketV1AdapterV2Factory secondAdapterFactory = IMorphoMarketV1AdapterV2Factory(
+            deployCode(
+                "MorphoMarketV1AdapterV2Factory.sol:MorphoMarketV1AdapterV2Factory", abi.encode(morpho, address(0))
+            )
+        );
+        address secondAdapter = secondAdapterFactory.createMorphoMarketV1AdapterV2(address(vault));
+        _submitAndExec(abi.encodeCall(IVaultV2.addAdapter, (secondAdapter)));
+    }
+
     /// @dev Wraps a single market into the singleton list expected by vaultExitBundlesV1InKindRedemptionVaultV2.
     function _singleton(MarketParams memory marketParams_) internal pure returns (MarketParams[] memory list) {
         list = new MarketParams[](1);
@@ -360,6 +370,15 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
+    function testInKindRedemptionInvalidAdaptersLength() public {
+        _addSecondAdapter();
+
+        vm.expectRevert(IVaultExitBundlesV1.InvalidAdaptersLength.selector);
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), new MarketParams[](0), 0, noSharesPermit, block.timestamp
+        );
+    }
+
     function testOnMorphoSupplyOnlyBlue() public {
         vm.expectRevert(IVaultExitBundlesV1.UnauthorizedCallback.selector);
         vaultBundles.onMorphoSupply(1, "");
@@ -561,6 +580,15 @@ contract VaultV2ExitBundlesTest is Test {
     }
 
     /// FORCE WITHDRAWAL ///
+
+    function testForceWithdrawInvalidAdaptersLength() public {
+        _addSecondAdapter();
+
+        vm.expectRevert(IVaultExitBundlesV1.InvalidAdaptersLength.selector);
+        vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), 0, noSharesPermit, 0, address(0), block.timestamp
+        );
+    }
 
     function testForceWithdrawAdapterNotPartOfVault() public {
         uint256 assets = 100e18;
