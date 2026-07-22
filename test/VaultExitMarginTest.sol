@@ -29,7 +29,7 @@ interface IVault {
     function previewRedeem(uint256 shares) external view returns (uint256);
 }
 
-/// @dev Harness verifying the theoretical safety margin `shares` for which exitAssets = previewRedeem(balanceOf(sender) - shares) does not revert, for the three forceWithdraw entry points and a varying number of markets.
+/// @dev Harness verifying the theoretical safety margin `shares` for which exitAssets = previewRedeem(balanceOf(sender) - shares) does not revert, for the three exit functions and a varying number of markets.
 contract VaultExitMarginTest is Test {
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
@@ -57,8 +57,6 @@ contract VaultExitMarginTest is Test {
     address internal vaultAddr;
     address internal adapterAddr;
     MarketParams[] internal marketList;
-    uint256 internal baseSnap;
-    uint256 internal cfgPriceWad = 1.07e18;
     uint256 internal cfgSeed;
 
     function setUp() public {
@@ -78,7 +76,6 @@ contract VaultExitMarginTest is Test {
 
         exitBundles = new VaultExitBundlesV1(address(morpho));
 
-        // Supply plenty of loan token to a never-borrowed market so Morpho holds global liquidity, for the V1 flash loan and for the illiquid V2 path's deallocations during the supply callback (before Morpho is repaid).
         MarketParams memory m =
             MarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), 0.95e18);
         morpho.createMarket(m);
@@ -88,8 +85,6 @@ contract VaultExitMarginTest is Test {
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(m, GLOBAL_LIQUIDITY, 0, supplier, "");
         vm.stopPrank();
-
-        baseSnap = vm.snapshotState();
     }
 
     /// HELPERS ///
@@ -102,13 +97,9 @@ contract VaultExitMarginTest is Test {
         return MarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), _lltv(i));
     }
 
-    // Per-market allocation and (non-round) yield, jittered by cfgSeed to stress rounding across configs.
+    // Per-market allocation, jittered by cfgSeed to stress rounding across configs.
     function _amt(uint256 i) internal view returns (uint256) {
         return 1e18 + uint256(keccak256(abi.encode(cfgSeed, i, "a"))) % PER_MARKET;
-    }
-
-    function _yieldOf(uint256 i) internal view returns (uint256) {
-        return uint256(keccak256(abi.encode(cfgSeed, i, "y"))) % _amt(i);
     }
 
     function _total(uint256 n) internal view returns (uint256 s) {
@@ -118,13 +109,15 @@ contract VaultExitMarginTest is Test {
     }
 
     /// @dev Simulates accrued yield on a market via a storage cheat so its share/asset ratio is non-round.
-    function _accrueYield(MarketParams memory marketParams, uint256 yield) internal {
-        if (yield == 0) return;
+    /// @dev The yield is a pseudo-random fraction of the market's assets, jittered by cfgSeed to stress rounding across configs.
+    function _accrueYield(MarketParams memory marketParams) internal {
         bytes32 slot = MorphoStorageLib.marketTotalSupplyAssetsAndSharesSlot(marketParams.id());
         uint256 packed = uint256(vm.load(address(morpho), slot));
         // forge-lint:disable-next-line(unsafe-typecast) truncating on purpose.
         uint256 totalSupplyAssets = uint128(packed);
         uint256 totalSupplyShares = packed >> 128;
+        uint256 yield = uint256(keccak256(abi.encode(cfgSeed, Id.unwrap(marketParams.id()), "y"))) % totalSupplyAssets;
+        if (yield == 0) return;
         vm.store(address(morpho), slot, bytes32((totalSupplyShares << 128) | (totalSupplyAssets + yield)));
         deal(address(loanToken), address(morpho), loanToken.balanceOf(address(morpho)) + yield);
     }
@@ -173,7 +166,7 @@ contract VaultExitMarginTest is Test {
         vault.deposit(_total(n), address(this));
 
         for (uint256 i = 0; i < n; i++) {
-            _accrueYield(marketList[i], _yieldOf(i));
+            _accrueYield(marketList[i]);
             _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(vault)));
         }
 
@@ -221,12 +214,12 @@ contract VaultExitMarginTest is Test {
         for (uint256 i = 0; i < n; i++) {
             vm.prank(allocator);
             vault.allocate(address(adapter), abi.encode(marketList[i]), _amt(i));
-            _accrueYield(marketList[i], _yieldOf(i));
+            _accrueYield(marketList[i]);
             if (illiquid) _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(adapter)));
         }
 
         // Set a Vault V2 share price != 1 while keeping the vault balance consistent with the total supply.
-        uint256 newShares = vault.totalAssets() * WAD / cfgPriceWad;
+        uint256 newShares = vault.totalAssets() * WAD / 1.07e18;
         vm.store(address(vault), bytes32(uint256(11)), bytes32(newShares));
         vm.store(address(vault), keccak256(abi.encode(address(this), uint256(12))), bytes32(newShares));
         assertEq(vault.totalSupply(), newShares, "totalSupply slot");
@@ -252,8 +245,6 @@ contract VaultExitMarginTest is Test {
     uint256 internal constant MAX_N = 20;
 
     function _setup(uint256 scenario, uint256 n) internal {
-        vm.revertToStateAndDelete(baseSnap);
-        baseSnap = vm.snapshotState();
         if (scenario == V1_ILLIQUID) _setupV1(n);
         else _setupV2(n, scenario == V2_ILLIQUID);
     }
