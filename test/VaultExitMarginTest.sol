@@ -55,7 +55,6 @@ contract VaultExitMarginTest is Test {
     address internal vault;
     address internal adapter;
     MarketParams[] internal marketList;
-    uint256 internal cfgSeed;
 
     function setUp() public {
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
@@ -95,26 +94,26 @@ contract VaultExitMarginTest is Test {
         return MarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), _lltv(i));
     }
 
-    // Per-market allocation, jittered by cfgSeed to stress rounding across configs.
-    function _amt(uint256 i) internal view returns (uint256) {
-        return 1e18 + uint256(keccak256(abi.encode(cfgSeed, i, "a"))) % PER_MARKET;
+    // Per-market allocation, distinct per market to stress rounding.
+    function _amt(uint256 i) internal pure returns (uint256) {
+        return 1e18 + uint256(keccak256(abi.encode(i, "a"))) % PER_MARKET;
     }
 
-    function _total(uint256 numberOfMarkets) internal view returns (uint256 s) {
+    function _total(uint256 numberOfMarkets) internal pure returns (uint256 s) {
         for (uint256 i = 0; i < numberOfMarkets; i++) {
             s += _amt(i);
         }
     }
 
     /// @dev Simulates accrued yield on a market via a storage cheat so its share/asset ratio is non-round.
-    /// @dev The yield is a pseudo-random fraction of the market's assets, jittered by cfgSeed to stress rounding across configs.
+    /// @dev The yield is a pseudo-random fraction of the market's assets, distinct per market to stress rounding.
     function _accrueYield(MarketParams memory marketParams) internal {
         bytes32 slot = MorphoStorageLib.marketTotalSupplyAssetsAndSharesSlot(marketParams.id());
         uint256 packed = uint256(vm.load(address(morpho), slot));
         // forge-lint:disable-next-line(unsafe-typecast) truncating on purpose.
         uint256 totalSupplyAssets = uint128(packed);
         uint256 totalSupplyShares = packed >> 128;
-        uint256 yield = uint256(keccak256(abi.encode(cfgSeed, Id.unwrap(marketParams.id()), "y"))) % totalSupplyAssets;
+        uint256 yield = uint256(keccak256(abi.encode(Id.unwrap(marketParams.id()), "y"))) % totalSupplyAssets;
         if (yield == 0) return;
         vm.store(address(morpho), slot, bytes32((totalSupplyShares << 128) | (totalSupplyAssets + yield)));
         deal(address(loanToken), address(morpho), loanToken.balanceOf(address(morpho)) + yield);
@@ -242,17 +241,16 @@ contract VaultExitMarginTest is Test {
     // Theoretical safe margin (in shares): the exit is split into independent vault withdrawals.
     // Each withdrawal burns previewWithdraw(assets) shares (mulDivUp), so it rounds up by at most one share.
     // The V1 path withdraws exitAssets = previewRedeem(balance - margin), so it needs no margin (0).
-    // The illiquid V2 path makes two withdrawals per market (penalty and deallocated assets), hence 2N.
-    // The liquid V2 path makes one upfront withdrawal, one penalty withdrawal per market, and one final withdrawal, hence N + 2.
+    // The illiquid V2 path makes two withdrawals per market (penalty and deallocated assets), hence 2 * numberOfMarkets.
+    // The liquid V2 path makes one upfront withdrawal, one penalty withdrawal per market, and one final withdrawal, hence numberOfMarkets + 2.
     function _margin(uint256 scenario, uint256 numberOfMarkets) internal pure returns (uint256) {
         if (scenario == V1_ILLIQUID) return 0;
         if (scenario == V2_ILLIQUID) return 2 * numberOfMarkets;
         return numberOfMarkets + 2;
     }
 
-    function testBoundV1(uint256 numberOfMarkets, uint256 seed) public {
+    function testBoundV1(uint256 numberOfMarkets) public {
         numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
-        cfgSeed = seed;
         _setupV1(numberOfMarkets);
 
         uint256 margin = _margin(V1_ILLIQUID, numberOfMarkets);
@@ -266,9 +264,8 @@ contract VaultExitMarginTest is Test {
         );
     }
 
-    function testBoundV2Illiquid(uint256 numberOfMarkets, uint256 seed) public {
+    function testBoundV2Illiquid(uint256 numberOfMarkets) public {
         numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
-        cfgSeed = seed;
         _setupV2(numberOfMarkets, true);
 
         uint256 margin = _margin(V2_ILLIQUID, numberOfMarkets);
@@ -282,9 +279,8 @@ contract VaultExitMarginTest is Test {
         );
     }
 
-    function testBoundV2Liquid(uint256 numberOfMarkets, uint256 seed) public {
+    function testBoundV2Liquid(uint256 numberOfMarkets) public {
         numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
-        cfgSeed = seed;
         _setupV2(numberOfMarkets, false);
 
         uint256 margin = _margin(V2_LIQUID, numberOfMarkets);
