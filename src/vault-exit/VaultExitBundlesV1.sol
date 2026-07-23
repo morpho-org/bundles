@@ -50,6 +50,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Requires the sender to have enough shares to withdraw exitAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
+    /// @dev The vault share price is not checked: after a drop (e.g. a bad debt realization) the price recovers only gradually through interest accrual, so a reverted exit retried later would only be on similar or worse terms.
     /// @dev The minted Morpho Blue shares are not checked: at most a wei per supply is lost to rounding, assuming a supply share price of at most one asset per share.
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
@@ -101,6 +102,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
+    /// @dev The vault share price is not checked: after a drop (e.g. a bad debt realization) the price recovers only gradually through interest accrual, so a reverted exit retried later would only be on similar or worse terms.
     /// @dev The minted Morpho Blue shares are not checked: at most a wei per supply is lost to rounding, assuming a supply share price of at most one asset per share (which the adapter checks at each allocation).
     function vaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
