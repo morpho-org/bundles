@@ -204,7 +204,9 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
             uint256 assets = UtilsLib.min(availableToWithdraw, remainingAssets);
             remainingAssets -= assets;
 
-            IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), assets, msg.sender);
+            if (assets > 0) {
+                IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), assets, msg.sender);
+            }
         }
 
         IVaultV2(vault).withdraw(assetsToDeallocate, address(this), msg.sender);

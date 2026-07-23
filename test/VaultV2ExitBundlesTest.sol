@@ -712,6 +712,40 @@ contract VaultV2ExitBundlesTest is Test {
         assertEq(morpho.expectedSupplyAssets(otherMarket, address(adapter)), 60e18, "second market position");
     }
 
+    /// @dev The first market is fully borrowed out, so it contributes nothing: no zero-asset forceDeallocate is
+    /// emitted for it and the whole amount comes from the second market.
+    function testForceWithdrawSkipsDryMarket() public {
+        _setUpLiquidTwoMarkets(100e18, 100e18);
+
+        // Borrow everything out of the first market ⇒ nothing of the adapter's 100 position is withdrawable there.
+        deal(address(collateralToken), borrower, 200e18);
+        vm.startPrank(borrower);
+        collateralToken.approve(address(morpho), type(uint256).max);
+        morpho.supplyCollateral(marketParams, 200e18, borrower, "");
+        morpho.borrow(marketParams, 100e18, 0, borrower, borrower);
+        vm.stopPrank();
+
+        uint256 exitAssets = 50e18;
+        vm.expectCall(
+            address(vault),
+            abi.encodeCall(IVaultV2.forceDeallocate, (address(adapter), abi.encode(marketParams), 0, address(this))),
+            0
+        );
+        vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), exitAssets, noSharesPermit, 0, address(0), block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), optimalDeallocateAssets(exitAssets), "user loan token balance");
+        assertEq(morpho.expectedSupplyAssets(marketParams, address(adapter)), 100e18, "first market position");
+        assertApproxEqAbs(
+            morpho.expectedSupplyAssets(otherMarket, address(adapter)),
+            100e18 - optimalDeallocateAssets(exitAssets),
+            2,
+            "second market position"
+        );
+    }
+
     /// @dev The liquidity available through the liquidity adapter is withdrawn first, without penalty; only the
     /// remainder is force deallocated.
     function testForceWithdrawLiquidityAdapterFirst() public {
