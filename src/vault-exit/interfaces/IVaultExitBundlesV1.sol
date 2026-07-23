@@ -33,7 +33,6 @@ interface IVaultExitBundlesV1 {
         address vault,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        uint256 minSharePriceE27,
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external;
@@ -43,7 +42,6 @@ interface IVaultExitBundlesV1 {
         address adapter,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        uint256 minSharePriceE27,
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external;
