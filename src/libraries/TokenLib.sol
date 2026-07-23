@@ -70,14 +70,40 @@ library TokenLib {
         }
     }
 
-    /// @dev Same as pullToken, but when native tokens are sent with the call, instead wraps msg.value into token.
+    /// @dev Same as pullToken, but the permit approves an amount encoded in `permit.data` that may exceed the pulled `amount`.
+    /// @dev Useful when the exact amount to pull is only known on-chain (e.g. after accruing interest): the permit is signed for an upper bound, and only `amount` is pulled.
+    function pullToken2(address token, address from, uint256 amount, TokenPermit memory permit) internal {
+        if (permit.kind == PermitKind.ERC2612) {
+            (uint256 permitAmount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) =
+                abi.decode(permit.data, (uint256, uint256, uint8, bytes32, bytes32));
+            // Tolerate revert: a third party may have already consumed the permit.
+            try IERC20Permit(token).permit(from, address(this), permitAmount, deadline, v, r, s) {} catch {}
+            SafeTransferLib.safeTransferFrom(token, from, address(this), amount);
+        } else if (permit.kind == PermitKind.Permit2) {
+            (uint256 permitAmount, uint256 nonce, uint256 deadline, bytes memory signature) =
+                abi.decode(permit.data, (uint256, uint256, uint256, bytes));
+            IPermit2(PERMIT2)
+                .permitTransferFrom(
+                    ISignatureTransfer.PermitTransferFrom(
+                        ISignatureTransfer.TokenPermissions(token, permitAmount), nonce, deadline
+                    ),
+                    ISignatureTransfer.SignatureTransferDetails(address(this), amount),
+                    from,
+                    signature
+                );
+        } else {
+            SafeTransferLib.safeTransferFrom(token, from, address(this), amount);
+        }
+    }
+
+    /// @dev Same as pullToken2, but when native tokens are sent with the call, instead wraps msg.value into token.
     function pullOrWrapNative(address token, address from, uint256 amount, TokenPermit memory permit) internal {
         if (msg.value > 0) {
             require(permit.kind == PermitKind.None, BothNativeAndToken());
             require(amount == msg.value, InconsistentAmountAndNative());
             IWNative(token).deposit{value: msg.value}();
         } else {
-            pullToken(token, from, amount, permit);
+            pullToken2(token, from, amount, permit);
         }
     }
 }

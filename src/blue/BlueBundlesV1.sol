@@ -4,7 +4,6 @@ pragma solidity 0.8.34;
 
 import {IBlueBundlesV1, SignedAuthorization} from "./interfaces/IBlueBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
-import {IWNative} from "../libraries/interfaces/IWNative.sol";
 import {
     IMorpho,
     MarketParams,
@@ -36,9 +35,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     constructor(address _blue) {
         BLUE = _blue;
     }
-
-    /// @dev Receives the native tokens unwrapped from the wrapped-native token when reimbursing a native repay.
-    receive() external payable {}
 
     /// EXTERNAL ///
 
@@ -83,8 +79,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, borrowAssets - referralFeeAssets);
     }
 
-    /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt, reimburses the unused remainder at the end of the call, and withdraws collateral if collateralAssets > 0.
-    /// @dev When native tokens are sent, they are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of pulling, and the reimbursed remainder is unwrapped back to native.
+    /// @dev Pulls exactly the assets needed to repay msg.sender's debt plus the referral fee, repays it, and withdraws collateral if collateralAssets > 0.
+    /// @dev The exact amount is computed on-chain after accruing interest, so a loan token permit may approve an upper bound (its signed amount is the first field of loanTokenPermit.data).
+    /// @dev When native tokens are sent, they are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of pulling; msg.value must equal the exact amount.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization, if some collateral is withdrawn.
     /// @dev Exactly one of repayAssets and repayShares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as repayShares.
     /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
@@ -94,7 +91,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         MarketParams memory marketParams,
         uint256 repayAssets,
         uint256 repayShares,
-        uint256 maxRepayAssets,
         uint256 maxSharePriceE27,
         uint256 collateralAssets,
         uint256 maxLtv,
@@ -108,28 +104,26 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
-        (repayAssets, repayShares) = IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, msg.sender, "");
-        require(repayAssets.mulDivUp(1e27, repayShares) <= maxSharePriceE27, SlippageExceeded());
+        IMorpho(BLUE).accrueInterest(marketParams);
+        Market memory market = IMorpho(BLUE).market(marketParams.id());
+        uint256 repaidAssets =
+            repayShares > 0 ? repayShares.toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares) : repayAssets;
+
+        uint256 referralFeeAssets = repaidAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
+
+        TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, repaidAssets + referralFeeAssets, loanTokenPermit);
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
+        }
+
+        (, uint256 repaidShares) = IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, msg.sender, "");
+        require(repaidAssets.mulDivUp(1e27, repaidShares) <= maxSharePriceE27, SlippageExceeded());
 
         if (collateralAssets > 0) {
             IMorpho(BLUE).withdrawCollateral(marketParams, collateralAssets, msg.sender, msg.sender);
             requireMaxLtv(marketParams, msg.sender, maxLtv);
-        }
-
-        uint256 referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
-        if (referralFeeAssets > 0) {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
-        }
-        uint256 refund = maxRepayAssets - repayAssets - referralFeeAssets;
-        if (msg.value > 0) {
-            IWNative(marketParams.loanToken).withdraw(refund);
-            (bool success,) = msg.sender.call{value: refund}("");
-            require(success, NativeTransferFailed());
-        } else {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, refund);
         }
     }
 
