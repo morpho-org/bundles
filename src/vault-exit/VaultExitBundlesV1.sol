@@ -25,7 +25,7 @@ import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/Utils
 /// @dev Meant to be used to exit a vault that allocates assets to Morpho Blue. The user either gets Morpho Blue shares (in-kind redemption) or assets (force withdrawal).
 /// @dev Vaults that are used with this contract must be Vault V1 (MetaMorpho V1 or V1.1) or Vault V2.
 /// @dev Vault V2 that are used with this contract must have only one adapter, and that adapter must be the MorphoMarketV1AdapterV2.
-/// @dev The Morpho Blue fee recipient shouldn't be a vault that is used with this contract, otherwise its supply shares (and expected supply assets) do not include the accrued fee shares.
+/// @dev The Morpho Blue fee recipient shouldn't be a vault that is used with this contract, otherwise its expected supply assets are underestimated since the shares internally computed do not include the accrued fee shares.
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev Gated vaults (Vault V2) require this contract to be permitted by receiveAssetsGate, as it receives the withdrawn assets.
