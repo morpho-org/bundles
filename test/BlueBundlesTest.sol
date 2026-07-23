@@ -744,12 +744,12 @@ contract BlueBundlesTest is Test {
         // After repaying repayAssets, remaining debt is 60e18, needing 75e18 collateral (60/0.8) at 1:1 price.
         uint256 withdrawCollateral = collateral - 75e18;
 
-        // Native repay pulls the exact amount: msg.value must equal repayAssets (no fee here).
+        // Native repay: repayAssets and repayShares are 0; with no fee, the whole msg.value repays the debt.
         vm.deal(user, repayAssets);
         vm.prank(user);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral{value: repayAssets}(
             wethMarketParams,
-            repayAssets,
+            0,
             0,
             type(uint256).max,
             withdrawCollateral,
@@ -768,6 +768,95 @@ contract BlueBundlesTest is Test {
         assertEq(weth.balanceOf(user), 0, "user wrapped residual");
         assertEq(address(blueBundles).balance, 0, "bundler native residual");
         assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
+    }
+
+    /// @dev Native repay deducts the referral fee from msg.value (fee = msg.value * pct / WAD); the remainder repays the debt.
+    function testRepayWrapNativeWithReferralFee() public {
+        WETHMock weth = new WETHMock();
+        MarketParams memory wethMarketParams = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(oracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethMarketParams);
+
+        uint256 borrowAssets = 100e18;
+        uint256 collateral = _collateralFor(borrowAssets);
+
+        // Seed wrapped-native liquidity so the position can borrow.
+        vm.deal(supplier, LIQUIDITY);
+        vm.startPrank(supplier);
+        weth.deposit{value: LIQUIDITY}();
+        weth.approve(address(morpho), type(uint256).max);
+        morpho.supply(wethMarketParams, LIQUIDITY, 0, supplier, "");
+        vm.stopPrank();
+
+        // Open the user's borrow directly on Morpho.
+        deal(address(collateralToken), user, collateral);
+        vm.startPrank(user);
+        collateralToken.approve(address(morpho), type(uint256).max);
+        morpho.supplyCollateral(wethMarketParams, collateral, user, "");
+        morpho.borrow(wethMarketParams, borrowAssets, 0, user, user);
+        vm.stopPrank();
+
+        deal(address(weth), user, 0);
+
+        uint256 value = 44e18;
+        uint256 referralFeePct = 0.1e18;
+        uint256 expectedFee = value * referralFeePct / WAD; // deducted from msg.value, not charged on top
+        uint256 repaid = value - expectedFee;
+
+        vm.deal(user, value);
+        vm.prank(user);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral{value: value}(
+            wethMarketParams,
+            0,
+            0,
+            type(uint256).max,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            referralFeePct,
+            referrer,
+            block.timestamp
+        );
+
+        assertEq(morpho.expectedBorrowAssets(wethMarketParams, user), borrowAssets - repaid, "debt");
+        assertEq(weth.balanceOf(referrer), expectedFee, "referrer fee");
+        assertEq(user.balance, 0, "user native residual");
+        assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
+    }
+
+    /// @dev At most one of repayAssets, repayShares and msg.value may be non-zero.
+    function testRepayInconsistentInput() public {
+        vm.deal(user, 1e18);
+        vm.startPrank(user);
+
+        // repayAssets and repayShares both set.
+        vm.expectRevert(IBlueBundlesV1.InconsistentRepayInput.selector);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams,
+            1e18,
+            1e18,
+            type(uint256).max,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
+
+        // repayAssets set together with native tokens.
+        vm.expectRevert(IBlueBundlesV1.InconsistentRepayInput.selector);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral{value: 1e18}(
+            marketParams, 1e18, 0, type(uint256).max, 0, WAD, _noPermit(), _noAuthSig(), 0, address(0), block.timestamp
+        );
+        vm.stopPrank();
     }
 
     /// @dev maxLtv caps the resulting LTV after a withdrawal: repaying 30e18 and withdrawing 100e18 leaves 70e18

@@ -16,6 +16,7 @@ struct SignedAuthorization {
 interface IBlueBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
+    error InconsistentRepayInput();
     error InconsistentTokens();
     error LtvExceeded();
     error PctExceeded();
