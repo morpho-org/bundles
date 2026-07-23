@@ -51,6 +51,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
     /// @dev minSharePriceE27 lower-bounds the realized exit share price (exit assets per share, scaled by 1e27).
+    /// @dev The minted Morpho Blue shares are not checked: at most a wei per supply is lost to rounding, assuming a supply share price of at most one asset per share.
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
@@ -107,6 +108,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
     /// @dev minSharePriceE27 lower-bounds the realized exit share price (withdrawn assets per share, scaled by 1e27). The force deallocate penalty counts as withdrawn assets, so it does not lower this price.
+    /// @dev The minted Morpho Blue shares are not checked: at most a wei per supply is lost to rounding, assuming a supply share price of at most one asset per share (which the adapter checks at each allocation).
     function vaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
         address adapter,
