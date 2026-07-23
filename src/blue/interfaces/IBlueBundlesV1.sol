@@ -16,9 +16,9 @@ struct SignedAuthorization {
 interface IBlueBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
+    error InconsistentRepayInput();
     error InconsistentTokens();
     error LtvExceeded();
-    error NativeTransferFailed();
     error PctExceeded();
     error SlippageExceeded();
     error UnauthorizedCallback();
@@ -44,7 +44,6 @@ interface IBlueBundlesV1 {
         MarketParams memory marketParams,
         uint256 repayAssets,
         uint256 repayShares,
-        uint256 maxRepayAssets,
         uint256 maxSharePriceE27,
         uint256 collateralAssets,
         uint256 maxLtv,
