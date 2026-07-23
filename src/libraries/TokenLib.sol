@@ -4,6 +4,7 @@ pragma solidity >=0.8.0;
 
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {IERC20Permit} from "./interfaces/IERC20Permit.sol";
+import {IWNative} from "./interfaces/IWNative.sol";
 import {IPermit2, ISignatureTransfer} from "../../lib/permit2/src/interfaces/IPermit2.sol";
 
 enum PermitKind {
@@ -19,6 +20,8 @@ struct TokenPermit {
 
 library TokenLib {
     error ApproveReturnedFalse();
+    error BothNativeAndToken();
+    error InconsistentAmountAndNative();
 
     /// @dev Canonical Permit2 singleton.
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
@@ -64,6 +67,17 @@ library TokenLib {
                 );
         } else {
             SafeTransferLib.safeTransferFrom(token, from, address(this), amount);
+        }
+    }
+
+    /// @dev Same as pullToken, but when native tokens are sent with the call, instead wraps msg.value into token.
+    function pullOrWrapNative(address token, address from, uint256 amount, TokenPermit memory permit) internal {
+        if (msg.value > 0) {
+            require(permit.kind == PermitKind.None, BothNativeAndToken());
+            require(amount == msg.value, InconsistentAmountAndNative());
+            IWNative(token).deposit{value: msg.value}();
+        } else {
+            pullToken(token, from, amount, permit);
         }
     }
 }

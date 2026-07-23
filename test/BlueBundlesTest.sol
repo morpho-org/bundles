@@ -12,9 +12,10 @@ import {ORACLE_PRICE_SCALE, AUTHORIZATION_TYPEHASH} from "../lib/morpho-blue/src
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
+import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
 import {IBlueBundlesV1, SignedAuthorization} from "../src/blue/interfaces/IBlueBundlesV1.sol";
-import {TokenPermit} from "../src/libraries/TokenLib.sol";
+import {TokenLib, TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 
 contract BlueBundlesTest is Test {
     using MarketParamsLib for MarketParams;
@@ -472,6 +473,77 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
         assertEq(loanToken.balanceOf(user), borrowAssets, "user");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    /// @dev Sending native tokens (msg.value) wraps them into the collateral token and supplies them as collateral.
+    function testSupplyCollateralAndBorrowWrapNative(uint256 borrowAssets) public {
+        borrowAssets = bound(borrowAssets, 1, 1e30);
+        uint256 collateral = _collateralFor(borrowAssets);
+
+        // Market whose collateral token is the wrapped-native token.
+        WETHMock weth = new WETHMock();
+        MarketParams memory wethMarketParams = MarketParams({
+            loanToken: address(loanToken),
+            collateralToken: address(weth),
+            oracle: address(oracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethMarketParams);
+        Id wethId = wethMarketParams.id();
+
+        // Seed loan-side liquidity so the borrow can be served.
+        deal(address(loanToken), supplier, LIQUIDITY);
+        vm.prank(supplier);
+        morpho.supply(wethMarketParams, LIQUIDITY, 0, supplier, "");
+
+        vm.deal(user, collateral);
+        // When native tokens are sent, collateralAssets must equal msg.value and no collateralPermit may be set.
+        vm.prank(user);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: collateral}(
+            wethMarketParams,
+            collateral,
+            borrowAssets,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
+
+        assertEq(morpho.collateral(wethId, user), collateral, "collateral");
+        assertEq(morpho.expectedBorrowAssets(wethMarketParams, user), borrowAssets, "debt");
+        assertEq(loanToken.balanceOf(user), borrowAssets, "user");
+        assertEq(user.balance, 0, "user native residual");
+        assertEq(address(blueBundles).balance, 0, "bundler native residual");
+        assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
+    }
+
+    /// @dev Sending native tokens together with a collateral permit reverts.
+    function testSupplyCollateralAndBorrowBothNativeAndToken() public {
+        uint256 collateral = _collateralFor(1e18);
+        vm.deal(user, collateral);
+
+        TokenPermit memory permit = TokenPermit({kind: PermitKind.ERC2612, data: ""});
+        vm.prank(user);
+        vm.expectRevert(TokenLib.BothNativeAndToken.selector);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: collateral}(
+            marketParams, collateral, 1e18, 0, WAD, permit, _noAuthSig(), 0, address(0), block.timestamp
+        );
+    }
+
+    /// @dev Sending native tokens with a collateral amount that does not match msg.value reverts.
+    function testSupplyCollateralAndBorrowInconsistentAmountAndNative() public {
+        uint256 collateral = _collateralFor(1e18);
+        vm.deal(user, collateral);
+
+        vm.prank(user);
+        vm.expectRevert(TokenLib.InconsistentAmountAndNative.selector);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: collateral}(
+            marketParams, collateral + 1, 1e18, 0, WAD, _noPermit(), _noAuthSig(), 0, address(0), block.timestamp
+        );
     }
 
     function testSupplyCollateralAndBorrowWithReferralFee(uint256 borrowAssets, uint256 referralFeePct) public {
@@ -1346,5 +1418,15 @@ contract BlueBundlesTest is Test {
             address(0),
             block.timestamp
         );
+    }
+}
+
+/// @dev Minimal wrapped-native token: deposit() mints 1:1 for the native tokens sent.
+contract WETHMock is ERC20 {
+    constructor() ERC20("Wrapped Ether", "WETH") {}
+
+    function deposit() external payable {
+        balanceOf[msg.sender] += msg.value;
+        totalSupply += msg.value;
     }
 }

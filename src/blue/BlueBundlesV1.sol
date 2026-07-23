@@ -39,6 +39,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// EXTERNAL ///
 
     /// @dev Pulls collateralAssets of marketParams.collateralToken from msg.sender (optionally via ERC-2612 or Permit2), supplies it as collateral on Blue for msg.sender, then borrows borrowAssets of the loan token on behalf of msg.sender.
+    /// @dev When native tokens are sent, they are wrapped into marketParams.collateralToken (which must be the wrapped-native token) instead of pulling.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev referralFeeAssets = borrowAssets * referralFeePct / WAD; net = borrowAssets - referralFeeAssets.
     /// @dev To receive an amount W, pass borrowAssets = floor(W * WAD / (WAD - referralFeePct)).
@@ -55,12 +56,12 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external {
+    ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
+        TokenLib.pullOrWrapNative(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
         if (collateralAssets > 0) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");

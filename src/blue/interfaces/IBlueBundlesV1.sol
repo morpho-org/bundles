@@ -37,7 +37,7 @@ interface IBlueBundlesV1 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external;
+    ) external payable;
 
     function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
