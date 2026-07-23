@@ -164,7 +164,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and reverts.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
-    /// @dev minSharePriceE27 lower-bounds the realized exit share price (withdrawn assets per share, scaled by 1e27). The force deallocate penalty counts as withdrawn assets, so it does not lower this price.
+    /// @dev minSharePriceE27 lower-bounds the realized exit share price (exit assets per share, scaled by 1e27). The force deallocate penalty is included in the exit assets, so it does not lower this price.
     function vaultExitBundlesV1ForceWithdrawVaultV2(
         address vault,
         address adapter,
@@ -209,7 +209,6 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
         uint256 assetsToDeallocate = (exitAssets - assetsToWithdraw).mulDivDown(WAD, WAD + penalty);
         uint256 remainingAssets = assetsToDeallocate;
-        uint256 penaltyAssets;
 
         for (uint256 i; remainingAssets > 0; i++) {
             MarketParams memory marketParams = IMorpho(BLUE).idToMarketParams(Id.wrap(marketIds[i]));
@@ -221,8 +220,6 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
             uint256 assets = UtilsLib.min(availableToWithdraw, remainingAssets);
             remainingAssets -= assets;
 
-            // Matches the penalty assets withdrawn by the vault on forceDeallocate.
-            penaltyAssets += assets.mulDivUp(penalty, WAD);
             IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), assets, msg.sender);
         }
 
@@ -230,10 +227,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
         uint256 withdrawn = assetsToWithdraw + assetsToDeallocate;
         uint256 sharesBurned = sharesBefore - IERC20(vault).balanceOf(msg.sender);
-        require(
-            sharesBurned == 0 || (withdrawn + penaltyAssets).mulDivDown(1e27, sharesBurned) >= minSharePriceE27,
-            SlippageExceeded()
-        );
+        require(sharesBurned == 0 || exitAssets.mulDivDown(1e27, sharesBurned) >= minSharePriceE27, SlippageExceeded());
 
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
