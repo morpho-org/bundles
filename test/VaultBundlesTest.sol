@@ -225,6 +225,26 @@ contract VaultBundlesTest is Test {
         bundles.vaultBundlesV1Deposit(address(vaultV1), 1e18, RAY, noPermit, WAD, referralFeeRecipient, block.timestamp);
     }
 
+    /// @dev Sending native tokens (msg.value) wraps them into the vault asset and deposits them.
+    function testDepositWrapNative(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+
+        // Vault whose asset is the wrapped-native token.
+        WETHMock weth = new WETHMock();
+        IERC4626 wethVault = _deployVaultV2(weth, bytes32(uint256(4)));
+
+        vm.deal(user, assets);
+        // When native tokens are sent, assets must equal msg.value and no assetPermit may be set.
+        bundles.vaultBundlesV1Deposit{value: assets}(
+            address(wethVault), assets, RAY, noPermit, 0, address(0), block.timestamp
+        );
+
+        assertEq(user.balance, 0, "user native residual");
+        assertEq(address(bundles).balance, 0, "bundler native residual");
+        assertEq(weth.balanceOf(address(bundles)), 0, "bundler wrapped residual");
+        assertApproxEqAbs(wethVault.convertToAssets(wethVault.balanceOf(user)), assets, 1, "user position");
+    }
+
     /// WITHDRAW ///
 
     function testWithdrawV1(uint256 assets) public {
@@ -747,5 +767,14 @@ contract VaultBundlesTest is Test {
             referralFeeRecipient,
             block.timestamp
         );
+    }
+}
+
+/// @dev Minimal wrapped-native token: deposit() mints 1:1 for the native tokens sent.
+contract WETHMock is ERC20Mock {
+    constructor() ERC20Mock(18) {}
+
+    function deposit() external payable {
+        _mint(msg.sender, msg.value);
     }
 }

@@ -24,6 +24,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     /// EXTERNAL ///
 
     /// @dev Pulls assets of the vault asset from msg.sender (optionally via ERC-2612 or Permit2) and deposits them into vault.
+    /// @dev When native tokens are sent, they are wrapped into the vault asset (which must be the wrapped-native token) instead of pulling.
     /// @dev The referral fee is deducted from assets; the remainder is deposited into vault for msg.sender.
     /// @dev Fee = assets * referralFeePct / WAD; deposited = assets - fee.
     /// @dev maxSharePriceE27 upper-bounds the realized deposit share price (deposited assets per share, scaled by 1e27).
@@ -35,7 +36,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external {
+    ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
@@ -43,7 +44,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         uint256 toDeposit = assets - referralFeeAssets;
 
         address asset = IERC4626(vault).asset();
-        TokenLib.pullToken(asset, msg.sender, assets, assetPermit);
+        TokenLib.pullOrWrapNative(asset, msg.sender, assets, assetPermit);
         TokenLib.forceApproveMax(asset, vault);
 
         uint256 shares = IERC4626(vault).deposit(toDeposit, msg.sender);

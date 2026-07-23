@@ -702,6 +702,75 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
+    /// @dev Sending native tokens (msg.value) wraps them into the loan token and repays msg.sender's debt.
+    function testRepayAndWithdrawCollateralWrapNative() public {
+        // Market whose loan token is the wrapped-native token.
+        WETHMock weth = new WETHMock();
+        MarketParams memory wethMarketParams = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(oracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethMarketParams);
+        Id wethId = wethMarketParams.id();
+
+        uint256 borrowAssets = 100e18;
+        uint256 collateral = _collateralFor(borrowAssets);
+
+        // Seed wrapped-native liquidity so the position can borrow.
+        vm.deal(supplier, LIQUIDITY);
+        vm.startPrank(supplier);
+        weth.deposit{value: LIQUIDITY}();
+        weth.approve(address(morpho), type(uint256).max);
+        morpho.supply(wethMarketParams, LIQUIDITY, 0, supplier, "");
+        vm.stopPrank();
+
+        // Open the user's borrow directly on Morpho.
+        deal(address(collateralToken), user, collateral);
+        vm.startPrank(user);
+        collateralToken.approve(address(morpho), type(uint256).max);
+        morpho.supplyCollateral(wethMarketParams, collateral, user, "");
+        morpho.borrow(wethMarketParams, borrowAssets, 0, user, user);
+        vm.stopPrank();
+
+        // Discard the borrowed wrapped tokens; the user repays with native and the refund must come back as native.
+        deal(address(weth), user, 0);
+
+        uint256 repayAssets = 40e18;
+        uint256 maxRepayAssets = 50e18;
+        // After repaying repayAssets, remaining debt is 60e18, needing 75e18 collateral (60/0.8) at 1:1 price.
+        uint256 withdrawCollateral = collateral - 75e18;
+
+        vm.deal(user, maxRepayAssets);
+        // When native tokens are sent, maxRepayAssets must equal msg.value and no loanTokenPermit may be set.
+        vm.prank(user);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral{value: maxRepayAssets}(
+            wethMarketParams,
+            repayAssets,
+            0,
+            maxRepayAssets,
+            type(uint256).max,
+            withdrawCollateral,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
+
+        assertEq(morpho.expectedBorrowAssets(wethMarketParams, user), borrowAssets - repayAssets, "debt");
+        assertEq(morpho.collateral(wethId, user), collateral - withdrawCollateral, "remaining collateral");
+        assertEq(collateralToken.balanceOf(user), withdrawCollateral, "collateral to user");
+        // The unused remainder is unwrapped and returned as native, not as the wrapped token.
+        assertEq(user.balance, maxRepayAssets - repayAssets, "native refund");
+        assertEq(weth.balanceOf(user), 0, "no wrapped refund");
+        assertEq(address(blueBundles).balance, 0, "bundler native residual");
+        assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
+    }
+
     /// @dev maxLtv caps the resulting LTV after a withdrawal: repaying 30e18 and withdrawing 100e18 leaves 70e18
     /// debt against 100e18 collateral (LTV 0.7) — within the 0.8 LLTV Blue allows, but above a 0.6 maxLtv.
     function testRepayAndWithdrawCollateralLtvExceeded() public {
@@ -985,6 +1054,34 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.expectedSupplyAssets(marketParams, user), supplied, "supply net");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    /// @dev Sending native tokens (msg.value) wraps them into the loan token and supplies them to the market.
+    function testSupplyWrapNative(uint256 assets) public {
+        assets = bound(assets, 1, 1e30);
+
+        // Market whose loan token is the wrapped-native token.
+        WETHMock weth = new WETHMock();
+        MarketParams memory wethMarketParams = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(oracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethMarketParams);
+
+        vm.deal(user, assets);
+        // When native tokens are sent, assets must equal msg.value and no loanTokenPermit may be set.
+        vm.prank(user);
+        blueBundles.blueBundlesV1Supply{value: assets}(
+            wethMarketParams, assets, type(uint256).max, _noPermit(), 0, address(0), block.timestamp
+        );
+
+        assertEq(morpho.expectedSupplyAssets(wethMarketParams, user), assets, "supply position");
+        assertEq(user.balance, 0, "user native residual");
+        assertEq(address(blueBundles).balance, 0, "bundler native residual");
+        assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
     }
 
     /// WITHDRAW ///
@@ -1428,5 +1525,11 @@ contract WETHMock is ERC20 {
     function deposit() external payable {
         balanceOf[msg.sender] += msg.value;
         totalSupply += msg.value;
+    }
+
+    function withdraw(uint256 amount) external {
+        balanceOf[msg.sender] -= amount;
+        totalSupply -= amount;
+        payable(msg.sender).transfer(amount);
     }
 }
