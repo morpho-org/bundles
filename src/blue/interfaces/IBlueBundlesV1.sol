@@ -18,6 +18,7 @@ interface IBlueBundlesV1 {
     error DeadlinePassed();
     error InconsistentTokens();
     error LtvExceeded();
+    error NativeTransferFailed();
     error PctExceeded();
     error SlippageExceeded();
     error UnauthorizedCallback();
@@ -37,7 +38,7 @@ interface IBlueBundlesV1 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external;
+    ) external payable;
 
     function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
@@ -52,7 +53,7 @@ interface IBlueBundlesV1 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external;
+    ) external payable;
 
     function blueBundlesV1Supply(
         MarketParams memory marketParams,
@@ -62,7 +63,7 @@ interface IBlueBundlesV1 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external;
+    ) external payable;
 
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
