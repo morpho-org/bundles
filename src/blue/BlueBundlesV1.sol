@@ -270,12 +270,12 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             IMorpho(BLUE)
                 .setAuthorizationWithSig(
                     Authorization({
-                    authorizer: msg.sender,
-                    authorized: address(this),
-                    isAuthorized: true,
-                    nonce: signedAuthorization.nonce,
-                    deadline: signedAuthorization.deadline
-                }),
+                        authorizer: msg.sender,
+                        authorized: address(this),
+                        isAuthorized: true,
+                        nonce: signedAuthorization.nonce,
+                        deadline: signedAuthorization.deadline
+                    }),
                     signature
                 );
         }
