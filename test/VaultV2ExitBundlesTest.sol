@@ -139,6 +139,16 @@ contract VaultV2ExitBundlesTest is Test {
         return assets * WAD / (WAD + PENALTY);
     }
 
+    function _addSecondAdapter() internal {
+        IMorphoMarketV1AdapterV2Factory secondAdapterFactory = IMorphoMarketV1AdapterV2Factory(
+            deployCode(
+                "MorphoMarketV1AdapterV2Factory.sol:MorphoMarketV1AdapterV2Factory", abi.encode(morpho, address(0))
+            )
+        );
+        address secondAdapter = secondAdapterFactory.createMorphoMarketV1AdapterV2(address(vault));
+        _submitAndExec(abi.encodeCall(IVaultV2.addAdapter, (secondAdapter)));
+    }
+
     /// @dev Wraps a single market into the singleton list expected by vaultExitBundlesV1InKindRedemptionVaultV2.
     function _singleton(MarketParams memory marketParams_) internal pure returns (MarketParams[] memory list) {
         list = new MarketParams[](1);
@@ -359,6 +369,15 @@ contract VaultV2ExitBundlesTest is Test {
         vm.expectRevert();
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
             address(vault), address(adapter), _singleton(marketParams), tooMuch, 0, noSharesPermit, block.timestamp
+        );
+    }
+
+    function testInKindRedemptionInvalidAdaptersLength() public {
+        _addSecondAdapter();
+
+        vm.expectRevert(IVaultExitBundlesV1.InvalidAdaptersLength.selector);
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), new MarketParams[](0), 0, 0, noSharesPermit, block.timestamp
         );
     }
 
@@ -604,6 +623,15 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// FORCE WITHDRAWAL ///
 
+    function testForceWithdrawInvalidAdaptersLength() public {
+        _addSecondAdapter();
+
+        vm.expectRevert(IVaultExitBundlesV1.InvalidAdaptersLength.selector);
+        vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), 0, 0, noSharesPermit, 0, address(0), block.timestamp
+        );
+    }
+
     function testForceWithdrawAdapterNotPartOfVault() public {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
@@ -725,6 +753,40 @@ contract VaultV2ExitBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(this)), 100e18, "user loan token balance");
         assertEq(morpho.expectedSupplyAssets(marketParams, address(adapter)), 40e18, "first market position");
         assertEq(morpho.expectedSupplyAssets(otherMarket, address(adapter)), 60e18, "second market position");
+    }
+
+    /// @dev The first market is fully borrowed out, so it contributes nothing: no zero-asset forceDeallocate is
+    /// emitted for it and the whole amount comes from the second market.
+    function testForceWithdrawSkipsDryMarket() public {
+        _setUpLiquidTwoMarkets(100e18, 100e18);
+
+        // Borrow everything out of the first market ⇒ nothing of the adapter's 100 position is withdrawable there.
+        deal(address(collateralToken), borrower, 200e18);
+        vm.startPrank(borrower);
+        collateralToken.approve(address(morpho), type(uint256).max);
+        morpho.supplyCollateral(marketParams, 200e18, borrower, "");
+        morpho.borrow(marketParams, 100e18, 0, borrower, borrower);
+        vm.stopPrank();
+
+        uint256 exitAssets = 50e18;
+        vm.expectCall(
+            address(vault),
+            abi.encodeCall(IVaultV2.forceDeallocate, (address(adapter), abi.encode(marketParams), 0, address(this))),
+            0
+        );
+        vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), exitAssets, 0, noSharesPermit, 0, address(0), block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), optimalDeallocateAssets(exitAssets), "user loan token balance");
+        assertEq(morpho.expectedSupplyAssets(marketParams, address(adapter)), 100e18, "first market position");
+        assertApproxEqAbs(
+            morpho.expectedSupplyAssets(otherMarket, address(adapter)),
+            100e18 - optimalDeallocateAssets(exitAssets),
+            2,
+            "second market position"
+        );
     }
 
     /// @dev The liquidity available through the liquidity adapter is withdrawn first, without penalty; only the

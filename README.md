@@ -2,6 +2,12 @@
 
 Opinionated bundle contracts wrapping Morpho protocols.
 Each bundle exposes a small set of high-level entry points that chain several protocol calls into a single transaction.
+Entry-points are user-facing: they should be usable out of the box and are not meant to be called by other contracts.
+Compared to bundler3, bundles are not modular, but are meant to reproduce its identified core functionalities with greater safety.
+Notably, there is no crafting of bundles offchain, instead the way calls are chained is fixed and this can be audited.
+Users are still expected to look at the inputs of the entry-points, to decide whether they want to sign it or not.
+
+## Bundles
 
 ### Midnight bundles
 
@@ -35,9 +41,9 @@ Each bundle exposes a small set of high-level entry points that chain several pr
 
 [VaultExitBundlesV1](src/vault-exit/VaultExitBundlesV1.sol) contains:
 
-- `vaultExitBundlesV1InKindRedemptionVaultV1` — in-kind redeem from an illiquid Morpho Vault V1.
-- `vaultExitBundlesV1InKindRedemptionVaultV2` — in-kind redeem from an illiquid Morpho Vault V2.
-- `vaultExitBundlesV1ForceWithdrawVaultV2` — force withdraw from a liquid Morpho Vault V2.
+- `vaultExitBundlesV1InKindRedemptionVaultV1` — in-kind redeem from an illiquid Vault V1.
+- `vaultExitBundlesV1InKindRedemptionVaultV2` — in-kind redeem from an illiquid Vault V2.
+- `vaultExitBundlesV1ForceWithdrawVaultV2` — force withdraw from a liquid Vault V2.
 
 ## Audits
 

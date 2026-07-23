@@ -504,6 +504,37 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
+    /// @dev Checks the doc formula: to receive targetNet, pass borrowAssets = floor(targetNet * WAD / (WAD - referralFeePct)).
+    function testSupplyCollateralAndBorrowTargetNet(uint256 targetNet, uint256 referralFeePct) public {
+        targetNet = bound(targetNet, 1, 1e30);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+
+        uint256 borrowAssets = targetNet * WAD / (WAD - referralFeePct);
+        vm.assume(borrowAssets <= 1e30);
+        uint256 collateral = _collateralFor(borrowAssets);
+        deal(address(collateralToken), user, collateral);
+
+        assertEq(loanToken.balanceOf(user), 0);
+
+        vm.startPrank(user);
+        collateralToken.approve(address(blueBundles), collateral);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams,
+            collateral,
+            borrowAssets,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            referralFeePct,
+            referrer,
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(loanToken.balanceOf(user), targetNet, "net equals target");
+    }
+
     /// @dev collateralAssets = 0 skips the collateral leg: borrows against previously supplied collateral.
     function testPureBorrow(uint256 borrowAssets, uint256 referralFeePct) public {
         borrowAssets = bound(borrowAssets, 1, 1e30);
@@ -672,6 +703,69 @@ contract BlueBundlesTest is Test {
 
         assertEq(morpho.expectedBorrowAssets(marketParams, user), 70e18, "remaining debt");
         assertEq(morpho.collateral(id, user), 200e18, "collateral unchanged");
+    }
+
+    /// @dev The oracle is never read on a full exit: with zero debt the maxLtv check short-circuits before the
+    /// oracle call (mirroring Blue's health check), so a full repay + withdraw works out of a market whose oracle is
+    /// broken, even with a binding maxLtv.
+    function testRepayAndWithdrawCollateralFullExitBrokenOracle() public {
+        uint256 borrowAssets = 100e18;
+        _openBorrow(user, borrowAssets);
+        uint256 collateral = morpho.collateral(id, user);
+
+        vm.mockCallRevert(address(oracle), abi.encodeWithSelector(IOracle.price.selector), "oracle down");
+
+        deal(address(loanToken), user, borrowAssets);
+        vm.startPrank(user);
+        loanToken.approve(address(blueBundles), borrowAssets);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams,
+            0,
+            morpho.borrowShares(id, user),
+            borrowAssets,
+            type(uint256).max,
+            collateral,
+            0.5e18, // binding maxLtv (< LLTV): the check runs and must not read the oracle
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.borrowShares(id, user), 0, "debt");
+        assertEq(morpho.collateral(id, user), 0, "remaining collateral");
+        assertEq(collateralToken.balanceOf(user), collateral, "collateral to user");
+    }
+
+    /// @dev With maxLtv at WAD the bundler's maxLtv check short-circuits before its oracle call: the only price
+    /// read is Blue's health check in withdrawCollateral.
+    function testRepayAndWithdrawCollateralMaxLtvWadSkipsOracle() public {
+        _openBorrow(user, 100e18);
+
+        deal(address(loanToken), user, 30e18);
+        vm.startPrank(user);
+        loanToken.approve(address(blueBundles), 30e18);
+        vm.expectCall(address(oracle), abi.encodeWithSelector(IOracle.price.selector), 1);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams,
+            30e18,
+            0,
+            30e18,
+            type(uint256).max,
+            10e18,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), 70e18, "remaining debt");
+        assertEq(morpho.collateral(id, user), 190e18, "remaining collateral");
     }
 
     function testRepayWithReferralFee(uint256 borrowAssets, uint256 repayAssets, uint256 referralFeePct) public {
@@ -860,6 +954,30 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(user), withdrawAssets - expectedFee, "user net");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    /// @dev Checks the doc formula: to receive targetNet, pass assets = floor(targetNet * WAD / (WAD - referralFeePct)).
+    function testWithdrawTargetNet(uint256 targetNet, uint256 referralFeePct) public {
+        targetNet = bound(targetNet, 1, 1e30);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+
+        uint256 withdrawAssets = targetNet * WAD / (WAD - referralFeePct);
+        vm.assume(withdrawAssets <= 1e30);
+
+        deal(address(loanToken), user, withdrawAssets);
+        vm.startPrank(user);
+        loanToken.approve(address(morpho), type(uint256).max);
+        morpho.supply(marketParams, withdrawAssets, 0, user, "");
+        vm.stopPrank();
+
+        deal(address(loanToken), user, 0);
+
+        vm.prank(user);
+        blueBundles.blueBundlesV1Withdraw(
+            marketParams, withdrawAssets, 0, 0, _noAuthSig(), referralFeePct, referrer, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(user), targetNet, "net equals target");
     }
 
     /// @dev Passing the full supply shares closes the supply position by shares: no supply shares remain.

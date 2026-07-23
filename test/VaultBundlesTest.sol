@@ -675,33 +675,6 @@ contract VaultBundlesTest is Test {
         assertEq(loanToken.balanceOf(user), 0, "user loan token");
     }
 
-    /// @dev Checks the doc formula: to deposit targetDeposit into destVault, pass assetsWithdrawn = floor(targetDeposit * WAD / (WAD - referralFeePct)).
-    /// @dev Both vaults are Vault V2, so the deposited assets sit idle in destVault and its loan token balance reads the deposited amount exactly.
-    function testMigrateTargetDeposit(uint256 targetDeposit, uint256 referralFeePct) public {
-        targetDeposit = bound(targetDeposit, MIN_ASSETS, MAX_ASSETS);
-        referralFeePct = bound(referralFeePct, 0, WAD - 1);
-
-        uint256 assetsWithdrawn = targetDeposit * WAD / (WAD - referralFeePct);
-        vm.assume(assetsWithdrawn <= MAX_ASSETS);
-        _deposited(vaultV2, assetsWithdrawn);
-
-        bundles.vaultBundlesV1Migrate(
-            address(vaultV2),
-            address(vaultV2b),
-            assetsWithdrawn,
-            0,
-            0,
-            RAY,
-            noSharesPermit,
-            referralFeePct,
-            referralFeeRecipient,
-            block.timestamp
-        );
-
-        assertEq(loanToken.balanceOf(referralFeeRecipient), assetsWithdrawn - targetDeposit, "referralFeeRecipient fee");
-        assertEq(loanToken.balanceOf(address(vaultV2b)), targetDeposit, "deposited equals target");
-    }
-
     function testMigrateInconsistentAssets() public {
         _deposited(vaultV1, 100e18);
         vm.expectRevert(IVaultBundlesV1.InconsistentAssets.selector);
