@@ -37,12 +37,6 @@ Users are still expected to look at the inputs of the entry-points, to decide wh
 - `vaultBundlesV1Withdraw` — withdraw assets from a vault.
 - `vaultBundlesV1Migrate` — migrate assets from one vault to another.
 
-### Midnight-to-Blue bundles
-
-[MidnightToBlueBundlesV1](src/midnight-to-blue/MidnightToBlueBundlesV1.sol) contains:
-
-- `midnightToBlueBundlesV1MigrateBorrowPosition` — migrate a full borrow position (debt + one collateral) from a Midnight fixed-rate market to a Morpho Blue variable-rate market in one transaction. No flash loan: the destination Blue borrow is taken inside Midnight's `onRepay` callback and funds the Midnight repay.
-
 ### Vault exit bundles
 
 [VaultExitBundlesV1](src/vault-exit/VaultExitBundlesV1.sol) contains:
@@ -50,6 +44,33 @@ Users are still expected to look at the inputs of the entry-points, to decide wh
 - `vaultExitBundlesV1InKindRedemptionVaultV1` — in-kind redeem from an illiquid Vault V1.
 - `vaultExitBundlesV1InKindRedemptionVaultV2` — in-kind redeem from an illiquid Vault V2.
 - `vaultExitBundlesV1ForceWithdrawVaultV2` — force withdraw from a liquid Vault V2.
+
+## Midnight → Blue roll (educational POC)
+
+> **Educational proof of concept — do NOT use in production.**
+> [`MidnightToBlueRoll`](src/midnight-to-blue/MidnightToBlueRoll.sol) demonstrates
+> that Midnight's `onRepay` callback can fund a Morpho Blue borrow, migrating a
+> fixed-rate borrow position into a variable-rate one in a single transaction
+> without a flash loan. Slippage bounds, LTV caps, deadlines, referral fees,
+> callback authentication, and every other production concern are deliberately
+> omitted; this contract is not a bundle and is not written to bundle
+> conventions.
+
+```
+User → MidnightToBlueRoll.roll(sourceMarket, destParams, i)
+         │
+         └─→ Midnight.repay(sourceMarket, units, user, this, data)      [debt -= units]
+                │
+                └─→ this.onRepay(data)
+                        ├─→ Midnight.withdrawCollateral(sourceMarket, i, X, user, this)   [X → this]
+                        ├─→ Blue.supplyCollateral(destParams, X, user)                    [X → user's Blue position]
+                        ├─→ Blue.borrow(destParams, units, 0, user, this)                 [units → this]
+                        └─→ return CALLBACK_SUCCESS
+                │
+                └─→ Midnight pulls `units` from this                    [this ends with 0]
+         │
+       (returns)
+```
 
 ## Audits
 
