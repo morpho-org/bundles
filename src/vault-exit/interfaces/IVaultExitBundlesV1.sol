@@ -22,6 +22,7 @@ interface IVaultExitBundlesV1 {
     error InvalidAdaptersLength();
     error MorphoMismatch();
     error PctExceeded();
+    error SlippageExceeded();
     error UnauthorizedCallback();
 
     /// STORAGE GETTERS ///
@@ -49,6 +50,7 @@ interface IVaultExitBundlesV1 {
         address vault,
         address adapter,
         uint256 exitAssets,
+        uint256 minSharePriceE27,
         SharesPermit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,

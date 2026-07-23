@@ -50,6 +50,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Requires the sender to have enough shares to withdraw exitAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
+    /// @dev The vault share price is not checked: after a drop (e.g. a bad debt realization) the price recovers only gradually through interest accrual, so a reverted exit retried later would only be on similar or worse terms.
+    /// @dev The minted Morpho Blue shares are not checked: at most a wei per supply is lost to rounding, assuming a supply share price of at most one asset per share.
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
@@ -100,6 +102,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
+    /// @dev The vault share price is not checked: after a drop (e.g. a bad debt realization) the price recovers only gradually through interest accrual, so a reverted exit retried later would only be on similar or worse terms.
+    /// @dev The minted Morpho Blue shares are not checked: at most a wei per supply is lost to rounding, assuming a supply share price of at most one asset per share (which the adapter checks at each allocation).
     function vaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
         address adapter,
@@ -151,10 +155,12 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev The assetsToDeallocate amount is force deallocated by looping over the adapter's markets, taking from each market as much as its liquidity and the adapter's position allow before moving to the next one.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
+    /// @dev minSharePriceE27 lower-bounds the realized exit share price (exit assets per share, scaled by 1e27). The force deallocate penalty is included in the exit assets, so it does not lower this price.
     function vaultExitBundlesV1ForceWithdrawVaultV2(
         address vault,
         address adapter,
         uint256 exitAssets,
+        uint256 minSharePriceE27,
         SharesPermit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -167,6 +173,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         require(referralFeePct < WAD, PctExceeded());
 
         permitShares(vault, sharesPermit);
+        uint256 sharesBefore = IERC20(vault).balanceOf(msg.sender);
 
         address asset = IVaultV2(vault).asset();
         uint256 withdrawableAssets = IERC20(asset).balanceOf(vault);
@@ -212,6 +219,9 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         IVaultV2(vault).withdraw(assetsToDeallocate, address(this), msg.sender);
 
         uint256 withdrawn = assetsToWithdraw + assetsToDeallocate;
+        uint256 sharesBurned = sharesBefore - IERC20(vault).balanceOf(msg.sender);
+        require(sharesBurned == 0 || exitAssets.mulDivDown(1e27, sharesBurned) >= minSharePriceE27, SlippageExceeded());
+
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
         SafeTransferLib.safeTransfer(asset, msg.sender, withdrawn - referralFeeAssets);
