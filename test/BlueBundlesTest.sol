@@ -735,7 +735,7 @@ contract BlueBundlesTest is Test {
         morpho.borrow(wethMarketParams, borrowAssets, 0, user, user);
         vm.stopPrank();
 
-        // Discard the borrowed wrapped tokens; the user repays with native and the refund must come back as native.
+        // Discard the borrowed wrapped tokens; the user repays with native and the refund comes back wrapped.
         deal(address(weth), user, 0);
 
         uint256 repayAssets = 40e18;
@@ -764,9 +764,9 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.expectedBorrowAssets(wethMarketParams, user), borrowAssets - repayAssets, "debt");
         assertEq(morpho.collateral(wethId, user), collateral - withdrawCollateral, "remaining collateral");
         assertEq(collateralToken.balanceOf(user), withdrawCollateral, "collateral to user");
-        // The unused remainder is unwrapped and returned as native, not as the wrapped token.
-        assertEq(user.balance, maxRepayAssets - repayAssets, "native refund");
-        assertEq(weth.balanceOf(user), 0, "no wrapped refund");
+        // The unused remainder is returned as the wrapped token, not unwrapped back to native.
+        assertEq(weth.balanceOf(user), maxRepayAssets - repayAssets, "wrapped refund");
+        assertEq(user.balance, 0, "no native refund");
         assertEq(address(blueBundles).balance, 0, "bundler native residual");
         assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
     }

@@ -123,14 +123,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        uint256 refund = maxRepayAssets - repayAssets - referralFeeAssets;
-        if (msg.value > 0) {
-            IWNative(marketParams.loanToken).withdraw(refund);
-            (bool success,) = msg.sender.call{value: refund}("");
-            require(success, NativeTransferFailed());
-        } else {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, refund);
-        }
+
+        SafeTransferLib.safeTransfer(
+            marketParams.loanToken, msg.sender, maxRepayAssets - repayAssets - referralFeeAssets
+        );
     }
 
     /// @dev Pulls assets from msg.sender (optionally via ERC-2612 or Permit2) and supplies them to the market for msg.sender.
