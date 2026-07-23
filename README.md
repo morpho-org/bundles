@@ -45,6 +45,33 @@ Users are still expected to look at the inputs of the entry-points, to decide wh
 - `vaultExitBundlesV1InKindRedemptionVaultV2` — in-kind redeem from an illiquid Vault V2.
 - `vaultExitBundlesV1ForceWithdrawVaultV2` — force withdraw from a liquid Vault V2.
 
+## Midnight → Blue roll (educational POC)
+
+> **Educational proof of concept — do NOT use in production.**
+> [`MidnightToBlueRoll`](src/midnight-to-blue/MidnightToBlueRoll.sol) demonstrates
+> that Midnight's `onRepay` callback can fund a Morpho Blue borrow, migrating a
+> fixed-rate borrow position into a variable-rate one in a single transaction
+> without a flash loan. Slippage bounds, LTV caps, deadlines, referral fees,
+> callback authentication, and every other production concern are deliberately
+> omitted; this contract is not a bundle and is not written to bundle
+> conventions.
+
+```
+User → MidnightToBlueRoll.roll(sourceMarket, destParams, i)
+         │
+         └─→ Midnight.repay(sourceMarket, units, user, this, data)      [debt -= units]
+                │
+                └─→ this.onRepay(data)
+                        ├─→ Midnight.withdrawCollateral(sourceMarket, i, X, user, this)   [X → this]
+                        ├─→ Blue.supplyCollateral(destParams, X, user)                    [X → user's Blue position]
+                        ├─→ Blue.borrow(destParams, units, 0, user, this)                 [units → this]
+                        └─→ return CALLBACK_SUCCESS
+                │
+                └─→ Midnight pulls `units` from this                    [this ends with 0]
+         │
+       (returns)
+```
+
 ## Audits
 
 Audits can be found in the [audits](./audits/) folder.
