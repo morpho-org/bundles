@@ -159,7 +159,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev minSharePriceE27 lower-bounds the realized exit share price (withdrawn assets per share, scaled by 1e27). The force deallocate penalty is deducted from the withdrawn assets, so it lowers this price.
-    /// @dev If msg.sender is a vault fee recipient, sharesBurned is underestimated (fee shares accrue to it during the withdrawals), weakening the share price check.
+    /// @dev If msg.sender is a vault fee recipient, totalSharesBurnt is underestimated (fee shares accrue to it during the withdrawals), weakening the share price check.
     function vaultExitBundlesV1ForceWithdrawVaultV2(
         address vault,
         address adapter,
@@ -223,8 +223,11 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         IVaultV2(vault).withdraw(assetsToDeallocate, address(this), msg.sender);
 
         uint256 withdrawn = assetsToWithdraw + assetsToDeallocate;
-        uint256 sharesBurned = sharesBefore - IERC20(vault).balanceOf(msg.sender);
-        require(sharesBurned == 0 || withdrawn.mulDivDown(1e27, sharesBurned) >= minSharePriceE27, SlippageExceeded());
+        uint256 totalSharesBurnt = sharesBefore - IERC20(vault).balanceOf(msg.sender);
+        require(
+            totalSharesBurnt == 0 || withdrawn.mulDivDown(1e27, totalSharesBurnt) >= minSharePriceE27,
+            SlippageExceeded()
+        );
 
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
