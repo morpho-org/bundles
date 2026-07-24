@@ -83,9 +83,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, borrowAssets - referralFeeAssets);
     }
 
-    /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt, reimburses the unused remainder at the end of the call, and withdraws collateral if collateralAssets > 0.
+    /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt, reimburses the unused remainder (if any) at the end of the call, and withdraws collateral if collateralAssets > 0.
     /// @dev When native tokens are sent, they are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of pulling, and the reimbursed remainder is unwrapped back to native.
-    /// @dev Reimbursing native tokens (even 0 amount) requires msg.sender to be able to receive native tokens, or else it will revert.
+    /// @dev Reimbursing native tokens requires msg.sender to be able to receive native tokens, or else it will revert.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization, if some collateral is withdrawn.
     /// @dev Exactly one of repayAssets and repayShares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as repayShares.
     /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
@@ -125,12 +125,14 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
         uint256 remainder = maxRepayAssets - repayAssets - referralFeeAssets;
-        if (msg.value > 0) {
-            IWNative(marketParams.loanToken).withdraw(remainder);
-            (bool success,) = msg.sender.call{value: remainder}("");
-            require(success, NativeTransferFailed());
-        } else {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, remainder);
+        if (remainder > 0) {
+            if (msg.value > 0) {
+                IWNative(marketParams.loanToken).withdraw(remainder);
+                (bool success,) = msg.sender.call{value: remainder}("");
+                require(success, NativeTransferFailed());
+            } else {
+                SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, remainder);
+            }
         }
     }
 
