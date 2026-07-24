@@ -6,7 +6,7 @@ import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
 import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
-import {IVaultExitBundlesV1, SharesPermit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
+import {IVaultExitBundlesV1, Permit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
 
 // Import from metamorpho/lib/morpho-blue to avoid duplicate types.
 import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -66,7 +66,7 @@ contract VaultV2ExitBundlesTest is Test {
     address internal referralFeeRecipient = makeAddr("referralFeeRecipient");
 
     // The empty shares permit (v, r and s all zero) is skipped by the bundler.
-    SharesPermit internal noSharesPermit;
+    Permit internal noSharesPermit;
 
     bytes32 internal constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
@@ -172,7 +172,7 @@ contract VaultV2ExitBundlesTest is Test {
     function _signSharesPermit(uint256 privateKey, address owner_, uint256 value, uint256 sigDeadline)
         internal
         view
-        returns (SharesPermit memory)
+        returns (Permit memory)
     {
         uint256 nonce = IERC20PermitVault(address(vault)).nonces(owner_);
         bytes32 structHash =
@@ -180,7 +180,7 @@ contract VaultV2ExitBundlesTest is Test {
         bytes32 digest =
             keccak256(abi.encodePacked("\x19\x01", IERC20PermitVault(address(vault)).DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
-        return SharesPermit({value: value, nonce: nonce, deadline: sigDeadline, v: v, r: r, s: s});
+        return Permit({value: value, nonce: nonce, deadline: sigDeadline, v: v, r: r, s: s});
     }
 
     function _setUpIlliquid(uint256 assets) internal {
@@ -441,7 +441,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         assertEq(vault.allowance(sigUser, address(vaultBundles)), 0, "no prior allowance");
 
-        SharesPermit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, type(uint256).max, block.timestamp);
+        Permit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, type(uint256).max, block.timestamp);
         vm.prank(sigUser);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
             address(vault), address(adapter), _singleton(marketParams), assets, sharesPermit, block.timestamp
