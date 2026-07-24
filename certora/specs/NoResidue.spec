@@ -84,6 +84,7 @@ function summaryWrapNative(address token, uint256 value) {
 
 function summaryUnwrapNative(address token, uint256 amount) {
     bundlerBalance[token] = bundlerBalance[token] - amount;
+    nativeBalances[currentContract] = require_uint256(nativeBalances[currentContract] + amount);
 }
 
 rule supplyPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 maxSharePriceE27, TokenLib.TokenPermit permit, uint256 feePct, address recipient, address token, uint256 deadline) {
@@ -92,8 +93,10 @@ rule supplyPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint
     require recipient != currentContract, "no bundler donations of the fee";
 
     mathint before = bundlerBalance[token];
+    mathint nativeBefore = nativeBalances[currentContract];
     blueBundlesV1Supply(e, marketParams, assets, maxSharePriceE27, permit, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
+    assert nativeBalances[currentContract] == nativeBefore;
 }
 
 rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, uint256 minSharePriceE27, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 feePct, address recipient, address token, uint256 deadline) {
@@ -101,8 +104,10 @@ rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, ui
     require recipient != currentContract, "no bundler donations of the fee";
 
     mathint before = bundlerBalance[token];
+    mathint nativeBefore = nativeBalances[currentContract];
     blueBundlesV1Withdraw(e, marketParams, assets, shares, minSharePriceE27, signedAuthorization, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
+    assert nativeBalances[currentContract] == nativeBefore;
 }
 
 rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAmount, uint256 borrowAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit permit, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 feePct, address recipient, address token, uint256 deadline) {
@@ -111,8 +116,10 @@ rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundlesV1.MarketParams
     require recipient != currentContract, "no bundler donations of the fee";
 
     mathint before = bundlerBalance[token];
+    mathint nativeBefore = nativeBalances[currentContract];
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAmount, borrowAssets, minSharePriceE27, maxLtv, permit, signedAuthorization, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
+    assert nativeBalances[currentContract] == nativeBefore;
 }
 
 rule repayAndWithdrawCollateralPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, uint256 maxRepayAssets, uint256 maxSharePriceE27, uint256 withdrawCollateralAssets, uint256 maxLtv, TokenLib.TokenPermit permit, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 feePct, address recipient, address token, uint256 deadline) {
@@ -121,6 +128,8 @@ rule repayAndWithdrawCollateralPreservesBalance(env e, BlueBundlesV1.MarketParam
     require recipient != currentContract, "no bundler donations of the fee";
 
     mathint before = bundlerBalance[token];
+    mathint nativeBefore = nativeBalances[currentContract];
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, assets, shares, maxRepayAssets, maxSharePriceE27, withdrawCollateralAssets, maxLtv, permit, signedAuthorization, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
+    assert nativeBalances[currentContract] == nativeBefore;
 }
