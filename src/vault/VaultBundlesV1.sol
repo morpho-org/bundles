@@ -38,6 +38,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         address referralFeeRecipient,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
         initiator = msg.sender;
 
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -73,6 +74,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         address referralFeeRecipient,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
         initiator = msg.sender;
 
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -110,6 +112,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         address referralFeeRecipient,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
         initiator = msg.sender;
 
         require(block.timestamp <= deadline, DeadlinePassed());

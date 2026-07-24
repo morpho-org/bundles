@@ -17,6 +17,7 @@ struct SharesPermit {
 
 interface IVaultExitBundlesV1 {
     /// ERRORS ///
+    error AlreadyInitiated();
     error AdapterNotPartOfVault();
     error DeadlinePassed();
     error InvalidAdaptersLength();

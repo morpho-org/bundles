@@ -17,6 +17,7 @@ struct SharesPermit {
 
 interface IVaultBundlesV1 {
     /// ERRORS ///
+    error AlreadyInitiated();
     error DeadlinePassed();
     error InconsistentAssets();
     error NotExactlyOneZero();

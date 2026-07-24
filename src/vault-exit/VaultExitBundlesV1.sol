@@ -59,6 +59,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
         initiator = msg.sender;
 
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -112,6 +113,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
         initiator = msg.sender;
 
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -166,6 +168,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         address referralFeeRecipient,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
         initiator = msg.sender;
 
         require(block.timestamp <= deadline, DeadlinePassed());
