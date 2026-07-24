@@ -36,6 +36,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
 
+    address public transient initiator;
+
     address public immutable BLUE;
 
     constructor(address _blue) {
@@ -57,6 +59,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external {
+        initiator = msg.sender;
+
         require(block.timestamp <= deadline, DeadlinePassed());
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
 
@@ -108,6 +112,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         SharesPermit memory sharesPermit,
         uint256 deadline
     ) external {
+        initiator = msg.sender;
+
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
@@ -160,6 +166,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         address referralFeeRecipient,
         uint256 deadline
     ) external {
+        initiator = msg.sender;
+
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());

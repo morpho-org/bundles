@@ -25,6 +25,7 @@ interface IVaultExitBundlesV1 {
     error UnauthorizedCallback();
 
     /// STORAGE GETTERS ///
+    function initiator() external view returns (address);
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///

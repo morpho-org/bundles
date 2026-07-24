@@ -5,3 +5,4 @@ pragma solidity 0.8.28;
 
 import {VaultV2Factory} from "../../lib/vault-v2/src/VaultV2Factory.sol";
 import {MorphoMarketV1AdapterV2Factory} from "../../lib/vault-v2/src/adapters/MorphoMarketV1AdapterV2Factory.sol";
+import {WhitelistSendAssetsGate} from "../../lib/vault-v2/src/periphery/WhitelistSendAssetsGate.sol";

@@ -23,6 +23,9 @@ interface IVaultBundlesV1 {
     error PctExceeded();
     error SlippageExceeded();
 
+    /// STORAGE GETTERS ///
+    function initiator() external view returns (address);
+
     /// FUNCTIONS ///
     function vaultBundlesV1Deposit(
         address vault,
