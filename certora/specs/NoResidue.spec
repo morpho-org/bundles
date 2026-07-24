@@ -13,13 +13,11 @@ persistent ghost mapping(address => mathint) bundlerBalance;
 
 methods {
     // ERC20: the bundler's own transfers move bundlerBalance.
-
     function _.transferFrom(address from, address to, uint256 amt) external => cvlTransferFrom(calledContract, from, to, amt) expect(bool);
     function _.transfer(address to, uint256 amt) external with(env e) => cvlTransferFrom(calledContract, e.msg.sender, to, amt) expect(bool);
 
     // Morpho: pull on supply/repay/supplyCollateral, send on borrow/withdraw/withdrawCollateral.
     // Also assumes that the Morpho Blue address is different from the bundler's.
-
     function _.supply(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(marketParams.loanToken, assets, shares) expect(uint256, uint256);
     function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(marketParams.loanToken) expect(uint256, uint256);
     function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(marketParams.collateralToken, assets) expect void;
@@ -27,8 +25,7 @@ methods {
     function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryWithdraw(marketParams.loanToken, receiver) expect(uint256, uint256);
     function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address receiver) external => summaryWithdrawCollateral(marketParams.collateralToken, assets, receiver) expect void;
 
-    // WNative: the bundler wraps native by depositing msg.value (minting WNative to itself) and unwraps by withdrawing (burning WNative).
-
+    // Model the WNative contract's deposit and withdraw behavior: mints on deposit and burns on withdraw.
     function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
     function _.withdraw(uint256 amount) external => summaryUnwrapNative(calledContract, amount) expect void;
 
