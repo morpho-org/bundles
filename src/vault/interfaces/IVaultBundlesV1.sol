@@ -2,18 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity >=0.8.0;
 
-import {TokenPermit} from "../../libraries/TokenLib.sol";
-
-/// @dev An empty permit (v, r and s all zero) means no permit is submitted.
-/// @dev A permit with an already consumed nonce is not submitted either.
-struct SharesPermit {
-    uint256 value;
-    uint256 nonce;
-    uint256 deadline;
-    uint8 v;
-    bytes32 r;
-    bytes32 s;
-}
+import {TokenPermit, Permit} from "../../libraries/TokenLib.sol";
 
 interface IVaultBundlesV1 {
     /// ERRORS ///
@@ -43,7 +32,7 @@ interface IVaultBundlesV1 {
         uint256 assets,
         uint256 shares,
         uint256 minSharePriceE27,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -56,7 +45,7 @@ interface IVaultBundlesV1 {
         uint256 sharesRedeemed,
         uint256 sourceMinSharePriceE27,
         uint256 destMaxSharePriceE27,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline

@@ -6,7 +6,7 @@ import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
 import {VaultBundlesV1} from "../src/vault/VaultBundlesV1.sol";
-import {IVaultBundlesV1, SharesPermit} from "../src/vault/interfaces/IVaultBundlesV1.sol";
+import {IVaultBundlesV1, Permit} from "../src/vault/interfaces/IVaultBundlesV1.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 
@@ -71,7 +71,7 @@ contract VaultBundlesTest is Test {
     TokenPermit internal noPermit = TokenPermit(PermitKind.None, "");
 
     // The empty shares permit (v, r and s all zero) is skipped by the bundler.
-    SharesPermit internal noSharesPermit;
+    Permit internal noSharesPermit;
 
     bytes32 internal constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
@@ -142,14 +142,14 @@ contract VaultBundlesTest is Test {
     function _signSharesPermit(uint256 privateKey, address owner_, IERC4626 vault, uint256 value, uint256 sigDeadline)
         internal
         view
-        returns (SharesPermit memory)
+        returns (Permit memory)
     {
         uint256 nonce = IERC20PermitVault(address(vault)).nonces(owner_);
         bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner_, address(bundles), value, nonce, sigDeadline));
         bytes32 digest =
             keccak256(abi.encodePacked("\x19\x01", IERC20PermitVault(address(vault)).DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
-        return SharesPermit({value: value, nonce: nonce, deadline: sigDeadline, v: v, r: r, s: s});
+        return Permit({value: value, nonce: nonce, deadline: sigDeadline, v: v, r: r, s: s});
     }
 
     /// DEPOSIT ///
@@ -446,8 +446,7 @@ contract VaultBundlesTest is Test {
 
         assertEq(vault.allowance(sigUser, address(bundles)), 0, "no prior allowance");
 
-        SharesPermit memory sharesPermit =
-            _signSharesPermit(sigUserKey, sigUser, vault, type(uint256).max, block.timestamp);
+        Permit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, vault, type(uint256).max, block.timestamp);
         vm.prank(sigUser);
         bundles.vaultBundlesV1Withdraw(address(vault), assets, 0, 0, sharesPermit, 0, address(0), block.timestamp);
 
@@ -467,8 +466,7 @@ contract VaultBundlesTest is Test {
         vaultV1.deposit(assets, sigUser);
         vm.stopPrank();
 
-        SharesPermit memory sharesPermit =
-            _signSharesPermit(sigUserKey, sigUser, vaultV1, type(uint256).max, block.timestamp);
+        Permit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, vaultV1, type(uint256).max, block.timestamp);
 
         vm.prank(makeAddr("frontRunner"));
         IERC20PermitVault(address(vaultV1))
@@ -502,8 +500,7 @@ contract VaultBundlesTest is Test {
 
         assertEq(vaultV1.allowance(sigUser, address(bundles)), 0, "no prior allowance");
 
-        SharesPermit memory sharesPermit =
-            _signSharesPermit(sigUserKey, sigUser, vaultV1, type(uint256).max, block.timestamp);
+        Permit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, vaultV1, type(uint256).max, block.timestamp);
         vm.prank(sigUser);
         bundles.vaultBundlesV1Migrate(
             address(vaultV1), address(vaultV2), assets, 0, 0, RAY, sharesPermit, 0, address(0), block.timestamp
