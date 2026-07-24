@@ -50,8 +50,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Requires the sender to have enough shares to withdraw exitAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    /// @dev Passing the vault's entire withdrawal queue as marketParamsList makes the call immune to vault allocation changes: the full vault allocation is taken into account.
-    /// @dev The withdrawal queue can change before inclusion: additions are timelocked so they can be anticipated, and removed markets are skipped.
+    /// @dev Passing a marketParamsList that covers the vault's withdrawal queue (i.e. any superset of it) makes the call immune to vault allocation changes: the full vault allocation is taken into account.
+    /// @dev The withdrawal queue can change before inclusion: additions are timelocked so they can be anticipated, and markets not in the withdrawal queue are skipped.
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
@@ -102,8 +102,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    /// @dev Passing the adapter's entire market list as marketParamsList makes the call immune to allocation changes among those markets; assets moved to idle (e.g. via forceDeallocate) are not covered but can be withdrawn normally.
-    /// @dev The market list can change before inclusion: additions are timelocked so they can be anticipated, and removed markets are skipped.
+    /// @dev Passing a marketParamsList that covers the adapter's market list (i.e. any superset of it) makes the call immune to vault allocation changes among those markets; assets moved to idle (e.g. via forceDeallocate) are not covered but can be withdrawn normally.
+    /// @dev The market list can change before inclusion: additions are timelocked so they can be anticipated, and market not in the list are skipped.
     function vaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
         address adapter,
