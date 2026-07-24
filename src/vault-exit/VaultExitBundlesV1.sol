@@ -2,9 +2,8 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IVaultExitBundlesV1, SharesPermit} from "./interfaces/IVaultExitBundlesV1.sol";
+import {IVaultExitBundlesV1, Permit} from "./interfaces/IVaultExitBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
-import {IERC20Permit} from "../libraries/interfaces/IERC20Permit.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {MathLib} from "../../lib/vault-v2/src/libraries/MathLib.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
@@ -50,17 +49,19 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Requires the sender to have enough shares to withdraw exitAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
+    /// @dev Passing a comprehensive marketParamsList (e.g. superset of the vault's withdrawal queue) can make the call immune to vault allocation changes: the full vault allocation is taken into account.
+    /// @dev The withdrawal queue can change before inclusion: additions are timelocked so they can be anticipated, and markets not in the withdrawal queue are skipped.
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
 
-        permitShares(vault, sharesPermit);
+        TokenLib.submitPermit(vault, sharesPermit);
         address loanToken = IMetaMorpho(vault).asset();
         TokenLib.forceApproveMax(loanToken, BLUE);
 
@@ -100,12 +101,14 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
+    /// @dev Passing a comprehensive marketParamsList (e.g. superset of the adapter's market list) can make the call immune to vault allocation changes among those markets; assets moved to idle (e.g. via forceDeallocate) are not covered but can be withdrawn normally.
+    /// @dev The market list can change before inclusion: additions are timelocked so they can be anticipated, and market not in the list are skipped.
     function vaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
         address adapter,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -113,7 +116,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
 
-        permitShares(vault, sharesPermit);
+        TokenLib.submitPermit(vault, sharesPermit);
         TokenLib.forceApproveMax(IVaultV2(vault).asset(), BLUE);
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
@@ -155,7 +158,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         address vault,
         address adapter,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -166,7 +169,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
         require(referralFeePct < WAD, PctExceeded());
 
-        permitShares(vault, sharesPermit);
+        TokenLib.submitPermit(vault, sharesPermit);
 
         address asset = IVaultV2(vault).asset();
         uint256 withdrawableAssets = IERC20(asset).balanceOf(vault);
@@ -215,28 +218,5 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
         SafeTransferLib.safeTransfer(asset, msg.sender, withdrawn - referralFeeAssets);
-    }
-
-    /// INTERNAL ///
-
-    /// @dev The parameters signed by the user should be the same as the inputs of this function.
-    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful when shares are already permitted.
-    /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that case.
-    /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until sharesPermit.deadline, as revoking on the vault does not consume the nonce.
-    function permitShares(address vault, SharesPermit memory sharesPermit) internal {
-        bool emptyPermit = sharesPermit.v == 0 && sharesPermit.r == 0 && sharesPermit.s == 0;
-
-        if (!emptyPermit && IERC20Permit(vault).nonces(msg.sender) <= sharesPermit.nonce) {
-            IERC20Permit(vault)
-                .permit(
-                    msg.sender,
-                    address(this),
-                    sharesPermit.value,
-                    sharesPermit.deadline,
-                    sharesPermit.v,
-                    sharesPermit.r,
-                    sharesPermit.s
-                );
-        }
     }
 }
