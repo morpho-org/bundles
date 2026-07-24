@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IVaultExitBundlesV1, SharesPermit} from "./interfaces/IVaultExitBundlesV1.sol";
+import {IVaultExitBundlesV1, Permit} from "./interfaces/IVaultExitBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {MathLib} from "../../lib/vault-v2/src/libraries/MathLib.sol";
@@ -53,13 +53,13 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         address vault,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
 
-        TokenLib.permitShares(vault, sharesPermit);
+        TokenLib.submitPermit(vault, sharesPermit);
         address loanToken = IMetaMorpho(vault).asset();
         TokenLib.forceApproveMax(loanToken, BLUE);
 
@@ -104,7 +104,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         address adapter,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -112,7 +112,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
 
-        TokenLib.permitShares(vault, sharesPermit);
+        TokenLib.submitPermit(vault, sharesPermit);
         TokenLib.forceApproveMax(IVaultV2(vault).asset(), BLUE);
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
@@ -154,7 +154,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         address vault,
         address adapter,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -165,7 +165,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
         require(referralFeePct < WAD, PctExceeded());
 
-        TokenLib.permitShares(vault, sharesPermit);
+        TokenLib.submitPermit(vault, sharesPermit);
 
         address asset = IVaultV2(vault).asset();
         uint256 withdrawableAssets = IERC20(asset).balanceOf(vault);

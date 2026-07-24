@@ -19,7 +19,7 @@ struct TokenPermit {
 
 /// @dev An empty permit (v, r and s all zero) means no permit is submitted.
 /// @dev A permit with an already consumed nonce is not submitted either.
-struct SharesPermit {
+struct Permit {
     uint256 value;
     uint256 nonce;
     uint256 deadline;
@@ -79,23 +79,15 @@ library TokenLib {
     }
 
     /// @dev The parameters signed by the user should be the same as the inputs of this function.
-    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful when shares are already permitted.
+    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful when the tokens are already permitted.
     /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that case.
-    /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until sharesPermit.deadline, as revoking on the vault does not consume the nonce.
-    function permitShares(address vault, SharesPermit memory sharesPermit) internal {
-        bool emptyPermit = sharesPermit.v == 0 && sharesPermit.r == 0 && sharesPermit.s == 0;
+    /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until permit.deadline.
+    function submitPermit(address token, Permit memory permit) internal {
+        bool emptyPermit = permit.v == 0 && permit.r == 0 && permit.s == 0;
 
-        if (!emptyPermit && IERC20Permit(vault).nonces(msg.sender) <= sharesPermit.nonce) {
-            IERC20Permit(vault)
-                .permit(
-                    msg.sender,
-                    address(this),
-                    sharesPermit.value,
-                    sharesPermit.deadline,
-                    sharesPermit.v,
-                    sharesPermit.r,
-                    sharesPermit.s
-                );
+        if (!emptyPermit && IERC20Permit(token).nonces(msg.sender) <= permit.nonce) {
+            IERC20Permit(token)
+                .permit(msg.sender, address(this), permit.value, permit.deadline, permit.v, permit.r, permit.s);
         }
     }
 }

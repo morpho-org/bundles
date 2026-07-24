@@ -3,7 +3,7 @@
 pragma solidity >=0.8.0;
 
 import {MarketParams} from "../../../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
-import {SharesPermit} from "../../libraries/TokenLib.sol";
+import {Permit} from "../../libraries/TokenLib.sol";
 
 interface IVaultExitBundlesV1 {
     /// ERRORS ///
@@ -22,7 +22,7 @@ interface IVaultExitBundlesV1 {
         address vault,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 deadline
     ) external;
 
@@ -31,7 +31,7 @@ interface IVaultExitBundlesV1 {
         address adapter,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 deadline
     ) external;
 
@@ -39,7 +39,7 @@ interface IVaultExitBundlesV1 {
         address vault,
         address adapter,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline

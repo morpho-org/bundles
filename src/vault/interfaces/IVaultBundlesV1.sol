@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity >=0.8.0;
 
-import {TokenPermit, SharesPermit} from "../../libraries/TokenLib.sol";
+import {TokenPermit, Permit} from "../../libraries/TokenLib.sol";
 
 interface IVaultBundlesV1 {
     /// ERRORS ///
@@ -28,7 +28,7 @@ interface IVaultBundlesV1 {
         uint256 assets,
         uint256 shares,
         uint256 minSharePriceE27,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -41,7 +41,7 @@ interface IVaultBundlesV1 {
         uint256 sharesRedeemed,
         uint256 sourceMinSharePriceE27,
         uint256 destMaxSharePriceE27,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
