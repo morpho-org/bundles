@@ -27,6 +27,11 @@ methods {
     function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryWithdraw(marketParams.loanToken, receiver) expect(uint256, uint256);
     function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address receiver) external => summaryWithdrawCollateral(marketParams.collateralToken, assets, receiver) expect void;
 
+    // WNative: the bundler wraps native by depositing msg.value (minting WNative to itself) and unwraps by withdrawing (burning WNative).
+
+    function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
+    function _.withdraw(uint256 amount) external => summaryUnwrapNative(calledContract, amount) expect void;
+
     // Since calls are not summarized as havoc all by default, it is assumed that other calls don't change the bundler's balance of any token.
 }
 
@@ -71,6 +76,16 @@ function summaryWithdraw(address token, address receiver) returns (uint256, uint
 
 function summaryWithdrawCollateral(address token, uint256 assets, address receiver) {
     if (receiver == currentContract) bundlerBalance[token] = bundlerBalance[token] + assets;
+}
+
+// Wrapping native mints an equal amount of WNative to the bundler (the caller).
+function summaryWrapNative(address token, uint256 value) {
+    bundlerBalance[token] = bundlerBalance[token] + value;
+}
+
+// Unwrapping burns WNative from the bundler; the returned native is not a tracked token.
+function summaryUnwrapNative(address token, uint256 amount) {
+    bundlerBalance[token] = bundlerBalance[token] - amount;
 }
 
 rule supplyPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 maxSharePriceE27, TokenLib.TokenPermit permit, uint256 feePct, address recipient, address token, uint256 deadline) {
