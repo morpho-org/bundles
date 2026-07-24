@@ -26,6 +26,7 @@ contract MidnightToBlueRoll is IRepayCallback {
         BLUE = _blue;
     }
 
+    /// @inheritdoc IRepayCallback
     function onRepay(bytes32, Market memory, uint256 units, address, bytes memory data) external returns (bytes32) {
         require(msg.sender == MIDNIGHT);
         (
