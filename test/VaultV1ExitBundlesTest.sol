@@ -442,4 +442,20 @@ contract VaultV1ExitBundlesTest is Test {
             address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp - 1
         );
     }
+
+    /// @dev Without a reset, the initiator stays set after the first call, so a second guarded call in the same
+    /// transaction reverts.
+    function testInKindRedemptionAlreadyInitiated() public {
+        uint256 assets = 100e18;
+        _setUpIlliquid(2 * assets);
+
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
+            address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp
+        );
+
+        vm.expectRevert(IVaultExitBundlesV1.AlreadyInitiated.selector);
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
+            address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp
+        );
+    }
 }

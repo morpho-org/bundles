@@ -781,14 +781,8 @@ contract VaultBundlesTest is Test {
 
         uint256 assets = 100e18;
 
-        deal(address(loanToken), whitelisted, assets);
-        vm.prank(whitelisted);
-        loanToken.approve(address(bundles), type(uint256).max);
-
-        vm.prank(whitelisted);
-        bundles.vaultBundlesV1Deposit(address(vaultV2), assets, RAY, noPermit, 0, address(0), block.timestamp);
-        assertApproxEqAbs(vaultV2.convertToAssets(vaultV2.balanceOf(whitelisted)), assets, 1, "whitelisted position");
-
+        // The non-whitelisted deposit runs first: it reverts inside the gate check, which rolls back the initiator the
+        // bundler set, so the whitelisted deposit below still sees an unset initiator.
         deal(address(loanToken), notWhitelisted, assets);
         vm.prank(notWhitelisted);
         loanToken.approve(address(bundles), type(uint256).max);
@@ -796,5 +790,50 @@ contract VaultBundlesTest is Test {
         vm.prank(notWhitelisted);
         vm.expectRevert(ErrorsLib.CannotSendAssets.selector);
         bundles.vaultBundlesV1Deposit(address(vaultV2), assets, RAY, noPermit, 0, address(0), block.timestamp);
+
+        // The whitelisted deposit succeeds: the gate reads initiator() == whitelisted.
+        deal(address(loanToken), whitelisted, assets);
+        vm.prank(whitelisted);
+        loanToken.approve(address(bundles), type(uint256).max);
+
+        vm.prank(whitelisted);
+        bundles.vaultBundlesV1Deposit(address(vaultV2), assets, RAY, noPermit, 0, address(0), block.timestamp);
+        assertApproxEqAbs(vaultV2.convertToAssets(vaultV2.balanceOf(whitelisted)), assets, 1, "whitelisted position");
+    }
+
+    /// @dev Without a reset, the initiator stays set after the first call, so a second guarded call in the same
+    /// transaction reverts.
+    function testDepositAlreadyInitiated() public {
+        uint256 assets = 100e18;
+        deal(address(loanToken), user, 2 * assets);
+
+        bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp);
+
+        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+        bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp);
+    }
+
+    function testWithdrawAlreadyInitiated() public {
+        uint256 assets = 100e18;
+        _deposited(vaultV1, 2 * assets);
+
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, 0, noSharesPermit, 0, address(0), block.timestamp);
+
+        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, 0, noSharesPermit, 0, address(0), block.timestamp);
+    }
+
+    function testMigrateAlreadyInitiated() public {
+        uint256 assets = 100e18;
+        _deposited(vaultV1, 2 * assets);
+
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultV2), assets, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
+        );
+
+        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultV2), assets, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
+        );
     }
 }

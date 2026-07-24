@@ -816,4 +816,36 @@ contract VaultV2ExitBundlesTest is Test {
             address(vault), address(adapter), assets, noSharesPermit, 0, address(0), block.timestamp - 1
         );
     }
+
+    /// ALREADY INITIATED ///
+
+    /// @dev Without a reset, the initiator stays set after the first call, so a second guarded call in the same
+    /// transaction reverts.
+    function testInKindRedemptionAlreadyInitiated() public {
+        uint256 assets = 100e18;
+        _setUpIlliquid(2 * assets);
+
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), _singleton(marketParams), assets, noSharesPermit, block.timestamp
+        );
+
+        vm.expectRevert(IVaultExitBundlesV1.AlreadyInitiated.selector);
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), _singleton(marketParams), assets, noSharesPermit, block.timestamp
+        );
+    }
+
+    function testForceWithdrawAlreadyInitiated() public {
+        uint256 assets = 100e18;
+        _setUpLiquid(2 * assets);
+
+        vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), assets, noSharesPermit, 0, address(0), block.timestamp
+        );
+
+        vm.expectRevert(IVaultExitBundlesV1.AlreadyInitiated.selector);
+        vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), assets, noSharesPermit, 0, address(0), block.timestamp
+        );
+    }
 }
