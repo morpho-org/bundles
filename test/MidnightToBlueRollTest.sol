@@ -154,8 +154,11 @@ contract MidnightToBlueRollTest is Test {
         assertEq(loanToken.balanceOf(address(roll)), 0);
         assertEq(collateralToken.balanceOf(address(roll)), 0);
 
+        // In production the caller is expected to be the user's smart wallet; here we prank the
+        // user (who has the Midnight position) and pass the callback contract as the callback address.
+        bytes memory data = abi.encode(midnightMarket, blueParams, uint256(0), collateralAmount, user);
         vm.prank(user);
-        roll.roll(midnightMarket, blueParams, 0);
+        midnight.repay(midnightMarket, units, user, address(roll), data);
 
         // After: Midnight closed, Blue mirrors the position, roll contract empty
         // (no flash loan, no leftover capital).

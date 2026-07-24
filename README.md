@@ -51,25 +51,22 @@ Users are still expected to look at the inputs of the entry-points, to decide wh
 > [`MidnightToBlueRoll`](src/midnight-to-blue/MidnightToBlueRoll.sol) demonstrates
 > that Midnight's `onRepay` callback can fund a Morpho Blue borrow, migrating a
 > fixed-rate borrow position into a variable-rate one in a single transaction
-> without a flash loan. Slippage bounds, LTV caps, deadlines, referral fees,
-> callback authentication, and every other production concern are deliberately
-> omitted; this contract is not a bundle and is not written to bundle
-> conventions.
+> without a flash loan. Only the callback is provided; the caller (typically a
+> smart wallet) invokes `Midnight.repay` itself and passes this contract as the
+> callback. Slippage bounds, LTV caps, deadlines, referral fees, and every other
+> production concern are deliberately omitted; this contract is not a bundle and
+> is not written to bundle conventions.
 
 ```
-User → MidnightToBlueRoll.roll(sourceMarket, destParams, i)
-         │
-         └─→ Midnight.repay(sourceMarket, units, user, this, data)      [debt -= units]
-                │
-                └─→ this.onRepay(data)
-                        ├─→ Midnight.withdrawCollateral(sourceMarket, i, X, user, this)   [X → this]
-                        ├─→ Blue.supplyCollateral(destParams, X, user)                    [X → user's Blue position]
-                        ├─→ Blue.borrow(destParams, units, 0, user, this)                 [units → this]
-                        └─→ return CALLBACK_SUCCESS
-                │
-                └─→ Midnight pulls `units` from this                    [this ends with 0]
-         │
-       (returns)
+Caller (e.g. smart wallet) → Midnight.repay(sourceMarket, units, user, callback, data)   [debt -= units]
+                                    │
+                                    └─→ callback.onRepay(data)
+                                            ├─→ Midnight.withdrawCollateral(sourceMarket, i, X, user, callback)  [X → callback]
+                                            ├─→ Blue.supplyCollateral(destParams, X, user)                       [X → user's Blue position]
+                                            ├─→ Blue.borrow(destParams, units, 0, user, callback)                [units → callback]
+                                            └─→ return CALLBACK_SUCCESS
+                                    │
+                                    └─→ Midnight pulls `units` from callback     [callback ends with 0]
 ```
 
 ## Audits
