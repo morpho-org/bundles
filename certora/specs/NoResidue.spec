@@ -78,12 +78,10 @@ function summaryWithdrawCollateral(address token, uint256 assets, address receiv
     if (receiver == currentContract) bundlerBalance[token] = bundlerBalance[token] + assets;
 }
 
-// Wrapping native mints an equal amount of WNative to the bundler (the caller).
 function summaryWrapNative(address token, uint256 value) {
     bundlerBalance[token] = bundlerBalance[token] + value;
 }
 
-// Unwrapping burns WNative from the bundler; the returned native is not a tracked token.
 function summaryUnwrapNative(address token, uint256 amount) {
     bundlerBalance[token] = bundlerBalance[token] - amount;
 }
