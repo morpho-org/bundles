@@ -2,14 +2,10 @@
 
 // No token residue: every entry point preserves the bundler's balance of every token (delta 0).
 // Scope: all entry points, excluding migrate borrow position.
-// Two assumptions shared with that suite:
+// Assumptions shared with that suite:
 //   - no bundler donations: the receiver and the recipient are different from the bundler.
 //   - well-behaved ERC20 (no fee-on-transfer/rebasing): matching the token restriction in BlueBundles' header.
-
-definition WAD() returns mathint = 10 ^ 18;
-
-// The bundler's balance of every token, updated on every transfer that touches it.
-persistent ghost mapping(address => mathint) bundlerBalance;
+//   - the bundler is not the wrapped-native token.
 
 methods {
     // ERC20: the bundler's own transfers move bundlerBalance.
@@ -29,8 +25,22 @@ methods {
     function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
     function _.withdraw(uint256 amount) external => summaryUnwrapNative(calledContract, amount) expect void;
 
+    // Summarized without state changes, as the HAVOC_ECF allows the callee to credit native tokens to the caller.
+    function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => NONDET;
+    function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
+
     // Since calls are not summarized as havoc all by default, it is assumed that other calls don't change the bundler's balance of any token.
 }
+
+definition WAD() returns mathint = 10 ^ 18;
+
+// The bundler's balance of every token, updated on every transfer that touches it.
+persistent ghost mapping(address => mathint) bundlerBalance;
+
+// Native sent to the bundler by the wrapped-native contract on withdraw: summaries cannot write nativeBalances, so it is tracked separately and added to the bundler's native balance in the rules.
+persistent ghost mathint unwrappedNative;
+
+definition bundlerNativeBalance() returns mathint = nativeBalances[currentContract] + unwrappedNative;
 
 // well-behaved ERC20: transfers move balances by the amount.
 function cvlTransferFrom(address token, address from, address to, uint256 amount) returns bool {
@@ -81,19 +91,20 @@ function summaryWrapNative(address token, uint256 value) {
 
 function summaryUnwrapNative(address token, uint256 amount) {
     bundlerBalance[token] = bundlerBalance[token] - amount;
-    nativeBalances[currentContract] = require_uint256(nativeBalances[currentContract] + amount);
+    unwrappedNative = unwrappedNative + amount;
 }
 
 rule supplyPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 maxSharePriceE27, TokenLib.TokenPermit permit, uint256 feePct, address recipient, address token, uint256 deadline) {
     require permit.kind == TokenLib.PermitKind.None, "simplification for prover performance";
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require recipient != currentContract, "no bundler donations of the fee";
+    require marketParams.loanToken != currentContract, "the bundler is not the wrapped-native token";
 
     mathint before = bundlerBalance[token];
-    mathint nativeBefore = nativeBalances[currentContract];
+    mathint nativeBefore = bundlerNativeBalance();
     blueBundlesV1Supply(e, marketParams, assets, maxSharePriceE27, permit, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
-    assert nativeBalances[currentContract] == nativeBefore;
+    assert bundlerNativeBalance() == nativeBefore;
 }
 
 rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, uint256 minSharePriceE27, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 feePct, address recipient, address token, uint256 deadline) {
@@ -101,32 +112,34 @@ rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, ui
     require recipient != currentContract, "no bundler donations of the fee";
 
     mathint before = bundlerBalance[token];
-    mathint nativeBefore = nativeBalances[currentContract];
+    mathint nativeBefore = bundlerNativeBalance();
     blueBundlesV1Withdraw(e, marketParams, assets, shares, minSharePriceE27, signedAuthorization, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
-    assert nativeBalances[currentContract] == nativeBefore;
+    assert bundlerNativeBalance() == nativeBefore;
 }
 
 rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAmount, uint256 borrowAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit permit, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 feePct, address recipient, address token, uint256 deadline) {
     require permit.kind == TokenLib.PermitKind.None, "simplification for prover performance";
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require recipient != currentContract, "no bundler donations of the fee";
+    require marketParams.collateralToken != currentContract, "the bundler is not the wrapped-native token";
 
     mathint before = bundlerBalance[token];
-    mathint nativeBefore = nativeBalances[currentContract];
+    mathint nativeBefore = bundlerNativeBalance();
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAmount, borrowAssets, minSharePriceE27, maxLtv, permit, signedAuthorization, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
-    assert nativeBalances[currentContract] == nativeBefore;
+    assert bundlerNativeBalance() == nativeBefore;
 }
 
 rule repayAndWithdrawCollateralPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, uint256 maxRepayAssets, uint256 maxSharePriceE27, uint256 withdrawCollateralAssets, uint256 maxLtv, TokenLib.TokenPermit permit, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 feePct, address recipient, address token, uint256 deadline) {
     require permit.kind == TokenLib.PermitKind.None, "simplification for prover performance";
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require recipient != currentContract, "no bundler donations of the fee";
+    require marketParams.loanToken != currentContract, "the bundler is not the wrapped-native token";
 
     mathint before = bundlerBalance[token];
-    mathint nativeBefore = nativeBalances[currentContract];
+    mathint nativeBefore = bundlerNativeBalance();
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, assets, shares, maxRepayAssets, maxSharePriceE27, withdrawCollateralAssets, maxLtv, permit, signedAuthorization, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
-    assert nativeBalances[currentContract] == nativeBefore;
+    assert bundlerNativeBalance() == nativeBefore;
 }
