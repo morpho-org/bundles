@@ -4,7 +4,6 @@ pragma solidity 0.8.34;
 
 import {IVaultExitBundlesV1, SharesPermit} from "./interfaces/IVaultExitBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
-import {IERC20Permit} from "../libraries/interfaces/IERC20Permit.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {MathLib} from "../../lib/vault-v2/src/libraries/MathLib.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
@@ -60,7 +59,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         require(block.timestamp <= deadline, DeadlinePassed());
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
 
-        permitShares(vault, sharesPermit);
+        TokenLib.permitShares(vault, sharesPermit);
         address loanToken = IMetaMorpho(vault).asset();
         TokenLib.forceApproveMax(loanToken, BLUE);
 
@@ -113,7 +112,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
 
-        permitShares(vault, sharesPermit);
+        TokenLib.permitShares(vault, sharesPermit);
         TokenLib.forceApproveMax(IVaultV2(vault).asset(), BLUE);
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
@@ -166,7 +165,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
         require(referralFeePct < WAD, PctExceeded());
 
-        permitShares(vault, sharesPermit);
+        TokenLib.permitShares(vault, sharesPermit);
 
         address asset = IVaultV2(vault).asset();
         uint256 withdrawableAssets = IERC20(asset).balanceOf(vault);
@@ -215,28 +214,5 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
         SafeTransferLib.safeTransfer(asset, msg.sender, withdrawn - referralFeeAssets);
-    }
-
-    /// INTERNAL ///
-
-    /// @dev The parameters signed by the user should be the same as the inputs of this function.
-    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful when shares are already permitted.
-    /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that case.
-    /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until sharesPermit.deadline, as revoking on the vault does not consume the nonce.
-    function permitShares(address vault, SharesPermit memory sharesPermit) internal {
-        bool emptyPermit = sharesPermit.v == 0 && sharesPermit.r == 0 && sharesPermit.s == 0;
-
-        if (!emptyPermit && IERC20Permit(vault).nonces(msg.sender) <= sharesPermit.nonce) {
-            IERC20Permit(vault)
-                .permit(
-                    msg.sender,
-                    address(this),
-                    sharesPermit.value,
-                    sharesPermit.deadline,
-                    sharesPermit.v,
-                    sharesPermit.r,
-                    sharesPermit.s
-                );
-        }
     }
 }

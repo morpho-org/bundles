@@ -4,7 +4,6 @@ pragma solidity 0.8.34;
 
 import {IVaultBundlesV1, SharesPermit} from "./interfaces/IVaultBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
-import {IERC20Permit} from "../libraries/interfaces/IERC20Permit.sol";
 import {IERC4626} from "../../lib/vault-v2/src/interfaces/IERC4626.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
@@ -73,7 +72,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         require((assets == 0) != (shares == 0), NotExactlyOneZero());
         require(referralFeePct < WAD, PctExceeded());
 
-        permitShares(vault, sharesPermit);
+        TokenLib.permitShares(vault, sharesPermit);
 
         if (assets > 0) shares = IERC4626(vault).withdraw(assets, address(this), msg.sender);
         else assets = IERC4626(vault).redeem(shares, address(this), msg.sender);
@@ -108,7 +107,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         require((assetsWithdrawn == 0) != (sharesRedeemed == 0), NotExactlyOneZero());
         require(referralFeePct < WAD, PctExceeded());
 
-        permitShares(sourceVault, sharesPermit);
+        TokenLib.permitShares(sourceVault, sharesPermit);
 
         address asset = IERC4626(sourceVault).asset();
         require(asset == IERC4626(destVault).asset(), InconsistentAssets());
@@ -128,28 +127,5 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         require(toDeposit.mulDivUp(1e27, sharesMinted) <= destMaxSharePriceE27, SlippageExceeded());
 
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
-    }
-
-    /// INTERNAL ///
-
-    /// @dev The parameters signed by the user should be the same as the inputs of this function.
-    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful when shares are already permitted.
-    /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that case.
-    /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until sharesPermit.deadline, as revoking on the vault does not consume the nonce.
-    function permitShares(address vault, SharesPermit memory sharesPermit) internal {
-        bool emptyPermit = sharesPermit.v == 0 && sharesPermit.r == 0 && sharesPermit.s == 0;
-
-        if (!emptyPermit && IERC20Permit(vault).nonces(msg.sender) <= sharesPermit.nonce) {
-            IERC20Permit(vault)
-                .permit(
-                    msg.sender,
-                    address(this),
-                    sharesPermit.value,
-                    sharesPermit.deadline,
-                    sharesPermit.v,
-                    sharesPermit.r,
-                    sharesPermit.s
-                );
-        }
     }
 }
