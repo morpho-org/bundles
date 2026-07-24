@@ -37,11 +37,10 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         address referralFeeRecipient,
         uint256 deadline
     ) external {
-        require(initiator == address(0), AlreadyInitiated());
-        initiator = msg.sender;
-
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
 
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
         uint256 toDeposit = assets - referralFeeAssets;
@@ -73,12 +72,11 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         address referralFeeRecipient,
         uint256 deadline
     ) external {
-        require(initiator == address(0), AlreadyInitiated());
-        initiator = msg.sender;
-
         require(block.timestamp <= deadline, DeadlinePassed());
         require((assets == 0) != (shares == 0), NotExactlyOneZero());
         require(referralFeePct < WAD, PctExceeded());
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
 
         TokenLib.submitPermit(vault, sharesPermit);
 
@@ -111,12 +109,11 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         address referralFeeRecipient,
         uint256 deadline
     ) external {
-        require(initiator == address(0), AlreadyInitiated());
-        initiator = msg.sender;
-
         require(block.timestamp <= deadline, DeadlinePassed());
         require((assetsWithdrawn == 0) != (sharesRedeemed == 0), NotExactlyOneZero());
         require(referralFeePct < WAD, PctExceeded());
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
 
         TokenLib.submitPermit(sourceVault, sharesPermit);
 
