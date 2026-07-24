@@ -155,7 +155,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev The assetsToDeallocate amount is force deallocated by looping over the adapter's markets, taking from each market as much as its liquidity and the adapter's position allow before moving to the next one.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
-    /// @dev minSharePriceE27 lower-bounds the realized exit share price (exit assets per share, scaled by 1e27). The force deallocate penalty is included in the exit assets, so it does not lower this price.
+    /// @dev minSharePriceE27 lower-bounds the realized exit share price (withdrawn assets per share, scaled by 1e27). The force deallocate penalty is deducted from the withdrawn assets, so it lowers this price.
     function vaultExitBundlesV1ForceWithdrawVaultV2(
         address vault,
         address adapter,
@@ -220,7 +220,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
         uint256 withdrawn = assetsToWithdraw + assetsToDeallocate;
         uint256 sharesBurned = sharesBefore - IERC20(vault).balanceOf(msg.sender);
-        require(sharesBurned == 0 || exitAssets.mulDivDown(1e27, sharesBurned) >= minSharePriceE27, SlippageExceeded());
+        require(sharesBurned == 0 || withdrawn.mulDivDown(1e27, sharesBurned) >= minSharePriceE27, SlippageExceeded());
 
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);

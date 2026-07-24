@@ -833,14 +833,14 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    /// @dev The share price quoted with previewWithdraw before the call is a sufficient minSharePriceE27, up to the
-    /// ceil-rounding dust of the two withdrawals (penalty and assets): the penalty counts as assets paid, so it does
-    /// not lower the price.
+    /// @dev The net-of-penalty share price quoted before the call is a sufficient minSharePriceE27, up to the
+    /// ceil-rounding dust of the two withdrawals (penalty and assets): the penalty is deducted from the withdrawn
+    /// assets, so it lowers the price.
     function testForceWithdrawTightPriceBound(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpLiquid(assets);
 
-        uint256 minSharePriceE27 = (assets - 2) * RAY / (vault.previewWithdraw(assets) + 2);
+        uint256 minSharePriceE27 = optimalDeallocateAssets(assets) * RAY / (vault.previewWithdraw(assets) + 2);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
             address(vault), address(adapter), assets, minSharePriceE27, noSharesPermit, 0, address(0), block.timestamp
         );
