@@ -62,10 +62,10 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         Permit memory sharesPermit,
         uint256 deadline
     ) external {
-        require(block.timestamp <= deadline, DeadlinePassed());
-        require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
         require(initiator == address(0), AlreadyInitiated());
         initiator = msg.sender;
+        require(block.timestamp <= deadline, DeadlinePassed());
+        require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
 
         TokenLib.submitPermit(vault, sharesPermit);
         address loanToken = IMetaMorpho(vault).asset();
@@ -119,12 +119,12 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         Permit memory sharesPermit,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
-        require(initiator == address(0), AlreadyInitiated());
-        initiator = msg.sender;
 
         TokenLib.submitPermit(vault, sharesPermit);
         TokenLib.forceApproveMax(IVaultV2(vault).asset(), BLUE);
@@ -176,13 +176,13 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         address referralFeeRecipient,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
         require(referralFeePct < WAD, PctExceeded());
-        require(initiator == address(0), AlreadyInitiated());
-        initiator = msg.sender;
 
         TokenLib.submitPermit(vault, sharesPermit);
         uint256 sharesBefore = IERC20(vault).balanceOf(msg.sender);
