@@ -7,14 +7,17 @@ import {Permit} from "../../libraries/TokenLib.sol";
 
 interface IVaultExitBundlesV1 {
     /// ERRORS ///
+    error AlreadyInitiated();
     error AdapterNotPartOfVault();
     error DeadlinePassed();
     error InvalidAdaptersLength();
     error MorphoMismatch();
     error PctExceeded();
+    error SlippageExceeded();
     error UnauthorizedCallback();
 
     /// STORAGE GETTERS ///
+    function initiator() external view returns (address);
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///
@@ -39,6 +42,7 @@ interface IVaultExitBundlesV1 {
         address vault,
         address adapter,
         uint256 exitAssets,
+        uint256 minSharePriceE27,
         Permit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
