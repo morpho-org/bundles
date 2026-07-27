@@ -771,10 +771,10 @@ contract VaultBundlesTest is Test {
         uint256 assets = 100e18;
         _deposited(vaultV1, 2 * assets);
 
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, 0, noSharesPermit, 0, address(0), block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, noSharesPermit, 0, address(0), block.timestamp);
 
         vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, 0, noSharesPermit, 0, address(0), block.timestamp);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, noSharesPermit, 0, address(0), block.timestamp);
     }
 
     function testMigrateAlreadyInitiated() public {
@@ -782,12 +782,12 @@ contract VaultBundlesTest is Test {
         _deposited(vaultV1, 2 * assets);
 
         bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), assets, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
+            address(vaultV1), address(vaultV2), assets, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
         );
 
         vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
         bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), assets, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
+            address(vaultV1), address(vaultV2), assets, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
         );
     }
 }
