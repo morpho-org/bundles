@@ -833,4 +833,65 @@ contract VaultBundlesTest is Test {
             address(vaultV1), address(vaultV2), assets, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
         );
     }
+
+    /// MULTICALL ///
+
+    /// @dev A single bundle call wrapped in a multicall behaves exactly like calling it directly: the delegatecall
+    /// preserves msg.sender, so the deposit pulls the caller's assets and the position is credited to the caller.
+    function testMulticallSingleDeposit(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        deal(address(loanToken), user, assets);
+
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeCall(
+            IVaultBundlesV1.vaultBundlesV1Deposit,
+            (address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp)
+        );
+        bundles.multicall(calls);
+
+        assertEq(loanToken.balanceOf(user), 0, "user loan token");
+        assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
+        assertApproxEqAbs(vaultV1.convertToAssets(vaultV1.balanceOf(user)), assets, 1, "user position");
+    }
+
+    /// @dev The initiator lock is claimed by the first guarded entrypoint and never reset within the transaction, so
+    /// batching two guarded entrypoints in one multicall reverts on the second with AlreadyInitiated. This holds
+    /// regardless of the order of the local precondition checks, since the initiator guard runs first.
+    function testMulticallTwoGuardedCallsRevert() public {
+        uint256 assets = 100e18;
+        deal(address(loanToken), user, 2 * assets);
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(
+            IVaultBundlesV1.vaultBundlesV1Deposit,
+            (address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp)
+        );
+        calls[1] = abi.encodeCall(
+            IVaultBundlesV1.vaultBundlesV1Deposit,
+            (address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp)
+        );
+
+        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+        bundles.multicall(calls);
+    }
+
+    /// @dev A revert inside a batched call bubbles up its original revert reason.
+    function testMulticallBubblesRevert() public {
+        deal(address(loanToken), user, 1e18);
+
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeCall(
+            IVaultBundlesV1.vaultBundlesV1Deposit,
+            (address(vaultV1), 1e18, RAY, noPermit, 0, address(0), block.timestamp - 1)
+        );
+
+        vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
+        bundles.multicall(calls);
+    }
+
+    /// @dev An empty multicall is a no-op.
+    function testMulticallEmpty() public {
+        bytes[] memory calls = new bytes[](0);
+        bundles.multicall(calls);
+    }
 }

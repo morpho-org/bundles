@@ -20,6 +20,9 @@ interface IVaultExitBundlesV1 {
     function initiator() external view returns (address);
     function BLUE() external view returns (address);
 
+    /// MULTICALL ///
+    function multicall(bytes[] calldata calls) external;
+
     /// FUNCTIONS ///
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,

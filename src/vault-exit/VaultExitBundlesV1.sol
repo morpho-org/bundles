@@ -43,6 +43,31 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         BLUE = _blue;
     }
 
+    /// MODIFIERS ///
+
+    modifier storeInitiator() {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
+        _;
+        initiator = address(0);
+    }
+
+    /// MULTICALL ///
+
+    /// @dev Executes a batch of calls to this contract in a single transaction.
+    /// @dev Each call is delegatecalled, so it runs in this contract's context: msg.sender and the transient initiator are preserved across the batch.
+    /// @dev Because each bundle entrypoint claims the initiator (require initiator == address(0)) and it is never reset within the transaction, at most one guarded entrypoint can run per multicall; a second one reverts with AlreadyInitiated.
+    function multicall(bytes[] calldata calls) external {
+        for (uint256 i = 0; i < calls.length; i++) {
+            (bool success, bytes memory returnData) = address(this).delegatecall(calls[i]);
+            if (!success) {
+                assembly ("memory-safe") {
+                    revert(add(returnData, 0x20), mload(returnData))
+                }
+            }
+        }
+    }
+
     /// IN-KIND REDEMPTION VAULT V1 ///
 
     /// @dev Exit from a Vault V1 and get Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
@@ -61,9 +86,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 exitAssets,
         Permit memory sharesPermit,
         uint256 deadline
-    ) external {
-        require(initiator == address(0), AlreadyInitiated());
-        initiator = msg.sender;
+    ) external storeInitiator {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
 
@@ -118,9 +141,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 exitAssets,
         Permit memory sharesPermit,
         uint256 deadline
-    ) external {
-        require(initiator == address(0), AlreadyInitiated());
-        initiator = msg.sender;
+    ) external storeInitiator {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
@@ -175,9 +196,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external {
-        require(initiator == address(0), AlreadyInitiated());
-        initiator = msg.sender;
+    ) external storeInitiator {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());

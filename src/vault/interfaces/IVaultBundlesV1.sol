@@ -16,6 +16,9 @@ interface IVaultBundlesV1 {
     /// STORAGE GETTERS ///
     function initiator() external view returns (address);
 
+    /// MULTICALL ///
+    function multicall(bytes[] calldata calls) external;
+
     /// FUNCTIONS ///
     function vaultBundlesV1Deposit(
         address vault,
