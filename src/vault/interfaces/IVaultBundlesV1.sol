@@ -4,6 +4,11 @@ pragma solidity >=0.8.0;
 
 import {TokenPermit, Permit} from "../../libraries/TokenLib.sol";
 
+struct Call {
+    bytes data;
+    bool skipRevert;
+}
+
 interface IVaultBundlesV1 {
     /// ERRORS ///
     error AlreadyInitiated();
@@ -17,7 +22,7 @@ interface IVaultBundlesV1 {
     function initiator() external view returns (address);
 
     /// FUNCTIONS ///
-    function multicall(bytes[] calldata calls) external;
+    function multicall(Call[] calldata calls) external;
 
     function vaultBundlesV1Deposit(
         address vault,

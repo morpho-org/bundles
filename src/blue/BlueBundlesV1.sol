@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IBlueBundlesV1, SignedAuthorization} from "./interfaces/IBlueBundlesV1.sol";
+import {IBlueBundlesV1, SignedAuthorization, Call} from "./interfaces/IBlueBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {
     IMorpho,
@@ -40,10 +40,11 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
     /// @dev Executes a batch of calls to this contract in a single transaction.
     /// @dev Each call is delegatecalled, so it runs in this contract's context: msg.sender is preserved across the batch.
-    function multicall(bytes[] calldata calls) external {
+    /// @dev A call with skipRevert set to true is allowed to revert without reverting the whole batch: its state changes are rolled back and execution continues with the next call.
+    function multicall(Call[] calldata calls) external {
         for (uint256 i = 0; i < calls.length; i++) {
-            (bool success, bytes memory returnData) = address(this).delegatecall(calls[i]);
-            if (!success) {
+            (bool success, bytes memory returnData) = address(this).delegatecall(calls[i].data);
+            if (!success && !calls[i].skipRevert) {
                 assembly ("memory-safe") {
                     revert(add(returnData, 0x20), mload(returnData))
                 }

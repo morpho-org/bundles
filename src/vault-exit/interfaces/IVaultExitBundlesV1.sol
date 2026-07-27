@@ -5,6 +5,11 @@ pragma solidity >=0.8.0;
 import {MarketParams} from "../../../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {Permit} from "../../libraries/TokenLib.sol";
 
+struct Call {
+    bytes data;
+    bool skipRevert;
+}
+
 interface IVaultExitBundlesV1 {
     /// ERRORS ///
     error AlreadyInitiated();
@@ -21,7 +26,7 @@ interface IVaultExitBundlesV1 {
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///
-    function multicall(bytes[] calldata calls) external;
+    function multicall(Call[] calldata calls) external;
 
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,

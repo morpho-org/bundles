@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IVaultExitBundlesV1, Permit} from "./interfaces/IVaultExitBundlesV1.sol";
+import {IVaultExitBundlesV1, Permit, Call} from "./interfaces/IVaultExitBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {MathLib} from "../../lib/vault-v2/src/libraries/MathLib.sol";
@@ -55,10 +55,11 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// MULTICALL ///
 
     /// @dev Executes a batch of calls to this contract in a single transaction.
-    function multicall(bytes[] calldata calls) external {
+    /// @dev A call with skipRevert set to true is allowed to revert without reverting the whole batch: its state changes are rolled back and execution continues with the next call.
+    function multicall(Call[] calldata calls) external {
         for (uint256 i = 0; i < calls.length; i++) {
-            (bool success, bytes memory returnData) = address(this).delegatecall(calls[i]);
-            if (!success) {
+            (bool success, bytes memory returnData) = address(this).delegatecall(calls[i].data);
+            if (!success && !calls[i].skipRevert) {
                 assembly ("memory-safe") {
                     revert(add(returnData, 0x20), mload(returnData))
                 }

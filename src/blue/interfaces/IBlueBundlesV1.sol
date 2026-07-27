@@ -13,6 +13,11 @@ struct SignedAuthorization {
     uint256 deadline;
 }
 
+struct Call {
+    bytes data;
+    bool skipRevert;
+}
+
 interface IBlueBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
@@ -25,10 +30,9 @@ interface IBlueBundlesV1 {
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);
 
-    /// MULTICALL ///
-    function multicall(bytes[] calldata calls) external;
-
     /// FUNCTIONS ///
+    function multicall(Call[] calldata calls) external;
+
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAssets,

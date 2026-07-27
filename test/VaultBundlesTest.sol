@@ -6,7 +6,7 @@ import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
 import {VaultBundlesV1} from "../src/vault/VaultBundlesV1.sol";
-import {IVaultBundlesV1, Permit} from "../src/vault/interfaces/IVaultBundlesV1.sol";
+import {IVaultBundlesV1, Permit, Call} from "../src/vault/interfaces/IVaultBundlesV1.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 
@@ -819,10 +819,13 @@ contract VaultBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         deal(address(loanToken), user, assets);
 
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeCall(
-            IVaultBundlesV1.vaultBundlesV1Deposit,
-            (address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp)
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call(
+            abi.encodeCall(
+                IVaultBundlesV1.vaultBundlesV1Deposit,
+                (address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp)
+            ),
+            false
         );
         bundles.multicall(calls);
 
@@ -839,14 +842,20 @@ contract VaultBundlesTest is Test {
         deal(address(loanToken), user, assets);
         vaultV1.approve(address(bundles), type(uint256).max);
 
-        bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeCall(
-            IVaultBundlesV1.vaultBundlesV1Deposit,
-            (address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp)
+        Call[] memory calls = new Call[](2);
+        calls[0] = Call(
+            abi.encodeCall(
+                IVaultBundlesV1.vaultBundlesV1Deposit,
+                (address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp)
+            ),
+            false
         );
-        calls[1] = abi.encodeCall(
-            IVaultBundlesV1.vaultBundlesV1Withdraw,
-            (address(vaultV1), 0, assets, 0, noSharesPermit, 0, address(0), block.timestamp)
+        calls[1] = Call(
+            abi.encodeCall(
+                IVaultBundlesV1.vaultBundlesV1Withdraw,
+                (address(vaultV1), 0, assets, 0, noSharesPermit, 0, address(0), block.timestamp)
+            ),
+            false
         );
         bundles.multicall(calls);
 
@@ -860,19 +869,38 @@ contract VaultBundlesTest is Test {
     function testMulticallBubblesRevert() public {
         deal(address(loanToken), user, 1e18);
 
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeCall(
-            IVaultBundlesV1.vaultBundlesV1Deposit,
-            (address(vaultV1), 1e18, RAY, noPermit, 0, address(0), block.timestamp - 1)
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call(
+            abi.encodeCall(
+                IVaultBundlesV1.vaultBundlesV1Deposit,
+                (address(vaultV1), 1e18, RAY, noPermit, 0, address(0), block.timestamp - 1)
+            ),
+            false
         );
 
         vm.expectRevert(IVaultBundlesV1.DeadlinePassed.selector);
         bundles.multicall(calls);
     }
 
+    /// @dev A reverting call with skipRevert set to true does not revert the batch.
+    function testMulticallSkipRevert() public {
+        deal(address(loanToken), user, 1e18);
+
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call(
+            abi.encodeCall(
+                IVaultBundlesV1.vaultBundlesV1Deposit,
+                (address(vaultV1), 1e18, RAY, noPermit, 0, address(0), block.timestamp - 1)
+            ),
+            true
+        );
+
+        bundles.multicall(calls);
+    }
+
     /// @dev An empty multicall is a no-op.
     function testMulticallEmpty() public {
-        bytes[] memory calls = new bytes[](0);
+        Call[] memory calls = new Call[](0);
         bundles.multicall(calls);
     }
 

@@ -13,7 +13,7 @@ import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
-import {IBlueBundlesV1, SignedAuthorization} from "../src/blue/interfaces/IBlueBundlesV1.sol";
+import {IBlueBundlesV1, SignedAuthorization, Call} from "../src/blue/interfaces/IBlueBundlesV1.sol";
 import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract BlueBundlesTest is Test {
@@ -1356,10 +1356,13 @@ contract BlueBundlesTest is Test {
         assets = bound(assets, 1, 1e30);
         deal(address(loanToken), user, assets);
 
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeCall(
-            IBlueBundlesV1.blueBundlesV1Supply,
-            (marketParams, assets, type(uint256).max, _noPermit(), 0, address(0), block.timestamp)
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call(
+            abi.encodeCall(
+                IBlueBundlesV1.blueBundlesV1Supply,
+                (marketParams, assets, type(uint256).max, _noPermit(), 0, address(0), block.timestamp)
+            ),
+            false
         );
 
         vm.startPrank(user);
@@ -1378,14 +1381,20 @@ contract BlueBundlesTest is Test {
         assets = bound(assets, 1, 1e30);
         deal(address(loanToken), user, assets);
 
-        bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeCall(
-            IBlueBundlesV1.blueBundlesV1Supply,
-            (marketParams, assets, type(uint256).max, _noPermit(), 0, address(0), block.timestamp)
+        Call[] memory calls = new Call[](2);
+        calls[0] = Call(
+            abi.encodeCall(
+                IBlueBundlesV1.blueBundlesV1Supply,
+                (marketParams, assets, type(uint256).max, _noPermit(), 0, address(0), block.timestamp)
+            ),
+            false
         );
-        calls[1] = abi.encodeCall(
-            IBlueBundlesV1.blueBundlesV1Withdraw,
-            (marketParams, assets, 0, 0, _noAuthSig(), 0, address(0), block.timestamp)
+        calls[1] = Call(
+            abi.encodeCall(
+                IBlueBundlesV1.blueBundlesV1Withdraw,
+                (marketParams, assets, 0, 0, _noAuthSig(), 0, address(0), block.timestamp)
+            ),
+            false
         );
 
         vm.startPrank(user);
@@ -1400,19 +1409,36 @@ contract BlueBundlesTest is Test {
 
     /// @dev A revert inside a batched call bubbles up its original revert reason.
     function testMulticallBubblesRevert() public {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeCall(
-            IBlueBundlesV1.blueBundlesV1Supply,
-            (marketParams, 1, type(uint256).max, _noPermit(), 0, address(0), block.timestamp - 1)
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call(
+            abi.encodeCall(
+                IBlueBundlesV1.blueBundlesV1Supply,
+                (marketParams, 1, type(uint256).max, _noPermit(), 0, address(0), block.timestamp - 1)
+            ),
+            false
         );
 
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.multicall(calls);
     }
 
+    /// @dev A reverting call with skipRevert set to true does not revert the batch.
+    function testMulticallSkipRevert() public {
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call(
+            abi.encodeCall(
+                IBlueBundlesV1.blueBundlesV1Supply,
+                (marketParams, 1, type(uint256).max, _noPermit(), 0, address(0), block.timestamp - 1)
+            ),
+            true
+        );
+
+        blueBundles.multicall(calls);
+    }
+
     /// @dev An empty multicall is a no-op.
     function testMulticallEmpty() public {
-        bytes[] memory calls = new bytes[](0);
+        Call[] memory calls = new Call[](0);
         blueBundles.multicall(calls);
     }
 }

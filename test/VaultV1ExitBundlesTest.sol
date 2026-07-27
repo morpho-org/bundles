@@ -6,7 +6,7 @@ import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
 import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
-import {IVaultExitBundlesV1, Permit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
+import {IVaultExitBundlesV1, Permit, Call} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
 
 import {IMetaMorpho} from "../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
 import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -451,10 +451,13 @@ contract VaultV1ExitBundlesTest is Test {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
 
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeCall(
-            IVaultExitBundlesV1.vaultExitBundlesV1InKindRedemptionVaultV1,
-            (address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp)
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call(
+            abi.encodeCall(
+                IVaultExitBundlesV1.vaultExitBundlesV1InKindRedemptionVaultV1,
+                (address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp)
+            ),
+            false
         );
         vaultBundles.multicall(calls);
 
@@ -468,10 +471,13 @@ contract VaultV1ExitBundlesTest is Test {
         uint256 assets = 100e18;
         _setUpIlliquid(2 * assets);
 
-        bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeCall(
-            IVaultExitBundlesV1.vaultExitBundlesV1InKindRedemptionVaultV1,
-            (address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp)
+        Call[] memory calls = new Call[](2);
+        calls[0] = Call(
+            abi.encodeCall(
+                IVaultExitBundlesV1.vaultExitBundlesV1InKindRedemptionVaultV1,
+                (address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp)
+            ),
+            false
         );
         calls[1] = calls[0];
         vaultBundles.multicall(calls);
@@ -484,19 +490,36 @@ contract VaultV1ExitBundlesTest is Test {
 
     /// @dev A revert inside a batched call bubbles up its original revert reason.
     function testMulticallBubblesRevert() public {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeCall(
-            IVaultExitBundlesV1.vaultExitBundlesV1InKindRedemptionVaultV1,
-            (address(0), new MarketParams[](0), 0, noSharesPermit, block.timestamp - 1)
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call(
+            abi.encodeCall(
+                IVaultExitBundlesV1.vaultExitBundlesV1InKindRedemptionVaultV1,
+                (address(0), new MarketParams[](0), 0, noSharesPermit, block.timestamp - 1)
+            ),
+            false
         );
 
         vm.expectRevert(IVaultExitBundlesV1.DeadlinePassed.selector);
         vaultBundles.multicall(calls);
     }
 
+    /// @dev A reverting call with skipRevert set to true does not revert the batch.
+    function testMulticallSkipRevert() public {
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call(
+            abi.encodeCall(
+                IVaultExitBundlesV1.vaultExitBundlesV1InKindRedemptionVaultV1,
+                (address(0), new MarketParams[](0), 0, noSharesPermit, block.timestamp - 1)
+            ),
+            true
+        );
+
+        vaultBundles.multicall(calls);
+    }
+
     /// @dev An empty multicall is a no-op.
     function testMulticallEmpty() public {
-        bytes[] memory calls = new bytes[](0);
+        Call[] memory calls = new Call[](0);
         vaultBundles.multicall(calls);
     }
 
