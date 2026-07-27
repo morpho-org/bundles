@@ -25,7 +25,6 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
-/// @dev Meant to be called directly by users, not by other contracts.
 contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     using UtilsLib for uint256;
     using MarketParamsLib for MarketParams;
