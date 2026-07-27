@@ -174,12 +174,11 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev To receive an amount W, pass assets = floor(W * WAD / (WAD - referralFeePct)).
-    /// @dev minSharePriceE27 lower-bounds the realized withdraw share price (withdrawn assets per share, scaled by 1e27).
+    /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 shares,
-        uint256 minSharePriceE27,
         SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -189,15 +188,13 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        (uint256 withdrawn, uint256 withdrawnShares) =
-            IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
-        require(withdrawn.mulDivDown(1e27, withdrawnShares) >= minSharePriceE27, SlippageExceeded());
+        (assets,) = IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
 
-        uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
+        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, withdrawn - referralFeeAssets);
+        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, assets - referralFeeAssets);
     }
 
     /// @dev Moves the full position of msg.sender (collateral and borrow shares, read from Blue) from the source market to the destination market.

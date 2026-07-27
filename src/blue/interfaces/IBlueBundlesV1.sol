@@ -75,7 +75,6 @@ interface IBlueBundlesV1 {
         MarketParams memory marketParams,
         uint256 assets,
         uint256 shares,
-        uint256 minSharePriceE27,
         SignedAuthorization memory signedAuthorization,
         uint256 referralFeePct,
         address referralFeeRecipient,

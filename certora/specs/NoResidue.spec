@@ -83,12 +83,12 @@ rule supplyPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint
     assert bundlerBalance[token] == before;
 }
 
-rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, uint256 minSharePriceE27, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 feePct, address recipient, address token, uint256 deadline) {
+rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 feePct, address recipient, address token, uint256 deadline) {
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require recipient != currentContract, "no bundler donations of the fee";
 
     mathint before = bundlerBalance[token];
-    blueBundlesV1Withdraw(e, marketParams, assets, shares, minSharePriceE27, signedAuthorization, feePct, recipient, deadline);
+    blueBundlesV1Withdraw(e, marketParams, assets, shares, signedAuthorization, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
 }
 

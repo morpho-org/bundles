@@ -83,12 +83,11 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev To receive an amount W, pass assets = floor(W * WAD / (WAD - referralFeePct)).
-    /// @dev minSharePriceE27 lower-bounds the realized withdraw share price (withdrawn assets per share, scaled by 1e27).
+    /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
     function vaultBundlesV1Withdraw(
         address vault,
         uint256 assets,
         uint256 shares,
-        uint256 minSharePriceE27,
         Permit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -100,9 +99,8 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
 
         TokenLib.submitPermit(vault, sharesPermit);
 
-        if (assets > 0) shares = IERC4626(vault).withdraw(assets, address(this), msg.sender);
+        if (assets > 0) IERC4626(vault).withdraw(assets, address(this), msg.sender);
         else assets = IERC4626(vault).redeem(shares, address(this), msg.sender);
-        require(assets.mulDivDown(1e27, shares) >= minSharePriceE27, SlippageExceeded());
 
         address asset = IERC4626(vault).asset();
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
@@ -116,13 +114,13 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     /// @dev Exactly one of assetsWithdrawn and sharesRedeemed should be non-zero: sourceVault is withdrawn by assets, or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is deposited into destVault.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; deposited = withdrawnAssets - fee.
-    /// @dev sourceMinSharePriceE27 lower-bounds the realized sourceVault withdraw share price; destMaxSharePriceE27 upper-bounds the realized destVault deposit share price (both assets per share, scaled by 1e27).
+    /// @dev The source vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
+    /// @dev destMaxSharePriceE27 upper-bounds the realized destVault deposit share price (deposited assets per share, scaled by 1e27).
     function vaultBundlesV1Migrate(
         address sourceVault,
         address destVault,
         uint256 assetsWithdrawn,
         uint256 sharesRedeemed,
-        uint256 sourceMinSharePriceE27,
         uint256 destMaxSharePriceE27,
         Permit memory sharesPermit,
         uint256 referralFeePct,
@@ -138,12 +136,8 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         address asset = IERC4626(sourceVault).asset();
         require(asset == IERC4626(destVault).asset(), InconsistentAssets());
 
-        if (assetsWithdrawn > 0) {
-            sharesRedeemed = IERC4626(sourceVault).withdraw(assetsWithdrawn, address(this), msg.sender);
-        } else {
-            assetsWithdrawn = IERC4626(sourceVault).redeem(sharesRedeemed, address(this), msg.sender);
-        }
-        require(assetsWithdrawn.mulDivDown(1e27, sharesRedeemed) >= sourceMinSharePriceE27, SlippageExceeded());
+        if (assetsWithdrawn > 0) IERC4626(sourceVault).withdraw(assetsWithdrawn, address(this), msg.sender);
+        else assetsWithdrawn = IERC4626(sourceVault).redeem(sharesRedeemed, address(this), msg.sender);
 
         uint256 referralFeeAssets = assetsWithdrawn.mulDivDown(referralFeePct, WAD);
         uint256 toDeposit = assetsWithdrawn - referralFeeAssets;
