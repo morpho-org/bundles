@@ -158,6 +158,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev To receive an amount W, pass assets = floor(W * WAD / (WAD - referralFeePct)).
+    /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
         uint256 assets,

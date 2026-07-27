@@ -57,6 +57,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev To receive an amount W, pass assets = floor(W * WAD / (WAD - referralFeePct)).
+    /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
     function vaultBundlesV1Withdraw(
         address vault,
         uint256 assets,
@@ -87,6 +88,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     /// @dev Exactly one of assetsWithdrawn and sharesRedeemed should be non-zero: sourceVault is withdrawn by assets, or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is deposited into destVault.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; deposited = withdrawnAssets - fee.
+    /// @dev The source vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
     /// @dev destMaxSharePriceE27 upper-bounds the realized destVault deposit share price (deposited assets per share, scaled by 1e27).
     function vaultBundlesV1Migrate(
         address sourceVault,
