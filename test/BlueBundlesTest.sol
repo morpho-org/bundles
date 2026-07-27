@@ -140,12 +140,35 @@ contract BlueBundlesTest is Test {
 
     /// @dev Opens a borrow position for `onBehalf` directly on Morpho (used to set up repay/withdraw tests).
     function _openBorrow(address onBehalf, uint256 borrowAssets) internal {
+        _openBorrow(marketParams, onBehalf, borrowAssets);
+    }
+
+    function _openBorrow(MarketParams memory marketParams_, address onBehalf, uint256 borrowAssets) internal {
         uint256 collateral = _collateralFor(borrowAssets);
         deal(address(collateralToken), onBehalf, collateral);
         vm.startPrank(onBehalf);
         collateralToken.approve(address(morpho), type(uint256).max);
-        morpho.supplyCollateral(marketParams, collateral, onBehalf, "");
-        morpho.borrow(marketParams, borrowAssets, 0, onBehalf, onBehalf);
+        morpho.supplyCollateral(marketParams_, collateral, onBehalf, "");
+        morpho.borrow(marketParams_, borrowAssets, 0, onBehalf, onBehalf);
+        vm.stopPrank();
+    }
+
+    function _createWrappedNativeMarket() internal returns (WETHMock weth, MarketParams memory wethMarketParams) {
+        weth = new WETHMock();
+        wethMarketParams = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(oracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethMarketParams);
+
+        vm.deal(supplier, LIQUIDITY);
+        vm.startPrank(supplier);
+        weth.deposit{value: LIQUIDITY}();
+        weth.approve(address(morpho), type(uint256).max);
+        morpho.supply(wethMarketParams, LIQUIDITY, 0, supplier, "");
         vm.stopPrank();
     }
 
@@ -704,36 +727,13 @@ contract BlueBundlesTest is Test {
 
     /// @dev Sending native tokens (msg.value) wraps them into the loan token and repays msg.sender's debt.
     function testRepayAndWithdrawCollateralWrapNative() public {
-        // Market whose loan token is the wrapped-native token.
-        WETHMock weth = new WETHMock();
-        MarketParams memory wethMarketParams = MarketParams({
-            loanToken: address(weth),
-            collateralToken: address(collateralToken),
-            oracle: address(oracle),
-            irm: address(0),
-            lltv: LLTV
-        });
-        morpho.createMarket(wethMarketParams);
+        (WETHMock weth, MarketParams memory wethMarketParams) = _createWrappedNativeMarket();
         Id wethId = wethMarketParams.id();
 
         uint256 borrowAssets = 100e18;
         uint256 collateral = _collateralFor(borrowAssets);
 
-        // Seed wrapped-native liquidity so the position can borrow.
-        vm.deal(supplier, LIQUIDITY);
-        vm.startPrank(supplier);
-        weth.deposit{value: LIQUIDITY}();
-        weth.approve(address(morpho), type(uint256).max);
-        morpho.supply(wethMarketParams, LIQUIDITY, 0, supplier, "");
-        vm.stopPrank();
-
-        // Open the user's borrow directly on Morpho.
-        deal(address(collateralToken), user, collateral);
-        vm.startPrank(user);
-        collateralToken.approve(address(morpho), type(uint256).max);
-        morpho.supplyCollateral(wethMarketParams, collateral, user, "");
-        morpho.borrow(wethMarketParams, borrowAssets, 0, user, user);
-        vm.stopPrank();
+        _openBorrow(wethMarketParams, user, borrowAssets);
 
         // Discard the borrowed wrapped tokens; the user repays with native and the refund must come back as native.
         deal(address(weth), user, 0);
@@ -769,6 +769,65 @@ contract BlueBundlesTest is Test {
         assertEq(weth.balanceOf(user), 0, "no wrapped refund");
         assertEq(address(blueBundles).balance, 0, "bundler native residual");
         assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
+    }
+
+    function testRepayAndWithdrawCollateralNativeRefundToContractWithReceive() public {
+        (WETHMock weth, MarketParams memory wethMarketParams) = _createWrappedNativeMarket();
+        address caller = address(new NativeReceiver());
+
+        uint256 borrowAssets = 100e18;
+        uint256 repayAssets = 40e18;
+        uint256 maxRepayAssets = 50e18;
+        _openBorrow(wethMarketParams, caller, borrowAssets);
+        deal(address(weth), caller, 0);
+
+        vm.deal(caller, maxRepayAssets);
+        vm.prank(caller);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral{value: maxRepayAssets}(
+            wethMarketParams,
+            repayAssets,
+            0,
+            maxRepayAssets,
+            type(uint256).max,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
+
+        assertEq(caller.balance, maxRepayAssets - repayAssets, "native refund");
+    }
+
+    function testRepayAndWithdrawCollateralNativeRefundToContractWithoutReceive() public {
+        (WETHMock weth, MarketParams memory wethMarketParams) = _createWrappedNativeMarket();
+        address caller = address(new NonNativeReceiver());
+
+        uint256 borrowAssets = 100e18;
+        uint256 repayAssets = 40e18;
+        uint256 maxRepayAssets = 50e18;
+        _openBorrow(wethMarketParams, caller, borrowAssets);
+        deal(address(weth), caller, 0);
+
+        vm.deal(caller, maxRepayAssets);
+        vm.prank(caller);
+        vm.expectRevert(IBlueBundlesV1.NativeTransferFailed.selector);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral{value: maxRepayAssets}(
+            wethMarketParams,
+            repayAssets,
+            0,
+            maxRepayAssets,
+            type(uint256).max,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
     }
 
     /// @dev maxLtv caps the resulting LTV after a withdrawal: repaying 30e18 and withdrawing 100e18 leaves 70e18
@@ -1533,3 +1592,9 @@ contract WETHMock is ERC20 {
         payable(msg.sender).transfer(amount);
     }
 }
+
+contract NativeReceiver {
+    receive() external payable {}
+}
+
+contract NonNativeReceiver {}
