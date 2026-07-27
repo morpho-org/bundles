@@ -1347,4 +1347,72 @@ contract BlueBundlesTest is Test {
             block.timestamp
         );
     }
+
+    /// MULTICALL ///
+
+    /// @dev A bundle call wrapped in a multicall behaves exactly like calling it directly: the delegatecall preserves
+    /// msg.sender, so the supply pulls the caller's assets and the position is credited to the caller.
+    function testMulticallSupply(uint256 assets) public {
+        assets = bound(assets, 1, 1e30);
+        deal(address(loanToken), user, assets);
+
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeCall(
+            IBlueBundlesV1.blueBundlesV1Supply,
+            (marketParams, assets, type(uint256).max, _noPermit(), 0, address(0), block.timestamp)
+        );
+
+        vm.startPrank(user);
+        loanToken.approve(address(blueBundles), assets);
+        blueBundles.multicall(calls);
+        vm.stopPrank();
+
+        assertEq(morpho.expectedSupplyAssets(marketParams, user), assets, "supply position");
+        assertEq(loanToken.balanceOf(user), 0, "user spent assets");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    /// @dev Several entrypoints can be batched in a single multicall: the supply then withdraw round trip leaves the
+    /// user's balances unchanged.
+    function testMulticallSupplyWithdraw(uint256 assets) public {
+        assets = bound(assets, 1, 1e30);
+        deal(address(loanToken), user, assets);
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(
+            IBlueBundlesV1.blueBundlesV1Supply,
+            (marketParams, assets, type(uint256).max, _noPermit(), 0, address(0), block.timestamp)
+        );
+        calls[1] = abi.encodeCall(
+            IBlueBundlesV1.blueBundlesV1Withdraw,
+            (marketParams, assets, 0, 0, _noAuthSig(), 0, address(0), block.timestamp)
+        );
+
+        vm.startPrank(user);
+        loanToken.approve(address(blueBundles), assets);
+        blueBundles.multicall(calls);
+        vm.stopPrank();
+
+        assertEq(morpho.supplyShares(id, user), 0, "supply shares");
+        assertEq(loanToken.balanceOf(user), assets, "user loan token");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    /// @dev A revert inside a batched call bubbles up its original revert reason.
+    function testMulticallBubblesRevert() public {
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeCall(
+            IBlueBundlesV1.blueBundlesV1Supply,
+            (marketParams, 1, type(uint256).max, _noPermit(), 0, address(0), block.timestamp - 1)
+        );
+
+        vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
+        blueBundles.multicall(calls);
+    }
+
+    /// @dev An empty multicall is a no-op.
+    function testMulticallEmpty() public {
+        bytes[] memory calls = new bytes[](0);
+        blueBundles.multicall(calls);
+    }
 }

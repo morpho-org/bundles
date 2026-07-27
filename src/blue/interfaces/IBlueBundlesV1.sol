@@ -25,6 +25,9 @@ interface IBlueBundlesV1 {
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);
 
+    /// MULTICALL ///
+    function multicall(bytes[] calldata calls) external;
+
     /// FUNCTIONS ///
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,

@@ -36,6 +36,21 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         BLUE = _blue;
     }
 
+    /// MULTICALL ///
+
+    /// @dev Executes a batch of calls to this contract in a single transaction.
+    /// @dev Each call is delegatecalled, so it runs in this contract's context: msg.sender is preserved across the batch.
+    function multicall(bytes[] calldata calls) external {
+        for (uint256 i = 0; i < calls.length; i++) {
+            (bool success, bytes memory returnData) = address(this).delegatecall(calls[i]);
+            if (!success) {
+                assembly ("memory-safe") {
+                    revert(add(returnData, 0x20), mload(returnData))
+                }
+            }
+        }
+    }
+
     /// EXTERNAL ///
 
     /// @dev Pulls collateralAssets of marketParams.collateralToken from msg.sender (optionally via ERC-2612 or Permit2), supplies it as collateral on Blue for msg.sender, then borrows borrowAssets of the loan token on behalf of msg.sender.
