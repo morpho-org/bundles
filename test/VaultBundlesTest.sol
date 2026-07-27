@@ -798,47 +798,24 @@ contract VaultBundlesTest is Test {
         assertApproxEqAbs(vaultV2.convertToAssets(vaultV2.balanceOf(whitelisted)), assets, 1, "whitelisted position");
     }
 
-    /// @dev Without a reset, the initiator stays set after the first call, so a second guarded call in the same
-    /// transaction reverts.
-    function testDepositAlreadyInitiated() public {
+    /// @dev The initiator is reset when the entrypoint returns, so a second guarded call in the same transaction
+    /// starts with a fresh lock. AlreadyInitiated is only reachable by reentering the contract mid-call.
+    function testInitiatorResetBetweenCalls() public {
         uint256 assets = 100e18;
         deal(address(loanToken), user, 2 * assets);
 
         bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp);
+        assertEq(bundles.initiator(), address(0), "initiator reset");
 
-        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
         bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp);
-    }
-
-    function testWithdrawAlreadyInitiated() public {
-        uint256 assets = 100e18;
-        _deposited(vaultV1, 2 * assets);
-
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, 0, noSharesPermit, 0, address(0), block.timestamp);
-
-        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, 0, noSharesPermit, 0, address(0), block.timestamp);
-    }
-
-    function testMigrateAlreadyInitiated() public {
-        uint256 assets = 100e18;
-        _deposited(vaultV1, 2 * assets);
-
-        bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), assets, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
-        );
-
-        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
-        bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), assets, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
-        );
+        assertApproxEqAbs(vaultV1.convertToAssets(vaultV1.balanceOf(user)), 2 * assets, 2, "user position");
     }
 
     /// MULTICALL ///
 
-    /// @dev A single bundle call wrapped in a multicall behaves exactly like calling it directly: the delegatecall
+    /// @dev A bundle call wrapped in a multicall behaves exactly like calling it directly: the delegatecall
     /// preserves msg.sender, so the deposit pulls the caller's assets and the position is credited to the caller.
-    function testMulticallSingleDeposit(uint256 assets) public {
+    function testMulticallDeposit(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         deal(address(loanToken), user, assets);
 
@@ -854,12 +831,13 @@ contract VaultBundlesTest is Test {
         assertApproxEqAbs(vaultV1.convertToAssets(vaultV1.balanceOf(user)), assets, 1, "user position");
     }
 
-    /// @dev The initiator lock is claimed by the first guarded entrypoint and never reset within the transaction, so
-    /// batching two guarded entrypoints in one multicall reverts on the second with AlreadyInitiated. This holds
-    /// regardless of the order of the local precondition checks, since the initiator guard runs first.
-    function testMulticallTwoGuardedCallsRevert() public {
-        uint256 assets = 100e18;
-        deal(address(loanToken), user, 2 * assets);
+    /// @dev The initiator is reset when each entrypoint returns, so several guarded entrypoints can be batched in a
+    /// single multicall. The deposit then withdraw round trip leaves the user's balances unchanged; with fresh
+    /// vaults the share price is exactly 1, so shares equal assets.
+    function testMulticallDepositWithdraw(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        deal(address(loanToken), user, assets);
+        vaultV1.approve(address(bundles), type(uint256).max);
 
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeCall(
@@ -867,12 +845,15 @@ contract VaultBundlesTest is Test {
             (address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp)
         );
         calls[1] = abi.encodeCall(
-            IVaultBundlesV1.vaultBundlesV1Deposit,
-            (address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp)
+            IVaultBundlesV1.vaultBundlesV1Withdraw,
+            (address(vaultV1), 0, assets, 0, noSharesPermit, 0, address(0), block.timestamp)
         );
-
-        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
         bundles.multicall(calls);
+
+        assertEq(bundles.initiator(), address(0), "initiator reset");
+        assertEq(loanToken.balanceOf(user), assets, "user loan token");
+        assertEq(vaultV1.balanceOf(user), 0, "user shares");
+        assertEq(loanToken.balanceOf(address(bundles)), 0, "bundler loan token");
     }
 
     /// @dev A revert inside a batched call bubbles up its original revert reason.
@@ -893,5 +874,40 @@ contract VaultBundlesTest is Test {
     function testMulticallEmpty() public {
         bytes[] memory calls = new bytes[](0);
         bundles.multicall(calls);
+    }
+
+    /// ALREADY INITIATED ///
+
+    /// @dev The initiator lock guards against reentrancy: a vault reentering a guarded entrypoint while one is executing (here from inside the shares permit submission) reverts with AlreadyInitiated.
+    function testAlreadyInitiated() public {
+        ReentrantVault reentrantVault = new ReentrantVault(bundles);
+
+        // A non-empty permit (v != 0), so the bundler submits it to the vault.
+        Permit memory reenteringPermit;
+        reenteringPermit.v = 1;
+
+        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+        bundles.vaultBundlesV1Withdraw(
+            address(reentrantVault), 1, 0, 0, reenteringPermit, 0, address(0), block.timestamp
+        );
+    }
+}
+
+/// @dev A vault that reenters the bundler from inside permit, to exercise the initiator reentrancy lock.
+contract ReentrantVault {
+    IVaultBundlesV1 internal immutable bundles;
+
+    constructor(IVaultBundlesV1 _bundles) {
+        bundles = _bundles;
+    }
+
+    function nonces(address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function permit(address, address, uint256, uint256, uint8, bytes32, bytes32) external {
+        bundles.vaultBundlesV1Withdraw(
+            address(this), 1, 0, 0, Permit(0, 0, 0, 0, bytes32(0), bytes32(0)), 0, address(0), block.timestamp
+        );
     }
 }

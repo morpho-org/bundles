@@ -55,8 +55,6 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// MULTICALL ///
 
     /// @dev Executes a batch of calls to this contract in a single transaction.
-    /// @dev Each call is delegatecalled, so it runs in this contract's context: msg.sender and the transient initiator are preserved across the batch.
-    /// @dev Because each bundle entrypoint claims the initiator (require initiator == address(0)) and it is never reset within the transaction, at most one guarded entrypoint can run per multicall; a second one reverts with AlreadyInitiated.
     function multicall(bytes[] calldata calls) external {
         for (uint256 i = 0; i < calls.length; i++) {
             (bool success, bytes memory returnData) = address(this).delegatecall(calls[i]);

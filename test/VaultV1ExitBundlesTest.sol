@@ -443,19 +443,98 @@ contract VaultV1ExitBundlesTest is Test {
         );
     }
 
-    /// @dev Without a reset, the initiator stays set after the first call, so a second guarded call in the same
-    /// transaction reverts.
-    function testInKindRedemptionAlreadyInitiated() public {
+    /// MULTICALL ///
+
+    /// @dev The exit wrapped in a multicall behaves exactly like calling it directly: the delegatecall preserves
+    /// msg.sender, so the in-kind position is credited to the caller.
+    function testMulticallInKindRedemption(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        _setUpIlliquid(assets);
+
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeCall(
+            IVaultExitBundlesV1.vaultExitBundlesV1InKindRedemptionVaultV1,
+            (address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp)
+        );
+        vaultBundles.multicall(calls);
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertApproxEqAbs(morpho.expectedSupplyAssets(marketParams, address(this)), assets, 1, "supply position");
+        assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
+    }
+
+    /// @dev The initiator is reset when the entrypoint returns, so two guarded exits can be batched in one multicall.
+    function testMulticallTwoInKindRedemptions() public {
         uint256 assets = 100e18;
         _setUpIlliquid(2 * assets);
 
-        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-            address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(
+            IVaultExitBundlesV1.vaultExitBundlesV1InKindRedemptionVaultV1,
+            (address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp)
         );
+        calls[1] = calls[0];
+        vaultBundles.multicall(calls);
+
+        assertEq(vaultBundles.initiator(), address(0), "initiator reset");
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertApproxEqAbs(morpho.expectedSupplyAssets(marketParams, address(this)), 2 * assets, 2, "supply position");
+        assertApproxEqAbs(vault.balanceOf(address(this)), 0, 2, "vault balance");
+    }
+
+    /// @dev A revert inside a batched call bubbles up its original revert reason.
+    function testMulticallBubblesRevert() public {
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeCall(
+            IVaultExitBundlesV1.vaultExitBundlesV1InKindRedemptionVaultV1,
+            (address(0), new MarketParams[](0), 0, noSharesPermit, block.timestamp - 1)
+        );
+
+        vm.expectRevert(IVaultExitBundlesV1.DeadlinePassed.selector);
+        vaultBundles.multicall(calls);
+    }
+
+    /// @dev An empty multicall is a no-op.
+    function testMulticallEmpty() public {
+        bytes[] memory calls = new bytes[](0);
+        vaultBundles.multicall(calls);
+    }
+
+    /// ALREADY INITIATED ///
+
+    /// @dev The initiator lock guards against reentrancy: a vault reentering a guarded entrypoint while one is
+    /// executing (here from inside the shares permit submission) reverts with AlreadyInitiated.
+    function testAlreadyInitiated() public {
+        ReentrantVault reentrantVault = new ReentrantVault(vaultBundles, address(morpho));
+
+        // A non-empty permit (v != 0), so the bundler submits it to the vault.
+        Permit memory reenteringPermit;
+        reenteringPermit.v = 1;
 
         vm.expectRevert(IVaultExitBundlesV1.AlreadyInitiated.selector);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV1(
-            address(vault), _singleton(marketParams), assets, noSharesPermit, block.timestamp
+            address(reentrantVault), new MarketParams[](0), 0, reenteringPermit, block.timestamp
+        );
+    }
+}
+
+/// @dev A vault that reenters the bundler from inside permit, to exercise the initiator reentrancy lock.
+contract ReentrantVault {
+    IVaultExitBundlesV1 internal immutable bundles;
+    address public immutable MORPHO;
+
+    constructor(IVaultExitBundlesV1 _bundles, address _morpho) {
+        bundles = _bundles;
+        MORPHO = _morpho;
+    }
+
+    function nonces(address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function permit(address, address, uint256, uint256, uint8, bytes32, bytes32) external {
+        bundles.vaultExitBundlesV1InKindRedemptionVaultV1(
+            address(this), new MarketParams[](0), 0, Permit(0, 0, 0, 0, bytes32(0), bytes32(0)), block.timestamp
         );
     }
 }
