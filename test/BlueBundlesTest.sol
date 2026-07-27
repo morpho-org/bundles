@@ -183,7 +183,7 @@ contract BlueBundlesTest is Test {
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(marketParams, assets, 0, sigUser, "");
 
-        blueBundles.blueBundlesV1Withdraw(marketParams, assets, 0, 0, authSig, 0, address(0), block.timestamp);
+        blueBundles.blueBundlesV1Withdraw(marketParams, assets, 0, authSig, 0, address(0), block.timestamp);
         vm.stopPrank();
 
         assertEq(loanToken.balanceOf(sigUser), assets);
@@ -422,7 +422,7 @@ contract BlueBundlesTest is Test {
             marketParams, 1, type(uint256).max, _noPermit(), WAD, address(0), block.timestamp
         );
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
-        blueBundles.blueBundlesV1Withdraw(marketParams, 1, 0, 0, _noAuthSig(), WAD, address(0), block.timestamp);
+        blueBundles.blueBundlesV1Withdraw(marketParams, 1, 0, _noAuthSig(), WAD, address(0), block.timestamp);
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
             marketParams, destMarketParams, type(uint256).max, 0, WAD, _noAuthSig(), WAD, address(0), block.timestamp
@@ -446,7 +446,7 @@ contract BlueBundlesTest is Test {
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.blueBundlesV1Supply(marketParams, 1, type(uint256).max, _noPermit(), 0, address(0), past);
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
-        blueBundles.blueBundlesV1Withdraw(marketParams, 1, 0, 0, _noAuthSig(), 0, address(0), past);
+        blueBundles.blueBundlesV1Withdraw(marketParams, 1, 0, _noAuthSig(), 0, address(0), past);
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
             marketParams, destMarketParams, type(uint256).max, 0, WAD, _noAuthSig(), 0, address(0), past
@@ -925,9 +925,7 @@ contract BlueBundlesTest is Test {
         vm.startPrank(user);
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(marketParams, supplyAssets, 0, user, "");
-        blueBundles.blueBundlesV1Withdraw(
-            marketParams, withdrawAssets, 0, 0, _noAuthSig(), 0, address(0), block.timestamp
-        );
+        blueBundles.blueBundlesV1Withdraw(marketParams, withdrawAssets, 0, _noAuthSig(), 0, address(0), block.timestamp);
         vm.stopPrank();
 
         assertEq(morpho.expectedSupplyAssets(marketParams, user), supplyAssets - withdrawAssets, "remaining supply");
@@ -947,7 +945,7 @@ contract BlueBundlesTest is Test {
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(marketParams, supplyAssets, 0, user, "");
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, withdrawAssets, 0, 0, _noAuthSig(), referralFeePct, referrer, block.timestamp
+            marketParams, withdrawAssets, 0, _noAuthSig(), referralFeePct, referrer, block.timestamp
         );
         vm.stopPrank();
 
@@ -974,7 +972,7 @@ contract BlueBundlesTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, withdrawAssets, 0, 0, _noAuthSig(), referralFeePct, referrer, block.timestamp
+            marketParams, withdrawAssets, 0, _noAuthSig(), referralFeePct, referrer, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(user), targetNet, "net equals target");
@@ -990,7 +988,7 @@ contract BlueBundlesTest is Test {
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(marketParams, supplyAssets, 0, user, "");
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, 0, morpho.supplyShares(id, user), 0, _noAuthSig(), referralFeePct, referrer, block.timestamp
+            marketParams, 0, morpho.supplyShares(id, user), _noAuthSig(), referralFeePct, referrer, block.timestamp
         );
         vm.stopPrank();
 
@@ -1249,21 +1247,6 @@ contract BlueBundlesTest is Test {
         loanToken.approve(address(blueBundles), assets);
         vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
         blueBundles.blueBundlesV1Supply(marketParams, assets, 1, _noPermit(), 0, address(0), block.timestamp);
-        vm.stopPrank();
-    }
-
-    /// @dev A minSharePriceE27 above the realized withdraw share price reverts.
-    function testWithdrawSlippageExceeded() public {
-        uint256 supplyAssets = 100e18;
-        deal(address(loanToken), user, supplyAssets);
-
-        vm.startPrank(user);
-        loanToken.approve(address(morpho), type(uint256).max);
-        morpho.supply(marketParams, supplyAssets, 0, user, "");
-        vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
-        blueBundles.blueBundlesV1Withdraw(
-            marketParams, supplyAssets, 0, type(uint256).max, _noAuthSig(), 0, address(0), block.timestamp
-        );
         vm.stopPrank();
     }
 
