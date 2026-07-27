@@ -37,6 +37,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     address public immutable BLUE;
 
+    address public transient initiator;
+
     constructor(address _blue) {
         BLUE = _blue;
     }
@@ -60,6 +62,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         Permit memory sharesPermit,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
         require(block.timestamp <= deadline, DeadlinePassed());
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
 
@@ -115,6 +119,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         Permit memory sharesPermit,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
@@ -170,6 +176,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         address referralFeeRecipient,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());

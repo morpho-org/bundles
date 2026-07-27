@@ -7,6 +7,7 @@ import {Permit} from "../../libraries/TokenLib.sol";
 
 interface IVaultExitBundlesV1 {
     /// ERRORS ///
+    error AlreadyInitiated();
     error AdapterNotPartOfVault();
     error DeadlinePassed();
     error InvalidAdaptersLength();
@@ -16,6 +17,7 @@ interface IVaultExitBundlesV1 {
     error UnauthorizedCallback();
 
     /// STORAGE GETTERS ///
+    function initiator() external view returns (address);
     function BLUE() external view returns (address);
 
     /// FUNCTIONS ///

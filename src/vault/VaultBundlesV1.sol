@@ -20,6 +20,8 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 contract VaultBundlesV1 is IVaultBundlesV1 {
     using UtilsLib for uint256;
 
+    address public transient initiator;
+
     /// EXTERNAL ///
 
     /// @dev Pulls assets of the vault asset from msg.sender (optionally via ERC-2612 or Permit2) and deposits them into vault.
@@ -35,6 +37,8 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         address referralFeeRecipient,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
@@ -68,6 +72,8 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         address referralFeeRecipient,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
         require(block.timestamp <= deadline, DeadlinePassed());
         require((assets == 0) != (shares == 0), NotExactlyOneZero());
         require(referralFeePct < WAD, PctExceeded());
@@ -103,6 +109,8 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         address referralFeeRecipient,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
         require(block.timestamp <= deadline, DeadlinePassed());
         require((assetsWithdrawn == 0) != (sharesRedeemed == 0), NotExactlyOneZero());
         require(referralFeePct < WAD, PctExceeded());

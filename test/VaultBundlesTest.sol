@@ -12,7 +12,10 @@ import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 
 // The generic ERC-4626 handle, satisfied by both Vault V1 (MetaMorpho) and Vault V2.
 import {IERC4626} from "../lib/vault-v2/src/interfaces/IERC4626.sol";
+import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IVaultV2Factory} from "../lib/vault-v2/src/interfaces/IVaultV2Factory.sol";
+import {ErrorsLib} from "../lib/vault-v2/src/libraries/ErrorsLib.sol";
+import {IWhitelistSendAssetsGate} from "../lib/vault-v2/src/periphery/interfaces/IWhitelistSendAssetsGate.sol";
 
 // Vault V1 (MetaMorpho) is set up over its own (nested) morpho-blue, so Morpho, MetaMorpho and this test share a
 // single market type.
@@ -59,6 +62,7 @@ contract VaultBundlesTest is Test {
     IERC4626 internal vaultOther; // Vault V2 over a different asset, for the asset-consistency check.
 
     address internal owner = makeAddr("owner");
+    address internal curator = makeAddr("curator");
     address internal referralFeeRecipient = makeAddr("referralFeeRecipient");
 
     // This contract is the user: it owns positions and grants the bundler its allowances.
@@ -743,6 +747,90 @@ contract VaultBundlesTest is Test {
             WAD,
             referralFeeRecipient,
             block.timestamp
+        );
+    }
+
+    /// SEND ASSETS GATE ///
+
+    /// @dev With the bundler registered as an intermediary on the vault's send assets gate, a deposit resolves the depositor to the bundler's initiator (the user who called the bundler) instead of to the bundler itself. So depositing through the bundler succeeds if and only if that user is whitelisted.
+    function testDepositThroughWhitelistedIntermediary() public {
+        address roleSetter = makeAddr("roleSetter");
+        address whitelister = makeAddr("whitelister");
+        address whitelisted = makeAddr("whitelisted");
+        address notWhitelisted = makeAddr("notWhitelisted");
+
+        IWhitelistSendAssetsGate gate = IWhitelistSendAssetsGate(
+            deployCode("WhitelistSendAssetsGate.sol:WhitelistSendAssetsGate", abi.encode(roleSetter))
+        );
+        vm.prank(roleSetter);
+        gate.setWhitelister(whitelister);
+
+        vm.startPrank(whitelister);
+        gate.setIsIntermediary(address(bundles), true);
+        gate.setIsWhitelisted(whitelisted, true);
+        vm.stopPrank();
+
+        vm.prank(owner);
+        IVaultV2(address(vaultV2)).setCurator(curator);
+        vm.prank(curator);
+        IVaultV2(address(vaultV2)).submit(abi.encodeCall(IVaultV2.setSendAssetsGate, (address(gate))));
+        IVaultV2(address(vaultV2)).setSendAssetsGate(address(gate));
+
+        uint256 assets = 100e18;
+
+        // The non-whitelisted deposit runs first: it reverts inside the gate check, which rolls back the initiator the
+        // bundler set, so the whitelisted deposit below still sees an unset initiator.
+        deal(address(loanToken), notWhitelisted, assets);
+        vm.prank(notWhitelisted);
+        loanToken.approve(address(bundles), type(uint256).max);
+
+        vm.prank(notWhitelisted);
+        vm.expectRevert(ErrorsLib.CannotSendAssets.selector);
+        bundles.vaultBundlesV1Deposit(address(vaultV2), assets, RAY, noPermit, 0, address(0), block.timestamp);
+
+        // The whitelisted deposit succeeds: the gate reads initiator() == whitelisted.
+        deal(address(loanToken), whitelisted, assets);
+        vm.prank(whitelisted);
+        loanToken.approve(address(bundles), type(uint256).max);
+
+        vm.prank(whitelisted);
+        bundles.vaultBundlesV1Deposit(address(vaultV2), assets, RAY, noPermit, 0, address(0), block.timestamp);
+        assertApproxEqAbs(vaultV2.convertToAssets(vaultV2.balanceOf(whitelisted)), assets, 1, "whitelisted position");
+    }
+
+    /// @dev Without a reset, the initiator stays set after the first call, so a second guarded call in the same
+    /// transaction reverts.
+    function testDepositAlreadyInitiated() public {
+        uint256 assets = 100e18;
+        deal(address(loanToken), user, 2 * assets);
+
+        bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp);
+
+        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+        bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp);
+    }
+
+    function testWithdrawAlreadyInitiated() public {
+        uint256 assets = 100e18;
+        _deposited(vaultV1, 2 * assets);
+
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, 0, noSharesPermit, 0, address(0), block.timestamp);
+
+        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, 0, noSharesPermit, 0, address(0), block.timestamp);
+    }
+
+    function testMigrateAlreadyInitiated() public {
+        uint256 assets = 100e18;
+        _deposited(vaultV1, 2 * assets);
+
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultV2), assets, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
+        );
+
+        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+        bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultV2), assets, 0, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
         );
     }
 }

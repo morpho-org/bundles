@@ -6,11 +6,15 @@ import {TokenPermit, Permit} from "../../libraries/TokenLib.sol";
 
 interface IVaultBundlesV1 {
     /// ERRORS ///
+    error AlreadyInitiated();
     error DeadlinePassed();
     error InconsistentAssets();
     error NotExactlyOneZero();
     error PctExceeded();
     error SlippageExceeded();
+
+    /// STORAGE GETTERS ///
+    function initiator() external view returns (address);
 
     /// FUNCTIONS ///
     function vaultBundlesV1Deposit(
