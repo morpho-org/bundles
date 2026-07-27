@@ -107,8 +107,7 @@ contract BlueBundlesTest is Test {
 
     function _noAuthSig() internal pure returns (SignedAuthorization memory) {}
 
-    /// @dev Signs a Blue authorization for the bundler over the authorizer's current nonce and the given deadline,
-    /// returning the signed authorization to pass to the bundle.
+    /// @dev Signs a Blue authorization for the bundler over the authorizer's current nonce and the given deadline, returning the signed authorization to pass to the bundle.
     function _signAuthorization(uint256 privateKey, address authorizer, uint256 sigDeadline)
         internal
         view
@@ -150,8 +149,7 @@ contract BlueBundlesTest is Test {
 
     /// AUTHORIZATION SIGNATURE ///
 
-    /// @dev A user with no prior Blue authorization can use the bundle in a single transaction via
-    /// signedAuthorization.
+    /// @dev A user with no prior Blue authorization can use the bundle in a single transaction via signedAuthorization.
     function testSupplyCollateralAndBorrowWithAuthorizationSig(uint256 borrowAssets) public {
         borrowAssets = bound(borrowAssets, 1, 1e30);
         (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
@@ -279,8 +277,7 @@ contract BlueBundlesTest is Test {
         vm.stopPrank();
     }
 
-    /// @dev A stale signature (consumed nonce) without the authorization set is skipped: the revert surfaces at the
-    /// point of use on Blue.
+    /// @dev A stale signature (consumed nonce) without the authorization set is skipped: the revert surfaces at the point of use on Blue.
     function testAuthorizationSigStaleNonceNotAuthorized() public {
         (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
         uint256 borrowAssets = 1e18;
@@ -370,8 +367,7 @@ contract BlueBundlesTest is Test {
         vm.stopPrank();
     }
 
-    /// @dev A signature with v == 0 but non-zero r and s (e.g. a yParity encoding bug) is not treated as empty: it
-    /// is submitted and reverts on Blue.
+    /// @dev A signature with v == 0 but non-zero r and s (e.g. a yParity encoding bug) is not treated as empty: it is submitted and reverts on Blue.
     function testAuthorizationSigYParityNotSkipped() public {
         (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
         uint256 borrowAssets = 1e18;
@@ -559,8 +555,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev maxLtv caps the resulting LTV (1:1 price): at the exact-fit ltv the borrow lands on the cap, one wei
-    /// less reverts. fitLtv is below the LLTV, so the bundler cap binds before Blue's health check.
+    /// @dev maxLtv caps the resulting LTV (1:1 price): at the exact-fit ltv the borrow lands on the cap, one wei less reverts. fitLtv is below the LLTV, so the bundler cap binds before Blue's health check.
     function testSupplyCollateralAndBorrowLtvExceeded() public {
         uint256 borrowAssets = 100e18;
         uint256 collateral = _collateralFor(borrowAssets);
@@ -630,8 +625,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev maxLtv caps the resulting LTV after a withdrawal: repaying 30e18 and withdrawing 100e18 leaves 70e18
-    /// debt against 100e18 collateral (LTV 0.7) — within the 0.8 LLTV Blue allows, but above a 0.6 maxLtv.
+    /// @dev maxLtv caps the resulting LTV after a withdrawal: repaying 30e18 and withdrawing 100e18 leaves 70e18 debt against 100e18 collateral (LTV 0.7) — within the 0.8 LLTV Blue allows, but above a 0.6 maxLtv.
     function testRepayAndWithdrawCollateralLtvExceeded() public {
         _openBorrow(user, 100e18);
 
@@ -675,8 +669,7 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.collateral(id, user), 100e18, "remaining collateral");
     }
 
-    /// @dev On a pure repay (no withdrawal) the maxLtv cap is skipped: a tight maxLtv below the resulting LTV does
-    /// not revert, since a repay can only lower the LTV.
+    /// @dev On a pure repay (no withdrawal) the maxLtv cap is skipped: a tight maxLtv below the resulting LTV does not revert, since a repay can only lower the LTV.
     function testRepayWithoutWithdrawIgnoresMaxLtv() public {
         _openBorrow(user, 100e18);
 
@@ -705,9 +698,7 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.collateral(id, user), 200e18, "collateral unchanged");
     }
 
-    /// @dev The oracle is never read on a full exit: with zero debt the maxLtv check short-circuits before the
-    /// oracle call (mirroring Blue's health check), so a full repay + withdraw works out of a market whose oracle is
-    /// broken, even with a binding maxLtv.
+    /// @dev The oracle is never read on a full exit: with zero debt the maxLtv check short-circuits before the oracle call (mirroring Blue's health check), so a full repay + withdraw works out of a market whose oracle is broken, even with a binding maxLtv.
     function testRepayAndWithdrawCollateralFullExitBrokenOracle() public {
         uint256 borrowAssets = 100e18;
         _openBorrow(user, borrowAssets);
@@ -739,8 +730,7 @@ contract BlueBundlesTest is Test {
         assertEq(collateralToken.balanceOf(user), collateral, "collateral to user");
     }
 
-    /// @dev With maxLtv at WAD the bundler's maxLtv check short-circuits before its oracle call: the only price
-    /// read is Blue's health check in withdrawCollateral.
+    /// @dev With maxLtv at WAD the bundler's maxLtv check short-circuits before its oracle call: the only price read is Blue's health check in withdrawCollateral.
     function testRepayAndWithdrawCollateralMaxLtvWadSkipsOracle() public {
         _openBorrow(user, 100e18);
 
@@ -803,8 +793,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev Passing the full borrow shares closes the debt by shares: maxRepayAssets is pulled, debt + fee is spent
-    /// (fee on top, as in migrateBorrowPosition), and the unused remainder is refunded to msg.sender.
+    /// @dev Passing the full borrow shares closes the debt by shares: maxRepayAssets is pulled, debt + fee is spent (fee on top, as in migrateBorrowPosition), and the unused remainder is refunded to msg.sender.
     function testRepayMaxClosesDebt(uint256 borrowAssets, uint256 referralFeePct) public {
         borrowAssets = bound(borrowAssets, 1, 1e30);
         referralFeePct = bound(referralFeePct, 0, WAD - 1);
@@ -844,8 +833,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev maxRepayAssets is the user's spend cap on a full close: if it can't cover debt + fee, the repaid debt
-    /// drains the pulled amount and the fee transfer runs out of balance, reverting the call.
+    /// @dev maxRepayAssets is the user's spend cap on a full close: if it can't cover debt + fee, the repaid debt drains the pulled amount and the fee transfer runs out of balance, reverting the call.
     function testRepayMaxCapTooLow() public {
         uint256 borrowAssets = 100e18;
         _openBorrow(user, borrowAssets);
@@ -1051,8 +1039,7 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
     }
 
-    /// @dev The LTV bound applies to the total destination borrow, fee included: a threshold that fits the debt
-    /// alone reverts once the fee is added on top.
+    /// @dev The LTV bound applies to the total destination borrow, fee included: a threshold that fits the debt alone reverts once the fee is added on top.
     function testMigrateBorrowPositionLtvExceededWithReferralFee() public {
         uint256 borrowAssets = 100e18;
         uint256 referralFeePct = 0.1e18;
@@ -1082,8 +1069,7 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
     }
 
-    /// @dev With maxLtv == destLltv the bundler cap is a no-op (it short-circuits at/above the LLTV), so Blue's own
-    /// health check bounds the borrow: a position landing precisely at the destination LLTV limit passes.
+    /// @dev With maxLtv == destLltv the bundler cap is a no-op (it short-circuits at/above the LLTV), so Blue's own health check bounds the borrow: a position landing precisely at the destination LLTV limit passes.
     function testMigrateBorrowPositionLtvBoundAtDestLltvExactLimit() public {
         // Dest collateral value is half the source's: 200e18 collateral => 100e18 value => 90e18 limit at 0.9 LLTV.
         destOracle.setPrice(ORACLE_PRICE_SCALE / 2);
@@ -1155,8 +1141,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(user), borrowAssets, "user loan tokens untouched");
     }
 
-    /// @dev The fee is borrowed on the destination on top of the repaid assets, so the move stays capital-free for
-    /// the user and the fee shows up as extra destination debt.
+    /// @dev The fee is borrowed on the destination on top of the repaid assets, so the move stays capital-free for the user and the fee shows up as extra destination debt.
     function testMigrateBorrowPositionWithReferralFee(uint256 borrowAssets, uint256 referralFeePct) public {
         borrowAssets = bound(borrowAssets, 1, 1e30);
         // Collateral is 2x the debt and dest LLTV is 0.9, so total borrow must stay under 1.8x. The fee is borrowed on
@@ -1191,9 +1176,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(user), borrowAssets, "user loan tokens untouched");
     }
 
-    /// @dev The source oracle is never read during a full-position migrateBorrowPosition: the debt is zero by the
-    /// time the collateral withdrawal health check runs, which short-circuits before the oracle call. Positions can
-    /// therefore migrate out of a market whose oracle is broken.
+    /// @dev The source oracle is never read during a full-position migrateBorrowPosition: the debt is zero by the time the collateral withdrawal health check runs, which short-circuits before the oracle call. Positions can therefore migrate out of a market whose oracle is broken.
     function testMigrateBorrowPositionWithBrokenSourceOracle() public {
         uint256 borrowAssets = 100e18;
         _openBorrow(user, borrowAssets);
@@ -1211,8 +1194,7 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
     }
 
-    /// @dev Reading the position from Blue makes migrateBorrowPosition immune to drift: a third party repaying part
-    /// of the debt between quoting and execution no longer reverts the call — the remaining position is moved.
+    /// @dev Reading the position from Blue makes migrateBorrowPosition immune to drift: a third party repaying part of the debt between quoting and execution no longer reverts the call — the remaining position is moved.
     function testMigrateBorrowPositionAfterThirdPartyRepay() public {
         uint256 borrowAssets = 100e18;
         _openBorrow(user, borrowAssets);
@@ -1333,8 +1315,7 @@ contract BlueBundlesTest is Test {
 
     /// MULTICALL ///
 
-    /// @dev A bundle call wrapped in a multicall behaves exactly like calling it directly: the delegatecall preserves
-    /// msg.sender, so the supply pulls the caller's assets and the position is credited to the caller.
+    /// @dev A bundle call wrapped in a multicall behaves exactly like calling it directly: the delegatecall preserves msg.sender, so the supply pulls the caller's assets and the position is credited to the caller.
     function testMulticallSupply(uint256 assets) public {
         assets = bound(assets, 1, 1e30);
         deal(address(loanToken), user, assets);
@@ -1358,8 +1339,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev Several entrypoints can be batched in a single multicall: the supply then withdraw round trip leaves the
-    /// user's balances unchanged.
+    /// @dev Several entrypoints can be batched in a single multicall: the supply then withdraw round trip leaves the user's balances unchanged.
     function testMulticallSupplyWithdraw(uint256 assets) public {
         assets = bound(assets, 1, 1e30);
         deal(address(loanToken), user, assets);

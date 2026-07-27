@@ -432,8 +432,7 @@ contract VaultBundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(sigUser), 0, 1, "user shares");
     }
 
-    /// @dev A third party submitting the permit first consumes its nonce; the bundle call skips the stale permit and
-    /// relies on the allowance the front-run already set.
+    /// @dev A third party submitting the permit first consumes its nonce; the bundle call skips the stale permit and relies on the allowance the front-run already set.
     function testWithdrawSharesPermitFrontRunTolerated() public {
         uint256 assets = 100e18;
         (address sigUser, uint256 sigUserKey) = makeAddrAndKey("sigUser");
@@ -755,8 +754,7 @@ contract VaultBundlesTest is Test {
         assertApproxEqAbs(vaultV2.convertToAssets(vaultV2.balanceOf(whitelisted)), assets, 1, "whitelisted position");
     }
 
-    /// @dev The initiator is reset when the entrypoint returns, so a second guarded call in the same transaction
-    /// starts with a fresh lock. AlreadyInitiated is only reachable by reentering the contract mid-call.
+    /// @dev The initiator is reset when the entrypoint returns, so a second guarded call in the same transaction starts with a fresh lock. AlreadyInitiated is only reachable by reentering the contract mid-call.
     function testInitiatorResetBetweenCalls() public {
         uint256 assets = 100e18;
         deal(address(loanToken), user, 2 * assets);
@@ -770,8 +768,7 @@ contract VaultBundlesTest is Test {
 
     /// MULTICALL ///
 
-    /// @dev A bundle call wrapped in a multicall behaves exactly like calling it directly: the delegatecall
-    /// preserves msg.sender, so the deposit pulls the caller's assets and the position is credited to the caller.
+    /// @dev A bundle call wrapped in a multicall behaves exactly like calling it directly: the delegatecall preserves msg.sender, so the deposit pulls the caller's assets and the position is credited to the caller.
     function testMulticallDeposit(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         deal(address(loanToken), user, assets);

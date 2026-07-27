@@ -155,8 +155,7 @@ contract VaultV2ExitBundlesTest is Test {
         list[0] = marketParams_;
     }
 
-    /// @dev Simulates accrued yield on a market via a storage cheat so its (and its suppliers') assets/shares ratio
-    /// is non-round, exercising real rounding. Funds Morpho with the extra assets so they remain withdrawable.
+    /// @dev Simulates accrued yield on a market via a storage cheat so its (and its suppliers') assets/shares ratio is non-round, exercising real rounding. Funds Morpho with the extra assets so they remain withdrawable.
     function _accrueYield(MarketParams memory mp, uint256 yield) internal {
         if (yield == 0) return;
         bytes32 slot = MorphoStorageLib.marketTotalSupplyAssetsAndSharesSlot(mp.id());
@@ -187,9 +186,7 @@ contract VaultV2ExitBundlesTest is Test {
         _setUpIlliquid(assets, address(this), true);
     }
 
-    /// @dev Deposits `assets` into the vault for `depositor`, allocates them to the Morpho market, then borrows all
-    /// of them out so the market is fully illiquid. A second market is used so the Morpho contract still holds
-    /// enough global loan token liquidity.
+    /// @dev Deposits `assets` into the vault for `depositor`, allocates them to the Morpho market, then borrows all of them out so the market is fully illiquid. A second market is used so the Morpho contract still holds enough global loan token liquidity.
     /// @dev When approveBundler is false, the depositor grants no allowance, leaving it to a shares permit.
     function _setUpIlliquid(uint256 assets, address depositor, bool approveBundler) internal {
         deal(address(loanToken), depositor, assets);
@@ -227,8 +224,7 @@ contract VaultV2ExitBundlesTest is Test {
         deal(address(loanToken), depositor, 0);
     }
 
-    /// @dev Deposits `assets` into the vault for address(this) and allocates them to the Morpho market. Nothing is
-    /// borrowed out, so the market stays liquid and the assets can be deallocated directly from it.
+    /// @dev Deposits `assets` into the vault for address(this) and allocates them to the Morpho market. Nothing is borrowed out, so the market stays liquid and the assets can be deallocated directly from it.
     function _setUpLiquid(uint256 assets) internal {
         deal(address(loanToken), address(this), assets);
         loanToken.approve(address(vault), type(uint256).max);
@@ -245,8 +241,7 @@ contract VaultV2ExitBundlesTest is Test {
         deal(address(loanToken), address(this), 0);
     }
 
-    /// @dev Like _setUpLiquid but allocates across two adapter markets (`marketParams` and `otherMarket`). Nothing is
-    /// borrowed out, so both markets stay liquid.
+    /// @dev Like _setUpLiquid but allocates across two adapter markets (`marketParams` and `otherMarket`). Nothing is borrowed out, so both markets stay liquid.
     function _setUpLiquidTwoMarkets(uint256 assets1, uint256 assets2) internal {
         // Allow the adapter to allocate into otherMarket too (the `this` and collateral caps are already shared).
         _increaseCaps(abi.encode("this/marketParams", address(adapter), otherMarket));
@@ -285,8 +280,7 @@ contract VaultV2ExitBundlesTest is Test {
         deal(address(loanToken), address(this), 0);
     }
 
-    /// @dev Like _setUpIlliquid but allocates across two adapter markets (`marketParams` and `otherMarket`), both
-    /// borrowed out and given non-round share/asset ratios. A third market supplies Morpho's global loan liquidity.
+    /// @dev Like _setUpIlliquid but allocates across two adapter markets (`marketParams` and `otherMarket`), both borrowed out and given non-round share/asset ratios. A third market supplies Morpho's global loan liquidity.
     function _setUpIlliquidTwoMarkets(uint256 assets1, uint256 assets2) internal {
         // Allow the adapter to allocate into otherMarket too (the `this` and collateral caps are already shared).
         _increaseCaps(abi.encode("this/marketParams", address(adapter), otherMarket));
@@ -343,8 +337,7 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    /// @dev A market not allocated through the adapter (supplyShares == 0) is skipped; with no further market in the
-    /// list to cover the requested assets, the loop runs past the list and reverts.
+    /// @dev A market not allocated through the adapter (supplyShares == 0) is skipped; with no further market in the list to cover the requested assets, the loop runs past the list and reverts.
     function testInKindRedemptionMarketWithoutAdapterShares() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
@@ -356,8 +349,7 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    /// @dev The single market is allocated through the adapter but holds less than the requested amount; with no
-    /// further market in the list to cover the remainder, the loop runs past the list and reverts.
+    /// @dev The single market is allocated through the adapter but holds less than the requested amount; with no further market in the list to cover the remainder, the loop runs past the list and reverts.
     function testInKindRedemptionNotEnoughAvailable() public {
         uint256 assets = 100e18;
         _setUpIlliquid(assets);
@@ -451,8 +443,7 @@ contract VaultV2ExitBundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(sigUser), 0, 1, "vault balance");
     }
 
-    /// @dev When the first market does not hold enough, the loop drains it and pulls the remainder from the next
-    /// market in the list, leaving the sender an in-kind position in both.
+    /// @dev When the first market does not hold enough, the loop drains it and pulls the remainder from the next market in the list, leaving the sender an in-kind position in both.
     function testInKindRedemptionMultipleMarkets() public {
         uint256 assets1 = 60e18;
         uint256 assets2 = 60e18;
@@ -509,10 +500,7 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    /// @dev The first list entry can be a market over a different loan token (the adapter holds no position in it):
-    /// the Blue approval token is derived from the vault, so the foreign entry is skipped like any empty adapter
-    /// market. Deriving the token from marketParamsList[0] would approve the wrong token and revert when Blue pulls
-    /// the supplied assets.
+    /// @dev The first list entry can be a market over a different loan token (the adapter holds no position in it): the Blue approval token is derived from the vault, so the foreign entry is skipped like any empty adapter market. Deriving the token from marketParamsList[0] would approve the wrong token and revert when Blue pulls the supplied assets.
     function testInKindRedemptionForeignFirstMarket(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
@@ -558,9 +546,7 @@ contract VaultV2ExitBundlesTest is Test {
         assertEq(vault.balanceOf(address(this)), newShares, "balanceOf slot");
     }
 
-    /// @dev Passing assets = previewRedeem(balanceOf(sender) - 2) never reverts and
-    /// sweeps all but a few assets' worth of the position (on top of the 2 shares). The
-    /// 2 shares margin keeps the two ceil-rounded withdrawals from over-burning.
+    /// @dev Passing assets = previewRedeem(balanceOf(sender) - 2) never reverts and sweeps all but a few assets' worth of the position (on top of the 2 shares). The 2 shares margin keeps the two ceil-rounded withdrawals from over-burning.
     function testInKindRedemptionSafeExit(uint256 assets, uint256 priceWad) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         priceWad = bound(priceWad, WAD / 10, 10 * WAD);
@@ -665,9 +651,7 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    /// @dev Passing assets = previewRedeem(balanceOf(sender) - 8) sweeps the three markets and leaves the sender with
-    /// almost nothing in the vault. The 8 shares margin keeps the ceil-rounded withdrawals (one per penalty plus the
-    /// final one) from over-burning.
+    /// @dev Passing assets = previewRedeem(balanceOf(sender) - 8) sweeps the three markets and leaves the sender with almost nothing in the vault. The 8 shares margin keeps the ceil-rounded withdrawals (one per penalty plus the final one) from over-burning.
     function testForceWithdrawThreeMarkets() public {
         _setUpLiquidThreeMarkets(50e18, 30e18, 20e18);
 
@@ -690,8 +674,7 @@ contract VaultV2ExitBundlesTest is Test {
         assertLe(vault.previewRedeem(vault.balanceOf(address(this))), 10, "almost nothing left in the vault");
     }
 
-    /// @dev The first market's liquidity is partially borrowed out, so only its available liquidity is taken from it
-    /// and the rest comes from the second market.
+    /// @dev The first market's liquidity is partially borrowed out, so only its available liquidity is taken from it and the rest comes from the second market.
     function testForceWithdrawMarketLiquidityLimited() public {
         _setUpLiquidTwoMarkets(100e18, 100e18);
 
@@ -715,8 +698,7 @@ contract VaultV2ExitBundlesTest is Test {
         assertEq(morpho.expectedSupplyAssets(otherMarket, address(adapter)), 60e18, "second market position");
     }
 
-    /// @dev The first market is fully borrowed out, so it contributes nothing: no zero-asset forceDeallocate is
-    /// emitted for it and the whole amount comes from the second market.
+    /// @dev The first market is fully borrowed out, so it contributes nothing: no zero-asset forceDeallocate is emitted for it and the whole amount comes from the second market.
     function testForceWithdrawSkipsDryMarket() public {
         _setUpLiquidTwoMarkets(100e18, 100e18);
 
@@ -749,8 +731,7 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    /// @dev The liquidity available through the liquidity adapter is withdrawn first, without penalty; only the
-    /// remainder is force deallocated.
+    /// @dev The liquidity available through the liquidity adapter is withdrawn first, without penalty; only the remainder is force deallocated.
     function testForceWithdrawLiquidityAdapterFirst() public {
         _setUpLiquidTwoMarkets(60e18, 40e18);
 
@@ -820,8 +801,7 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    /// @dev The withdrawal reverts when the shares are burned at a price below minSharePriceE27 (e.g. the share
-    /// price dropped after the bound was computed).
+    /// @dev The withdrawal reverts when the shares are burned at a price below minSharePriceE27 (e.g. the share price dropped after the bound was computed).
     function testForceWithdrawSlippageExceeded() public {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
@@ -833,9 +813,7 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
-    /// @dev The net-of-penalty share price quoted before the call is a sufficient minSharePriceE27, up to the
-    /// ceil-rounding dust of the two withdrawals (penalty and assets): the penalty is deducted from the withdrawn
-    /// assets, so it lowers the price.
+    /// @dev The net-of-penalty share price quoted before the call is a sufficient minSharePriceE27, up to the ceil-rounding dust of the two withdrawals (penalty and assets): the penalty is deducted from the withdrawn assets, so it lowers the price.
     function testForceWithdrawTightPriceBound(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpLiquid(assets);
@@ -850,8 +828,7 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// MULTICALL ///
 
-    /// @dev The exit wrapped in a multicall behaves exactly like calling it directly: the delegatecall preserves
-    /// msg.sender, so the in-kind position is credited to the caller.
+    /// @dev The exit wrapped in a multicall behaves exactly like calling it directly: the delegatecall preserves msg.sender, so the in-kind position is credited to the caller.
     function testMulticallInKindRedemption(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
@@ -933,8 +910,7 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// ALREADY INITIATED ///
 
-    /// @dev The initiator lock guards against reentrancy: a vault reentering a guarded entrypoint while one is
-    /// executing (here from inside the shares permit submission) reverts with AlreadyInitiated.
+    /// @dev The initiator lock guards against reentrancy: a vault reentering a guarded entrypoint while one is executing (here from inside the shares permit submission) reverts with AlreadyInitiated.
     function testAlreadyInitiated() public {
         ReentrantVault reentrantVault = new ReentrantVault(vaultBundles, address(morpho));
 
@@ -954,8 +930,7 @@ contract VaultV2ExitBundlesTest is Test {
     }
 }
 
-/// @dev A vault (acting as its own adapter) that reenters the bundler from inside permit, to exercise the initiator
-/// reentrancy lock.
+/// @dev A vault (acting as its own adapter) that reenters the bundler from inside permit, to exercise the initiator reentrancy lock.
 contract ReentrantVault {
     IVaultExitBundlesV1 internal immutable bundles;
     address public immutable morpho;

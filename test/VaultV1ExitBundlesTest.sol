@@ -105,9 +105,7 @@ contract VaultV1ExitBundlesTest is Test {
         _setUpIlliquid(assets, address(this), true);
     }
 
-    /// @dev Deploys a MetaMorpho (Vault V1) over the loan token, deposits `assets` for `depositor` which get
-    /// allocated to the Morpho market, then borrows all of them out so the market is fully illiquid. A second market
-    /// is used so the Morpho contract still holds enough global loan token liquidity to fund the flash loan.
+    /// @dev Deploys a MetaMorpho (Vault V1) over the loan token, deposits `assets` for `depositor` which get allocated to the Morpho market, then borrows all of them out so the market is fully illiquid. A second market is used so the Morpho contract still holds enough global loan token liquidity to fund the flash loan.
     /// @dev When approveBundler is false, the depositor grants no allowance, leaving it to a shares permit.
     function _setUpIlliquid(uint256 assets, address depositor, bool approveBundler) internal {
         vault = IMetaMorpho(
@@ -159,8 +157,7 @@ contract VaultV1ExitBundlesTest is Test {
         deal(address(loanToken), depositor, 0);
     }
 
-    /// @dev Simulates accrued yield on a market via a storage cheat so its (and its suppliers') assets/shares ratio
-    /// is non-round, exercising real rounding. Funds Morpho with the extra assets so they remain withdrawable.
+    /// @dev Simulates accrued yield on a market via a storage cheat so its (and its suppliers') assets/shares ratio is non-round, exercising real rounding. Funds Morpho with the extra assets so they remain withdrawable.
     function _accrueYield(MarketParams memory mp, uint256 yield) internal {
         if (yield == 0) return;
         bytes32 slot = MorphoStorageLib.marketTotalSupplyAssetsAndSharesSlot(mp.id());
@@ -182,11 +179,7 @@ contract VaultV1ExitBundlesTest is Test {
         vm.stopPrank();
     }
 
-    /// @dev Deploys a MetaMorpho over `marketParams` (cap `assets1`) and `otherMarket` (uncapped), both in the supply
-    /// and withdraw queues, then deposits `assets1 + assets2` for address(this) (filling marketParams to its cap, the
-    /// rest into otherMarket). Accrues non-round yield on both markets — so the vault and the markets all end up with
-    /// non-round share/asset ratios — and funds Morpho's global liquidity for the flash loan. Markets are left fully
-    /// liquid; callers borrow out whatever they need.
+    /// @dev Deploys a MetaMorpho over `marketParams` (cap `assets1`) and `otherMarket` (uncapped), both in the supply and withdraw queues, then deposits `assets1 + assets2` for address(this) (filling marketParams to its cap, the rest into otherMarket). Accrues non-round yield on both markets — so the vault and the markets all end up with non-round share/asset ratios — and funds Morpho's global liquidity for the flash loan. Markets are left fully liquid; callers borrow out whatever they need.
     function _deployVaultTwoMarkets(uint256 assets1, uint256 assets2) internal {
         assets1 = bound(assets1, 0, type(uint184).max);
         vault = IMetaMorpho(
@@ -316,8 +309,7 @@ contract VaultV1ExitBundlesTest is Test {
         assertApproxEqAbs(morpho.expectedSupplyAssets(otherMarket, address(this)), 20e18, 3, "second market");
     }
 
-    /// @dev The vault's position in the first market is not enough to cover the requested assets, so the redemption
-    /// drains it and pulls the remainder from the next market: the sender ends with an in-kind position in both.
+    /// @dev The vault's position in the first market is not enough to cover the requested assets, so the redemption drains it and pulls the remainder from the next market: the sender ends with an in-kind position in both.
     function testInKindRedemptionMultipleMarkets() public {
         uint256 assets1 = 60e18;
         uint256 assets2 = 60e18;
@@ -345,8 +337,7 @@ contract VaultV1ExitBundlesTest is Test {
         assertApproxEqAbs(morpho.expectedSupplyAssets(otherMarket, address(this)), 20e18, 3, "second market");
     }
 
-    /// @dev A market can be enabled in the vault yet hold no vault supply. When such a market is reached by the
-    /// redemption loop it must be skipped, not cause a revert: supplying 0 to Morpho Blue reverts INCONSISTENT_INPUT.
+    /// @dev A market can be enabled in the vault yet hold no vault supply. When such a market is reached by the redemption loop it must be skipped, not cause a revert: supplying 0 to Morpho Blue reverts INCONSISTENT_INPUT.
     function testInKindRedemptionSkipsEnabledEmptyMarket() public {
         uint256 assets = 60e18;
 
@@ -406,10 +397,7 @@ contract VaultV1ExitBundlesTest is Test {
         assertApproxEqAbs(morpho.expectedSupplyAssets(otherMarket, address(this)), assets, 2, "in-kind position");
     }
 
-    /// @dev The first list entry can be a market over a different loan token (necessarily disabled in the vault,
-    /// since enabled markets share the vault asset): the flash loan token is derived from the vault, so the foreign
-    /// entry is skipped like any disabled market. Deriving the token from marketParamsList[0] would flash loan the
-    /// wrong token.
+    /// @dev The first list entry can be a market over a different loan token (necessarily disabled in the vault, since enabled markets share the vault asset): the flash loan token is derived from the vault, so the foreign entry is skipped like any disabled market. Deriving the token from marketParamsList[0] would flash loan the wrong token.
     function testInKindRedemptionForeignFirstMarket(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
@@ -445,8 +433,7 @@ contract VaultV1ExitBundlesTest is Test {
 
     /// MULTICALL ///
 
-    /// @dev The exit wrapped in a multicall behaves exactly like calling it directly: the delegatecall preserves
-    /// msg.sender, so the in-kind position is credited to the caller.
+    /// @dev The exit wrapped in a multicall behaves exactly like calling it directly: the delegatecall preserves msg.sender, so the in-kind position is credited to the caller.
     function testMulticallInKindRedemption(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         _setUpIlliquid(assets);
@@ -525,8 +512,7 @@ contract VaultV1ExitBundlesTest is Test {
 
     /// ALREADY INITIATED ///
 
-    /// @dev The initiator lock guards against reentrancy: a vault reentering a guarded entrypoint while one is
-    /// executing (here from inside the shares permit submission) reverts with AlreadyInitiated.
+    /// @dev The initiator lock guards against reentrancy: a vault reentering a guarded entrypoint while one is executing (here from inside the shares permit submission) reverts with AlreadyInitiated.
     function testAlreadyInitiated() public {
         ReentrantVault reentrantVault = new ReentrantVault(vaultBundles, address(morpho));
 
