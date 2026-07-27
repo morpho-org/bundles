@@ -6,11 +6,15 @@ import {TokenPermit, Permit} from "../../libraries/TokenLib.sol";
 
 interface IVaultBundlesV1 {
     /// ERRORS ///
+    error AlreadyInitiated();
     error DeadlinePassed();
     error InconsistentAssets();
     error NotExactlyOneZero();
     error PctExceeded();
     error SlippageExceeded();
+
+    /// STORAGE GETTERS ///
+    function initiator() external view returns (address);
 
     /// FUNCTIONS ///
     function vaultBundlesV1Deposit(
@@ -27,7 +31,6 @@ interface IVaultBundlesV1 {
         address vault,
         uint256 assets,
         uint256 shares,
-        uint256 minSharePriceE27,
         Permit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -39,7 +42,6 @@ interface IVaultBundlesV1 {
         address destVault,
         uint256 assetsWithdrawn,
         uint256 sharesRedeemed,
-        uint256 sourceMinSharePriceE27,
         uint256 destMaxSharePriceE27,
         Permit memory sharesPermit,
         uint256 referralFeePct,
