@@ -17,6 +17,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev This contract can approve tokens to arbitrary addresses. This is safe because a token amount pulled is always fully spent in the same transaction, and because the only tokens pulled to this contract are owned by msg.sender.
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
+/// @dev Meant to be called directly by users, not by other contracts.
 contract VaultBundlesV1 is IVaultBundlesV1 {
     using UtilsLib for uint256;
 

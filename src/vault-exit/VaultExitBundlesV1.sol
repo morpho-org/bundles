@@ -30,6 +30,8 @@ import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/Utils
 /// @dev Gated vaults (Vault V2) require this contract to be permitted by receiveAssetsGate, as it receives the withdrawn assets.
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
+/// @dev Meant to be called directly by users, not by other contracts.
+/// @dev Notably, liquidity is computed as totalSupplyAssets - totalBorrowAssets, which overestimates it inside a Morpho Blue flash loan.
 contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
     using MathLib for uint256;
     using MarketParamsLib for MarketParams;
