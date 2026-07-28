@@ -6,7 +6,7 @@ Entry-points are user-facing: they should be usable out of the box and are not m
 Compared to bundler3, bundles are not modular, but are meant to reproduce its identified core functionalities with greater safety.
 Notably, there is no crafting of bundles offchain, instead the way calls are chained is fixed and this can be audited.
 Users are still expected to look at the inputs of the entry-points, to decide whether they want to sign it or not.
-Bundles are not meant to hold token balances (including native tokens).
+Bundles are not meant to hold token balances (including native tokens) between transactions.
 Users should expect tokens left to the bundles as lost.
 
 ## Bundles
