@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IBlueBundlesV1, SignedAuthorization} from "./interfaces/IBlueBundlesV1.sol";
+import {IBlueBundlesV1, SignedAuthorization, PublicReallocation} from "./interfaces/IBlueBundlesV1.sol";
+import {IBlueAdapterV2PublicAllocator} from "./interfaces/IBlueAdapterV2PublicAllocator.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {IWNative} from "../libraries/interfaces/IWNative.sol";
 import {
@@ -32,9 +33,11 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     using SharesMathLib for uint256;
 
     address public immutable BLUE;
+    address public immutable PUBLIC_ALLOCATOR;
 
-    constructor(address _blue) {
+    constructor(address _blue, address _publicAllocator) {
         BLUE = _blue;
+        PUBLIC_ALLOCATOR = _publicAllocator;
     }
 
     /// @dev Receives the native tokens unwrapped from the wrapped-native token when reimbursing a native repay.
@@ -49,6 +52,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev To receive an amount W, pass borrowAssets = floor(W * WAD / (WAD - referralFeePct)).
     /// @dev maxLtv caps msg.sender's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
+    /// @dev reallocations infuse loan-token liquidity into marketParams before borrowing, so an illiquid market can still be borrowed from.
+    /// @dev msg.value pays the reallocations' native penalties first; what is left is wrapped into marketParams.collateralToken.
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAssets,
@@ -57,6 +62,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
         SignedAuthorization memory signedAuthorization,
+        PublicReallocation[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -65,7 +71,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        TokenLib.pullOrWrapNative(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
+        uint256 nativeAssets = infuseLiquidity(marketParams, reallocations, msg.value);
+        TokenLib.pullOrWrapNative(
+            marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit, nativeAssets
+        );
         if (collateralAssets > 0) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
@@ -109,7 +118,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
+        TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit, msg.value);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         (repayAssets, repayShares) = IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, msg.sender, "");
@@ -156,7 +165,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
         uint256 toSupply = assets - referralFeeAssets;
 
-        TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, assets, loanTokenPermit);
+        TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, assets, loanTokenPermit, msg.value);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         (, uint256 suppliedShares) = IMorpho(BLUE).supply(marketParams, toSupply, 0, msg.sender, "");
@@ -174,19 +183,23 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev To receive an amount W, pass assets = floor(W * WAD / (WAD - referralFeePct)).
     /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
+    /// @dev reallocations infuse liquidity into marketParams before withdrawing, so a fully utilized market can still be exited: the vault takes over the withdrawn supply.
+    /// @dev msg.value must be exactly the reallocations' total native penalty.
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 shares,
         SignedAuthorization memory signedAuthorization,
+        PublicReallocation[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external {
+    ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
+        require(infuseLiquidity(marketParams, reallocations, msg.value) == 0, UnspentNativeAssets());
         (assets,) = IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
 
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
@@ -203,6 +216,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Use destination LLTV to disable.
     /// @dev sourceMaxSharePriceE27 upper-bounds the realized source repay share price; destMinSharePriceE27 lower-bounds the realized destination borrow share price (both assets per share, scaled by 1e27).
     /// @dev Migrating a position without debt reverts on Blue.
+    /// @dev reallocations infuse liquidity into destMarketParams before the migration, so an illiquid destination can still be borrowed from.
+    /// @dev msg.value must be exactly the reallocations' total native penalty.
     function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
@@ -210,10 +225,11 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 destMinSharePriceE27,
         uint256 maxLtv,
         SignedAuthorization memory signedAuthorization,
+        PublicReallocation[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external {
+    ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
@@ -223,6 +239,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
             InconsistentTokens()
         );
+        require(infuseLiquidity(destMarketParams, reallocations, msg.value) == 0, UnspentNativeAssets());
 
         Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), msg.sender);
 
@@ -271,6 +288,39 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     }
 
     /// INTERNAL ///
+
+    /// @dev Allocates loan-token liquidity into marketParams through the public allocator, spending up to nativeAssets on the reallocations' native penalties, and returns what is left of nativeAssets.
+    /// @dev Each reallocation either allocates the vault's idle assets, or first deallocates assets from its source market.
+    /// @dev The allocation destination is always marketParams, so the bundler cannot move a vault's liquidity anywhere else than the market it is about to act on.
+    /// @dev Each penalty is read from the public allocator, so the bundle is bounded by nativeAssets rather than by a signed penalty: a curator raising the penalty makes the bundle revert instead of overpaying.
+    /// @dev Reverts are not tolerated: a reallocation whose source has been drained, whose cap has been reached, or whose penalty has been raised fails the whole bundle.
+    function infuseLiquidity(
+        MarketParams memory marketParams,
+        PublicReallocation[] memory reallocations,
+        uint256 nativeAssets
+    ) internal returns (uint256) {
+        for (uint256 i; i < reallocations.length; i++) {
+            PublicReallocation memory reallocation = reallocations[i];
+            uint256 penalty = IBlueAdapterV2PublicAllocator(PUBLIC_ALLOCATOR).nativePenalty(reallocation.vault);
+            require(penalty <= nativeAssets, InsufficientNativeAssets());
+            nativeAssets -= penalty;
+
+            if (reallocation.fromIdle) {
+                IBlueAdapterV2PublicAllocator(PUBLIC_ALLOCATOR).allocateFromIdle{value: penalty}(
+                    reallocation.vault, reallocation.adapter, marketParams, reallocation.assets
+                );
+            } else {
+                IBlueAdapterV2PublicAllocator(PUBLIC_ALLOCATOR).reallocate{value: penalty}(
+                    reallocation.vault,
+                    reallocation.adapter,
+                    reallocation.sourceMarketParams,
+                    marketParams,
+                    reallocation.assets
+                );
+            }
+        }
+        return nativeAssets;
+    }
 
     /// @dev The parameters signed by the user should be the same as the inputs of this function.
     /// @dev Skipped when the signature is empty (v, r and s all zero; which doesn't correspond to a valid signature), for when the authorization is already done.

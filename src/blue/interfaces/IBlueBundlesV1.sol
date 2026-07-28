@@ -13,18 +13,32 @@ struct SignedAuthorization {
     uint256 deadline;
 }
 
+/// @dev A single liquidity infusion into the market the bundle acts on, through the public allocator.
+/// @dev When fromIdle is true, the vault's idle assets are allocated and sourceMarketParams is ignored; otherwise assets are first deallocated from sourceMarketParams.
+/// @dev The destination is always the market the bundle acts on, so a bundle can only push liquidity where it is about to borrow or withdraw.
+struct PublicReallocation {
+    address vault;
+    address adapter;
+    bool fromIdle;
+    MarketParams sourceMarketParams;
+    uint128 assets;
+}
+
 interface IBlueBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
     error InconsistentTokens();
+    error InsufficientNativeAssets();
     error LtvExceeded();
     error NativeTransferFailed();
     error PctExceeded();
     error SlippageExceeded();
     error UnauthorizedCallback();
+    error UnspentNativeAssets();
 
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);
+    function PUBLIC_ALLOCATOR() external view returns (address);
 
     /// FUNCTIONS ///
     function blueBundlesV1SupplyCollateralAndBorrow(
@@ -35,6 +49,7 @@ interface IBlueBundlesV1 {
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
         SignedAuthorization memory signedAuthorization,
+        PublicReallocation[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -70,10 +85,11 @@ interface IBlueBundlesV1 {
         uint256 assets,
         uint256 shares,
         SignedAuthorization memory signedAuthorization,
+        PublicReallocation[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external;
+    ) external payable;
 
     function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
@@ -82,8 +98,9 @@ interface IBlueBundlesV1 {
         uint256 destMinSharePriceE27,
         uint256 maxLtv,
         SignedAuthorization memory signedAuthorization,
+        PublicReallocation[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external;
+    ) external payable;
 }
