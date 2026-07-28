@@ -47,6 +47,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     /// @dev Exit from a Vault V1 and get Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
+    /// @dev The allowance/permit of shares can also be used to bound the max burned shares.
     /// @dev The assets withdrawn are exitAssets.
     /// @dev Requires Morpho Blue to have at least exitAssets in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw exitAssets.
@@ -102,6 +103,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     /// @dev Exit from a Vault V2 and get Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
+    /// @dev The allowance/permit of shares can also be used to bound the max burned shares.
     /// @dev The assetsToDeallocate amount is floor(exitAssets * WAD / (WAD + penalty)).
     /// @dev The assets are withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error for the users). The sum of the assets withdrawn can be greater than exitAssets, but no greater that exitAssets+N.
     /// @dev Requires Morpho Blue to have at least assetsToDeallocate in loan token balance.
@@ -161,6 +163,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Withdraw from a Vault V2, even if the vault doesn't have enough idle and liquidity adapter assets.
     /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and reverts.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
+    /// @dev The allowance/permit of shares can also be used to bound the max burned shares.
     /// @dev Starts by withdrawing without penalty everything the vault can pay: its idle assets and the liquidity available through the liquidity adapter.
     /// @dev The assetsToDeallocate amount is floor((exitAssets - assetsToWithdraw) * WAD / (WAD + penalty)), where assetsToWithdraw is the amount withdrawn without penalty.
     /// @dev The assetsToDeallocate amount is force deallocated by looping over the adapter's markets, taking from each market as much as its liquidity and the adapter's position allow before moving to the next one.
