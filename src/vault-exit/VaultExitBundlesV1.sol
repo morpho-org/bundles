@@ -103,7 +103,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Exit from a Vault V2 and get Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
     /// @dev The assetsToDeallocate amount is floor(exitAssets * WAD / (WAD + penalty)).
-    /// @dev The assets are withdrawn in a number of iterations that is bounded by the number of markets in the adapter (each of them can result in a rounding error for the users). The sum of the assets withdrawn can be greater than exitAssets, but no greater that exitAssets plus one WEI of asset for each iteration.
+    /// @dev The assets are withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error for the users). The sum of the assets withdrawn can be greater than exitAssets, but no greater that exitAssets+N.
     /// @dev Requires Morpho Blue to have at least assetsToDeallocate in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw ceil(assets * penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
