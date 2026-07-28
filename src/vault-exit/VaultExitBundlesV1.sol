@@ -47,7 +47,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     /// @dev Exit from a Vault V1 and get Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
-    /// @dev That allowance/permit can also be used to bound the max burned shares.
+    /// @dev The allowance/permit of shares can also be used to bound the max burned shares.
     /// @dev Requires Morpho Blue to have at least exitAssets in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw exitAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
