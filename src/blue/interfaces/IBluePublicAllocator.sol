@@ -5,13 +5,17 @@ pragma solidity >=0.8.0;
 import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 
 /// @dev Minimal handle on Vault V2's Blue public allocator, restricted to what the bundler calls.
-interface IBlueAdapterV2PublicAllocator {
-    function nativePenalty(address vault) external view returns (uint256);
+interface IBluePublicAllocator {
+    function vaultData(address vault)
+        external
+        view
+        returns (bool canAllocateFromIdle, uint120 nativePenalty, uint120 accruedNativePenalty);
 
     function reallocate(
         address vault,
-        address adapter,
+        address deallocateAdapter,
         MarketParams calldata deallocateMarketParams,
+        address allocateAdapter,
         MarketParams calldata allocateMarketParams,
         uint128 assets
     ) external payable;

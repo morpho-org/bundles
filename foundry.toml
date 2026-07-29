@@ -53,11 +53,6 @@ evm_version = "cancun"
 optimizer_runs = 100000
 
 [[profile.default.compilation_restrictions]]
-paths = "test/vendor/**/*.sol"
-evm_version = "cancun"
-optimizer_runs = 100000
-
-[[profile.default.compilation_restrictions]]
 paths = "test/imports/MetaMorphoImport.sol"
 evm_version = "paris"
 optimizer_runs = 200

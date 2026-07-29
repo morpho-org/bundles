@@ -26,18 +26,23 @@ import {IBlueBundlesV1, SignedAuthorization, PublicReallocation} from "../src/bl
 import {TokenLib, TokenPermit} from "../src/libraries/TokenLib.sol";
 import {WETHMock} from "./BlueBundlesTest.sol";
 
-/// @dev Handle on the vendored public allocator (see test/vendor), which is deployed through deployCode so that its
-/// own compiler settings do not leak into this file's compilation unit.
+/// @dev Handle on Vault V2's BluePublicAllocator, which is deployed through deployCode so that its own compiler
+/// settings do not leak into this file's compilation unit.
 interface IPublicAllocator {
     error AbsoluteCapExceeded();
     error CannotDeallocate();
+    error InactiveAdapter();
 
-    function accruedNativePenalty(address vault) external view returns (uint256);
+    function vaultData(address vault)
+        external
+        view
+        returns (bool canAllocateFromIdle, uint120 nativePenalty, uint120 accruedNativePenalty);
+    function setIsActiveAdapter(address vault, address adapter, bool newIsActiveAdapter) external;
     function setAbsoluteCap(address vault, address adapter, MarketParams calldata marketParams, uint256 newAbsoluteCap)
         external;
     function setCanDeallocate(address vault, address adapter, MarketParams calldata marketParams, bool newCanDeallocate)
         external;
-    function setCanDeallocateFromIdle(address vault, bool newCanDeallocate) external;
+    function setCanAllocateFromIdle(address vault, bool newCanDeallocate) external;
     function setNativePenalty(address vault, uint256 newNativePenalty) external;
 }
 
@@ -126,22 +131,17 @@ contract BluePublicAllocatorTest is Test {
         _increaseCaps(abi.encode("this/marketParams", address(adapter), destMarketParams));
         _increaseCaps(abi.encode("this/marketParams", address(adapter), liquidMarketParams));
 
-        publicAllocator = IPublicAllocator(
-            deployCode(
-                "BlueAdapterV2PublicAllocator.sol:BlueAdapterV2PublicAllocator", abi.encode(address(adapterFactory))
-            )
-        );
+        publicAllocator = IPublicAllocator(deployCode("BluePublicAllocator.sol:BluePublicAllocator"));
         _submitAndExec(abi.encodeCall(IVaultV2.setIsAllocator, (address(publicAllocator), true)));
 
         vm.startPrank(allocator);
+        publicAllocator.setIsActiveAdapter(address(vault), address(adapter), true);
         publicAllocator.setAbsoluteCap(address(vault), address(adapter), marketParams, type(uint128).max);
         publicAllocator.setAbsoluteCap(address(vault), address(adapter), destMarketParams, type(uint128).max);
         publicAllocator.setCanDeallocate(address(vault), address(adapter), liquidMarketParams, true);
-        publicAllocator.setCanDeallocateFromIdle(address(vault), true);
-        vm.stopPrank();
-
-        vm.prank(curator);
+        publicAllocator.setCanAllocateFromIdle(address(vault), true);
         publicAllocator.setNativePenalty(address(vault), NATIVE_PENALTY);
+        vm.stopPrank();
 
         blueBundles = new BlueBundlesV1(address(morpho), address(publicAllocator));
         assertEq(blueBundles.BLUE(), address(morpho));
@@ -170,12 +170,37 @@ contract BluePublicAllocatorTest is Test {
     }
 
     /// @dev The id the vault (and the public allocator) keys the adapter's per-market allocation under.
-    function _vaultBlueId(MarketParams memory mp) internal view returns (bytes32) {
-        return keccak256(abi.encode("this/marketParams", address(adapter), mp));
+    function _vaultBlueId(address adapter_, MarketParams memory mp) internal pure returns (bytes32) {
+        return keccak256(abi.encode("this/marketParams", adapter_, mp));
     }
 
     function _allocation(MarketParams memory mp) internal view returns (uint256) {
-        return vault.allocation(_vaultBlueId(mp));
+        return vault.allocation(_vaultBlueId(address(adapter), mp));
+    }
+
+    function _accruedNativePenalty() internal view returns (uint256) {
+        (,, uint120 accrued) = publicAllocator.vaultData(address(vault));
+        return accrued;
+    }
+
+    /// @dev Adds a second Morpho-Market-V1 adapter to the vault, able to source deallocations from the liquid market.
+    /// @dev A fresh factory is needed because each factory deploys one adapter per vault at a deterministic address.
+    function _addSecondAdapter() internal returns (address secondAdapter) {
+        IMorphoMarketV1AdapterV2Factory secondFactory = IMorphoMarketV1AdapterV2Factory(
+            deployCode(
+                "MorphoMarketV1AdapterV2Factory.sol:MorphoMarketV1AdapterV2Factory", abi.encode(morpho, address(0))
+            )
+        );
+        secondAdapter = secondFactory.createMorphoMarketV1AdapterV2(address(vault));
+
+        _submitAndExec(abi.encodeCall(IVaultV2.addAdapter, (secondAdapter)));
+        _increaseCaps(abi.encode("this", secondAdapter));
+        _increaseCaps(abi.encode("this/marketParams", secondAdapter, liquidMarketParams));
+
+        vm.startPrank(allocator);
+        publicAllocator.setIsActiveAdapter(address(vault), secondAdapter, true);
+        publicAllocator.setCanDeallocate(address(vault), secondAdapter, liquidMarketParams, true);
+        vm.stopPrank();
     }
 
     /// @dev Deposits VAULT_ASSETS into the vault and pushes `toAllocate` of them into the liquid market, so they can be
@@ -234,6 +259,7 @@ contract BluePublicAllocatorTest is Test {
             vault: address(vault),
             adapter: address(adapter),
             fromIdle: false,
+            sourceAdapter: address(adapter),
             sourceMarketParams: source,
             assets: uint128(assets)
         });
@@ -245,6 +271,7 @@ contract BluePublicAllocatorTest is Test {
             vault: address(vault),
             adapter: address(adapter),
             fromIdle: true,
+            sourceAdapter: address(0),
             sourceMarketParams: MarketParams(address(0), address(0), address(0), address(0), 0),
             assets: uint128(assets)
         });
@@ -290,7 +317,7 @@ contract BluePublicAllocatorTest is Test {
         assertEq(morpho.supplyShares(marketParams.id(), user), 0, "user supply position closed");
         assertEq(_allocation(marketParams), assets, "vault took over the market");
         assertEq(_allocation(liquidMarketParams), VAULT_ASSETS - assets, "liquid market allocation reduced");
-        assertEq(publicAllocator.accruedNativePenalty(address(vault)), NATIVE_PENALTY, "penalty accrued");
+        assertEq(_accruedNativePenalty(), NATIVE_PENALTY, "penalty accrued");
         assertEq(address(blueBundles).balance, 0, "bundler native residual");
     }
 
@@ -308,6 +335,36 @@ contract BluePublicAllocatorTest is Test {
 
         assertEq(loanToken.balanceOf(user), assets, "user received the loan token");
         assertEq(_allocation(marketParams), assets, "vault took over the market");
+    }
+
+    /// @dev The deallocation source and the allocation destination can live on two different adapters of the vault.
+    function testWithdrawIlliquidWithCrossAdapterReallocation() public {
+        uint256 assets = 10e18;
+        address sourceAdapter = _addSecondAdapter();
+
+        // The whole deposit sits in the liquid market through the second adapter, so only that adapter can source it.
+        _fundVault(0);
+        vm.prank(allocator);
+        vault.allocate(sourceAdapter, abi.encode(liquidMarketParams), VAULT_ASSETS);
+
+        _supplyThenDrain(marketParams, assets);
+
+        PublicReallocation[] memory reallocations = _reallocation(liquidMarketParams, assets);
+        reallocations[0].sourceAdapter = sourceAdapter;
+
+        vm.deal(user, NATIVE_PENALTY);
+        vm.prank(user);
+        blueBundles.blueBundlesV1Withdraw{value: NATIVE_PENALTY}(
+            marketParams, assets, 0, _noAuthSig(), reallocations, 0, address(0), block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(user), assets, "user received the loan token");
+        assertEq(_allocation(marketParams), assets, "first adapter took over the market");
+        assertEq(
+            vault.allocation(_vaultBlueId(sourceAdapter, liquidMarketParams)),
+            VAULT_ASSETS - assets,
+            "second adapter's allocation reduced"
+        );
     }
 
     /// @dev Liquidity can be sourced from several markets in one bundle, each charging its own penalty.
@@ -329,7 +386,7 @@ contract BluePublicAllocatorTest is Test {
 
         assertEq(loanToken.balanceOf(user), assets, "user received the loan token");
         assertEq(_allocation(marketParams), assets, "vault took over the market");
-        assertEq(publicAllocator.accruedNativePenalty(address(vault)), 2 * NATIVE_PENALTY, "both penalties accrued");
+        assertEq(_accruedNativePenalty(), 2 * NATIVE_PENALTY, "both penalties accrued");
     }
 
     /// SUPPLY COLLATERAL AND BORROW ///
@@ -479,13 +536,13 @@ contract BluePublicAllocatorTest is Test {
         );
     }
 
-    /// @dev A curator raising the penalty after the bundle was built makes it revert rather than overpay.
+    /// @dev An allocator raising the penalty after the bundle was built makes it revert rather than overpay.
     function testWithdrawPenaltyRaisedReverts() public {
         uint256 assets = 10e18;
         _fundVault(VAULT_ASSETS);
         _supplyThenDrain(marketParams, assets);
 
-        vm.prank(curator);
+        vm.prank(allocator);
         publicAllocator.setNativePenalty(address(vault), 2 * NATIVE_PENALTY);
 
         vm.deal(user, NATIVE_PENALTY);
@@ -509,7 +566,7 @@ contract BluePublicAllocatorTest is Test {
         _fundVault(VAULT_ASSETS);
         _supplyThenDrain(marketParams, assets);
 
-        vm.prank(curator);
+        vm.prank(allocator);
         publicAllocator.setNativePenalty(address(vault), 0);
 
         vm.prank(user);
@@ -553,7 +610,31 @@ contract BluePublicAllocatorTest is Test {
         );
     }
 
-    /// @dev A sentinel cutting the destination's absolute cap to zero blocks the public inflow.
+    /// @dev The public allocator only serves adapters the vault's allocators activated on it.
+    function testWithdrawInactiveAdapterBubbles() public {
+        uint256 assets = 10e18;
+        _fundVault(VAULT_ASSETS);
+        _supplyThenDrain(marketParams, assets);
+
+        vm.prank(allocator);
+        publicAllocator.setIsActiveAdapter(address(vault), address(adapter), false);
+
+        vm.deal(user, NATIVE_PENALTY);
+        vm.prank(user);
+        vm.expectRevert(IPublicAllocator.InactiveAdapter.selector);
+        blueBundles.blueBundlesV1Withdraw{value: NATIVE_PENALTY}(
+            marketParams,
+            assets,
+            0,
+            _noAuthSig(),
+            _reallocation(liquidMarketParams, assets),
+            0,
+            address(0),
+            block.timestamp
+        );
+    }
+
+    /// @dev An allocator cutting the destination's absolute cap to zero blocks the public inflow.
     function testWithdrawAbsoluteCapExceededBubbles() public {
         uint256 assets = 10e18;
         _fundVault(VAULT_ASSETS);
