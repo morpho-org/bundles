@@ -71,7 +71,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        uint256 nativeAssets = infuseLiquidity(marketParams, reallocations, msg.value);
+        uint256 nativeAssets = reallocateLiquidity(marketParams, reallocations);
         TokenLib.pullOrWrapNative(
             marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit, nativeAssets
         );
@@ -199,7 +199,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        require(infuseLiquidity(marketParams, reallocations, msg.value) == 0, UnspentNativeAssets());
+        require(reallocateLiquidity(marketParams, reallocations) == 0, UnspentNativeAssets());
         (assets,) = IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
 
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
@@ -239,7 +239,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
             InconsistentTokens()
         );
-        require(infuseLiquidity(destMarketParams, reallocations, msg.value) == 0, UnspentNativeAssets());
+        require(reallocateLiquidity(destMarketParams, reallocations) == 0, UnspentNativeAssets());
 
         Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), msg.sender);
 
@@ -289,28 +289,28 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
     /// INTERNAL ///
 
-    /// @dev Allocates loan-token liquidity into marketParams through the public allocator, spending up to nativeAssets on the reallocations' native penalties, and returns what is left of nativeAssets.
+    /// @dev Allocates loan-token liquidity into marketParams through the public allocator, spending up to msg.value on the reallocations' native penalties, and returns what is left of msg.value.
     /// @dev Each reallocation either allocates the vault's idle assets, or first deallocates assets from its source market.
     /// @dev The allocation destination is always marketParams, so the bundler cannot move a vault's liquidity anywhere else than the market it is about to act on.
-    /// @dev Each penalty is read from the public allocator, so the bundle is bounded by nativeAssets rather than by a signed penalty: an allocator raising the penalty makes the bundle revert instead of overpaying.
+    /// @dev Each penalty is read from the public allocator, so the bundle is bounded by msg.value rather than by a signed penalty: an allocator raising the penalty makes the bundle revert instead of overpaying.
     /// @dev Reverts are not tolerated: a reallocation whose source has been drained, whose cap has been reached, or whose penalty has been raised fails the whole bundle.
-    function infuseLiquidity(
-        MarketParams memory marketParams,
-        PublicReallocation[] memory reallocations,
-        uint256 nativeAssets
-    ) internal returns (uint256) {
+    function reallocateLiquidity(MarketParams memory marketParams, PublicReallocation[] memory reallocations)
+        internal
+        returns (uint256)
+    {
+        uint256 nativeAssets = msg.value;
         for (uint256 i; i < reallocations.length; i++) {
             PublicReallocation memory reallocation = reallocations[i];
-            (, uint256 penalty,) = IBluePublicAllocator(PUBLIC_ALLOCATOR).vaultData(reallocation.vault);
-            require(penalty <= nativeAssets, InsufficientNativeAssets());
-            nativeAssets -= penalty;
+            (, uint256 nativePenalty,) = IBluePublicAllocator(PUBLIC_ALLOCATOR).vaultData(reallocation.vault);
+            require(nativePenalty <= nativeAssets, InsufficientNativeAssets());
+            nativeAssets -= nativePenalty;
 
             if (reallocation.fromIdle) {
-                IBluePublicAllocator(PUBLIC_ALLOCATOR).allocateFromIdle{value: penalty}(
+                IBluePublicAllocator(PUBLIC_ALLOCATOR).allocateFromIdle{value: nativePenalty}(
                     reallocation.vault, reallocation.adapter, marketParams, reallocation.assets
                 );
             } else {
-                IBluePublicAllocator(PUBLIC_ALLOCATOR).reallocate{value: penalty}(
+                IBluePublicAllocator(PUBLIC_ALLOCATOR).reallocate{value: nativePenalty}(
                     reallocation.vault,
                     reallocation.sourceAdapter,
                     reallocation.sourceMarketParams,
