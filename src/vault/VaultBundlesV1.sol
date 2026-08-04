@@ -25,7 +25,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     /// EXTERNAL ///
 
     /// @dev Pulls assets of the vault asset from msg.sender (optionally via ERC-2612 or Permit2) and deposits them into vault.
-    /// @dev When native tokens are sent, they are wrapped into the vault asset (which must be the wrapped-native token) instead of pulling.
+    /// @dev When native tokens are sent, assetPermit.kind must be PermitKind.None and assets must equal msg.value; the native tokens are wrapped into the vault asset (which must be the wrapped-native token) instead of being pulled.
     /// @dev The referral fee is deducted from assets; the remainder is deposited into vault for msg.sender.
     /// @dev Fee = assets * referralFeePct / WAD; deposited = assets - fee.
     /// @dev maxSharePriceE27 upper-bounds the realized deposit share price (deposited assets per share, scaled by 1e27).
