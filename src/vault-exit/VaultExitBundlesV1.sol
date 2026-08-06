@@ -111,7 +111,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    /// @dev Passing marketParamsList = the adapter's market list makes the call immune to vault allocation changes among those markets; assets moved to idle (e.g. via forceDeallocate) are not covered but can be withdrawn normally.
+    /// @dev Passing as marketParamsList a superset of the adapter's market list makes the call immune to vault allocation changes among those markets; assets moved to idle (e.g. via forceDeallocate) are not covered but can be withdrawn normally.
     /// @dev The market list can change before inclusion: additions can be anticipated when timelocked, and market not in the list are skipped.
     /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
     /// @dev The Morpho Blue market share price is not checked: at most a wei per supply is lost to rounding, assuming a reasonable supply share price, which is expected since markets are curated.
