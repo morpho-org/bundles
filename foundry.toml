@@ -2,6 +2,8 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+# Resolve vault-v2's nested morpho-blue against this repo's, so vault-v2 interfaces share our MarketParams type.
+remappings = ["lib/vault-v2/lib/morpho-blue/=lib/morpho-blue/"]
 test = "test"
 via_ir = true
 optimizer = true

@@ -26,26 +26,9 @@ import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
 import {IBlueBundlesV1, SignedAuthorization, PublicReallocation} from "../src/blue/interfaces/IBlueBundlesV1.sol";
 import {TokenLib, TokenPermit} from "../src/libraries/TokenLib.sol";
 import {WETHMock} from "./BlueBundlesTest.sol";
-
-/// @dev Handle on Vault V2's BluePublicAllocator, which is deployed through deployCode so that its own compiler
-/// settings do not leak into this file's compilation unit.
-interface IPublicAllocator {
-    error AbsoluteCapExceeded();
-    error CannotDeallocate();
-    error InactiveAdapter();
-
-    function vaultData(address vault)
-        external
-        view
-        returns (bool canAllocateFromIdle, uint120 nativePenalty, uint120 accruedNativePenalty);
-    function setIsActiveAdapter(address vault, address adapter, bool newIsActiveAdapter) external;
-    function setAbsoluteCap(address vault, address adapter, MarketParams calldata marketParams, uint256 newAbsoluteCap)
-        external;
-    function setCanDeallocate(address vault, address adapter, MarketParams calldata marketParams, bool newCanDeallocate)
-        external;
-    function setCanAllocateFromIdle(address vault, bool newCanDeallocate) external;
-    function setNativePenalty(address vault, uint256 newNativePenalty) external;
-}
+import {
+    IBluePublicAllocator
+} from "../lib/vault-v2/src/periphery/blue-public-allocator/interfaces/IBluePublicAllocator.sol";
 
 /// @dev Covers the public-allocator paths of the three Blue entrypoints that consume market liquidity: borrowing
 /// against fresh collateral, exiting a supply position, and migrating a borrow position.
@@ -64,7 +47,7 @@ contract BluePublicAllocatorTest is Test {
     IMorpho internal morpho;
     IVaultV2 internal vault;
     IMorphoMarketV1AdapterV2 internal adapter;
-    IPublicAllocator internal publicAllocator;
+    IBluePublicAllocator internal publicAllocator;
     BlueBundlesV1 internal blueBundles;
 
     ERC20Mock internal loanToken;
@@ -132,7 +115,8 @@ contract BluePublicAllocatorTest is Test {
         _increaseCaps(abi.encode("this/marketParams", address(adapter), destMarketParams));
         _increaseCaps(abi.encode("this/marketParams", address(adapter), liquidMarketParams));
 
-        publicAllocator = IPublicAllocator(deployCode("BluePublicAllocator.sol:BluePublicAllocator"));
+        // Deployed through deployCode so that its own compiler settings do not leak into this file's compilation unit.
+        publicAllocator = IBluePublicAllocator(deployCode("BluePublicAllocator.sol:BluePublicAllocator"));
         _submitAndExec(abi.encodeCall(IVaultV2.setIsAllocator, (address(publicAllocator), true)));
 
         vm.startPrank(allocator);
@@ -742,7 +726,7 @@ contract BluePublicAllocatorTest is Test {
 
         vm.deal(user, NATIVE_PENALTY);
         vm.prank(user);
-        vm.expectRevert(IPublicAllocator.CannotDeallocate.selector);
+        vm.expectRevert(IBluePublicAllocator.CannotDeallocate.selector);
         blueBundles.blueBundlesV1Withdraw{value: NATIVE_PENALTY}(
             marketParams,
             assets,
@@ -766,7 +750,7 @@ contract BluePublicAllocatorTest is Test {
 
         vm.deal(user, NATIVE_PENALTY);
         vm.prank(user);
-        vm.expectRevert(IPublicAllocator.InactiveAdapter.selector);
+        vm.expectRevert(IBluePublicAllocator.InactiveAdapter.selector);
         blueBundles.blueBundlesV1Withdraw{value: NATIVE_PENALTY}(
             marketParams,
             assets,
@@ -790,7 +774,7 @@ contract BluePublicAllocatorTest is Test {
 
         vm.deal(user, NATIVE_PENALTY);
         vm.prank(user);
-        vm.expectRevert(IPublicAllocator.AbsoluteCapExceeded.selector);
+        vm.expectRevert(IBluePublicAllocator.AbsoluteCapExceeded.selector);
         blueBundles.blueBundlesV1Withdraw{value: NATIVE_PENALTY}(
             marketParams,
             assets,

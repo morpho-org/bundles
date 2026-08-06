@@ -3,7 +3,9 @@
 pragma solidity 0.8.34;
 
 import {IBlueBundlesV1, SignedAuthorization, PublicReallocation} from "./interfaces/IBlueBundlesV1.sol";
-import {IBluePublicAllocator} from "./interfaces/IBluePublicAllocator.sol";
+import {
+    IBluePublicAllocator
+} from "../../lib/vault-v2/src/periphery/blue-public-allocator/interfaces/IBluePublicAllocator.sol";
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {IWNative} from "../libraries/interfaces/IWNative.sol";
 import {
