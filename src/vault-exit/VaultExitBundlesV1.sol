@@ -106,7 +106,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev The allowance/permit of shares can also be used to bound the max burned shares.
     /// @dev The vault's idle assets are withdrawn first.
     /// @dev The assetsToDeallocate amount is floor((exitAssets - assetsToWithdrawFromIdle) * WAD / (WAD + penalty)).
-    /// @dev The in-kind portion is withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error for the users). Including assetsToWithdrawFromIdle, the sum of the assets withdrawn can be greater than exitAssets, but no greater that exitAssets+N.
+    /// @dev The in-kind portion is withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error against the users). The assets value of the sum of the shares withdrawn can be greater than exitAssets, but no greater that exitAssets+N.
     /// @dev Requires Morpho Blue to have at least assetsToDeallocate in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw assetsToWithdrawFromIdle, then ceil(assets * penalty / WAD) and assets for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
