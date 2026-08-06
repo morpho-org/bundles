@@ -27,7 +27,7 @@ import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/Utils
 /// @dev The Morpho Blue fee recipient shouldn't be a vault that is used with this contract, otherwise its expected supply assets are underestimated since the shares internally computed do not include the accrued fee shares.
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev Gated vaults (Vault V2) require this contract to be permitted by receiveAssetsGate, as it receives the withdrawn assets.
+/// @dev The receiveAssetsGate of vaults (V2) that are used with this contract must allow this contract, as it receives the withdrawn assets. The gate can query the bundle's initiator thanks to the exposed transient variable.
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
