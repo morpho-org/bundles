@@ -104,15 +104,15 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Exit from a Vault V2 and get idle assets and/or Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
     /// @dev The allowance/permit of shares can also be used to bound the max burned shares.
-    /// @dev The vault's idle assets are withdrawn first without penalty, up to exitAssets.
-    /// @dev The assetsToDeallocate amount is floor((exitAssets - idleAssets) * WAD / (WAD + penalty)).
-    /// @dev The in-kind portion is withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error for the users). Including idleAssets, the sum of the assets withdrawn can be greater than exitAssets, but no greater that exitAssets+N.
+    /// @dev The vault's idle assets are withdrawn first.
+    /// @dev The assetsToDeallocate amount is floor((exitAssets - assetsToWithdrawFromIdle) * WAD / (WAD + penalty)).
+    /// @dev The in-kind portion is withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error for the users). Including assetsToWithdrawFromIdle, the sum of the assets withdrawn can be greater than exitAssets, but no greater that exitAssets+N.
     /// @dev Requires Morpho Blue to have at least assetsToDeallocate in loan token balance.
-    /// @dev Requires the sender to have enough shares to withdraw idleAssets, then ceil(assets * penalty / WAD) and assets for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
+    /// @dev Requires the sender to have enough shares to withdraw assetsToWithdrawFromIdle, then ceil(assets * penalty / WAD) and assets for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    /// @dev Passing a comprehensive marketParamsList (e.g. superset of the adapter's market list) can make the call immune to vault allocation changes between idle and those markets.
+    /// @dev Passing a comprehensive marketParamsList (e.g. superset of the adapter's market list) can make the call immune to vault allocation changes.
     /// @dev The market list can change before inclusion: additions are timelocked so they can be anticipated, and markets not in the list are skipped.
     /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
     /// @dev The minted Morpho Blue shares are not checked: at most a wei per supply is lost to rounding, assuming a reasonable supply share price, which is expected since markets are curated.
@@ -134,17 +134,16 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         TokenLib.submitPermit(vault, sharesPermit);
 
         address asset = IVaultV2(vault).asset();
-        uint256 idleAssets = UtilsLib.min(IERC20(asset).balanceOf(vault), exitAssets);
-        if (idleAssets > 0) {
-            IVaultV2(vault).withdraw(idleAssets, address(this), msg.sender);
-            SafeTransferLib.safeTransfer(asset, msg.sender, idleAssets);
-            exitAssets -= idleAssets;
+        uint256 assetsToWithdrawFromIdle = UtilsLib.min(IERC20(asset).balanceOf(vault), exitAssets);
+        if (assetsToWithdrawFromIdle > 0) {
+            IVaultV2(vault).withdraw(assetsToWithdrawFromIdle, address(this), msg.sender);
+            SafeTransferLib.safeTransfer(asset, msg.sender, assetsToWithdrawFromIdle);
         }
 
         TokenLib.forceApproveMax(asset, BLUE);
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
-        uint256 assetsToDeallocate = exitAssets.mulDivDown(WAD, WAD + penalty);
+        uint256 assetsToDeallocate = (exitAssets - assetsToWithdrawFromIdle).mulDivDown(WAD, WAD + penalty);
 
         for (uint256 i; assetsToDeallocate > 0; i++) {
             bytes32 marketId = Id.unwrap(marketParamsList[i].id());
