@@ -433,6 +433,51 @@ contract VaultV2ExitBundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
 
+    /// @dev If the allocator leaves everything idle, the sender receives assets without needing any market entry.
+    function testInKindRedemptionOnlyIdleAssets(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        deal(address(loanToken), address(this), assets);
+        loanToken.approve(address(vault), type(uint256).max);
+        vault.deposit(assets, address(this));
+        vault.approve(address(vaultBundles), type(uint256).max);
+        deal(address(loanToken), address(this), 0);
+
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), new MarketParams[](0), assets, noSharesPermit, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), assets, "sender loan token balance");
+        assertEq(vault.balanceOf(address(this)), 0, "vault balance");
+    }
+
+    /// @dev Idle assets are withdrawn directly and only the remaining exit amount is redeemed in kind.
+    function testInKindRedemptionIdleAssetsFirst(uint256 marketAssets, uint256 idleAssets) public {
+        marketAssets = bound(marketAssets, MIN_ASSETS, MAX_ASSETS);
+        idleAssets = bound(idleAssets, 1, MAX_ASSETS);
+        _setUpIlliquid(marketAssets);
+
+        deal(address(loanToken), address(this), idleAssets);
+        vault.deposit(idleAssets, address(this));
+        deal(address(loanToken), address(this), 0);
+
+        uint256 exitAssets = marketAssets + idleAssets;
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), _singleton(marketParams), exitAssets, noSharesPermit, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), idleAssets, "sender loan token balance");
+        assertEq(
+            morpho.expectedSupplyAssets(marketParams, address(this)),
+            optimalDeallocateAssets(marketAssets),
+            "supply position"
+        );
+        assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
+    }
+
     /// @dev A sender that never approved the bundler can exit in a single transaction via sharesPermit.
     function testInKindRedemptionWithSharesPermit(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
