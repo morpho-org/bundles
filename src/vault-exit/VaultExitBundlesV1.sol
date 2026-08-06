@@ -52,6 +52,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Requires Morpho Blue to have at least exitAssets in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw exitAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
+    /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
     /// @dev Passing marketParamsList=withdrawQueue makes the call immune to vault allocation changes: the full vault allocation is taken into account.
     /// @dev The withdrawal queue can change before inclusion: additions can be anticipated when timelocked, and markets not in the withdrawal queue are skipped.
     /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
