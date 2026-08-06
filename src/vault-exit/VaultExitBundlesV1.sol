@@ -52,11 +52,10 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Requires Morpho Blue to have at least exitAssets in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw exitAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
-    /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    /// @dev Passing a comprehensive marketParamsList (e.g. superset of the vault's withdrawal queue) can make the call immune to vault allocation changes: the full vault allocation is taken into account.
-    /// @dev The withdrawal queue can change before inclusion: additions are timelocked so they can be anticipated, and markets not in the withdrawal queue are skipped.
+    /// @dev Passing marketParamsList=withdrawQueue makes the call immune to vault allocation changes: the full vault allocation is taken into account.
+    /// @dev The withdrawal queue can change before inclusion: additions can be anticipated when timelocked, and markets not in the withdrawal queue are skipped.
     /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
-    /// @dev The minted Morpho Blue shares are not checked: at most a wei per supply is lost to rounding, assuming a reasonable supply share price, which is expected since markets are curated.
+    /// @dev The Morpho Blue market share price is not checked: at most a wei per supply is lost to rounding, assuming a reasonable supply share price, which is expected since markets are curated.
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
@@ -110,11 +109,10 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Requires the sender to have enough shares to withdraw ceil(assets * penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
-    /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    /// @dev Passing a comprehensive marketParamsList (e.g. superset of the adapter's market list) can make the call immune to vault allocation changes among those markets; assets moved to idle (e.g. via forceDeallocate) are not covered but can be withdrawn normally.
-    /// @dev The market list can change before inclusion: additions are timelocked so they can be anticipated, and market not in the list are skipped.
+    /// @dev Passing marketParamsList = the adapter's market list makes the call immune to vault allocation changes among those markets; assets moved to idle (e.g. via forceDeallocate) are not covered but can be withdrawn normally.
+    /// @dev The market list can change before inclusion: additions can be anticipated when timelocked, and market not in the list are skipped.
     /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
-    /// @dev The minted Morpho Blue shares are not checked: at most a wei per supply is lost to rounding, assuming a reasonable supply share price, which is expected since markets are curated.
+    /// @dev The Morpho Blue market share price is not checked: at most a wei per supply is lost to rounding, assuming a reasonable supply share price, which is expected since markets are curated.
     function vaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
         address adapter,
@@ -160,11 +158,10 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     /// FORCE WITHDRAW VAULT V2 ///
 
-    /// @dev Withdraw from a Vault V2, even if the vault doesn't have enough idle and liquidity adapter assets.
+    /// @dev Withdraw from a Vault V2, even if the vault doesn't have enough idle and liquidity market assets.
     /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and reverts.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
-    /// @dev The allowance/permit of shares can also be used to bound the max burned shares.
-    /// @dev Starts by withdrawing without penalty everything the vault can pay: its idle assets and the liquidity available through the liquidity adapter.
+    /// @dev Starts by withdrawing everything the vault can pay without penalty: its idle assets and the liquidity available through the liquidity adapter.
     /// @dev The assetsToDeallocate amount is floor((exitAssets - assetsToWithdraw) * WAD / (WAD + penalty)), where assetsToWithdraw is the amount withdrawn without penalty.
     /// @dev The assetsToDeallocate amount is force deallocated by looping over the adapter's markets, taking from each market as much as its liquidity and the adapter's position allow before moving to the next one.
     /// @dev The assets are withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error for the users). The sum of the assets withdrawn can be greater than exitAssets, but no greater that exitAssets+N for each iteration.
