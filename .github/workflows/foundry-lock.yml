@@ -1,0 +1,42 @@
+name: foundry-lock
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Check foundry.lock matches submodule pins
+        run: |
+          python3 - <<'PYEOF'
+          import json, subprocess, sys, configparser
+          lock = json.load(open("foundry.lock"))
+          def rev(e):
+              if "rev" in e: return e["rev"]
+              for k in ("tag", "branch"):
+                  if k in e: return e[k]["rev"]
+              raise KeyError(f"unrecognized lock entry: {e}")
+          def gitlink(p):
+              f = subprocess.check_output(["git", "ls-tree", "HEAD", p], text=True).split()
+              return f[2] if len(f) >= 3 and f[1] == "commit" else None
+          cfg = configparser.ConfigParser(); cfg.read(".gitmodules")
+          subs = {cfg[s]["path"] for s in cfg.sections()}
+          errs = []
+          for p in sorted(subs | set(lock)):
+              want = rev(lock[p]) if p in lock else None
+              have = gitlink(p)   if p in subs else None
+              if   want is None: errs.append(f"{p}: submodule not in foundry.lock")
+              elif have is None: errs.append(f"{p}: in foundry.lock but not a committed submodule")
+              elif want != have: errs.append(f"{p}: lock={want[:12]} != submodule={have[:12]}")
+          if errs:
+              print("foundry.lock drift detected:")
+              for e in errs: print("  -", e)
+              sys.exit(1)
+          print("foundry.lock matches all submodule pins")
+          PYEOF
