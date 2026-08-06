@@ -1,6 +1,6 @@
 {
   "lib/forge-std": {
-    "rev": "620536fa5277db4e3fd46772d5cbc1ea0696fb43"
+    "rev": "a90fe0b481f4c4dbb2f2e29e13ba0e2c8a5ec6b7"
   },
   "lib/metamorpho": {
     "rev": "ae732258e55be466b959705ad2e6bc6c66e1819d"
