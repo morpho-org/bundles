@@ -48,7 +48,7 @@ Each one calls Vault V2's public allocator to move a vault's assets into the mar
 [VaultExitBundlesV1](src/vault-exit/VaultExitBundlesV1.sol) contains:
 
 - `vaultExitBundlesV1InKindRedemptionVaultV1` — in-kind redeem from an illiquid Vault V1.
-- `vaultExitBundlesV1InKindRedemptionVaultV2` — in-kind redeem from an illiquid Vault V2.
+- `vaultExitBundlesV1InKindRedemptionVaultV2` — withdraw idle assets and redeem the remainder in kind from an illiquid Vault V2.
 - `vaultExitBundlesV1ForceWithdrawVaultV2` — force withdraw from a liquid Vault V2.
 
 ## Audits
