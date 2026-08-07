@@ -20,6 +20,7 @@ import {IMorphoRepayCallback} from "../../lib/morpho-blue/src/interfaces/IMorpho
 import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
+import {MorphoBalancesLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
 import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
@@ -73,7 +74,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        uint256 nativeAssets = reallocateLiquidity(marketParams, reallocations);
+        uint256 nativeAssets = reallocateLiquidity(marketParams, reallocations, type(uint256).max);
         TokenLib.pullOrWrapNative(
             marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit, nativeAssets
         );
@@ -185,8 +186,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev To receive an amount W, pass assets = floor(W * WAD / (WAD - referralFeePct)).
     /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
-    /// @dev reallocations infuse liquidity into marketParams before withdrawing, so a fully utilized market can still be exited: the vault takes over the withdrawn supply.
-    /// @dev msg.value must be exactly the reallocations' total native penalty.
+    /// @dev reallocations infuse the market's missing liquidity into marketParams before withdrawing, so a fully utilized market can still be exited: the vault takes over the withdrawn supply.
+    /// @dev The missing liquidity is computed on-chain, so no buffer is needed: each reallocation's assets is a cap, filled in order, and reallocations are skipped once the withdrawal is covered.
+    /// @dev A withdrawal by shares is sized at the expected share price, rounded down like the withdrawal itself, so exactly the missing liquidity is reallocated. The allocations raise that price by a fraction of a wei, so such an exit reverts for a wei of missing liquidity rather than spending a whole penalty on a wei of reallocation.
+    /// @dev msg.value pays the executed reallocations' native penalties; what is left is refunded to msg.sender, which must be able to receive native tokens.
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
         uint256 assets,
@@ -201,7 +204,14 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        require(reallocateLiquidity(marketParams, reallocations) == 0, UnspentNativeAssets());
+
+        (uint256 totalSupplyAssets, uint256 totalSupplyShares, uint256 totalBorrowAssets,) =
+            MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParams);
+        uint256 requiredAssets = shares > 0 ? shares.toAssetsDown(totalSupplyAssets, totalSupplyShares) : assets;
+
+        uint256 missingAssets = requiredAssets.zeroFloorSub(totalSupplyAssets - totalBorrowAssets);
+        uint256 nativeAssets = reallocateLiquidity(marketParams, reallocations, missingAssets);
+
         (assets,) = IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
 
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
@@ -209,6 +219,11 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
         SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, assets - referralFeeAssets);
+
+        if (nativeAssets > 0) {
+            (bool success,) = msg.sender.call{value: nativeAssets}("");
+            require(success, NativeTransferFailed());
+        }
     }
 
     /// @dev Moves the full position of msg.sender (collateral and borrow shares, read from Blue) from the source market to the destination market.
@@ -241,7 +256,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
             InconsistentTokens()
         );
-        require(reallocateLiquidity(destMarketParams, reallocations) == 0, UnspentNativeAssets());
+        require(reallocateLiquidity(destMarketParams, reallocations, type(uint256).max) == 0, UnspentNativeAssets());
 
         Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), msg.sender);
 
@@ -291,25 +306,30 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
     /// INTERNAL ///
 
-    /// @dev Allocates loan-token liquidity into marketParams through the public allocator, spending up to msg.value on the reallocations' native penalties, and returns what is left of msg.value.
+    /// @dev Allocates up to missingAssets of loan-token liquidity into marketParams through the public allocator, spending up to msg.value on the reallocations' native penalties, and returns what is left of msg.value.
+    /// @dev Each reallocation's assets is a cap: reallocations are filled in order until missingAssets is covered, and the remaining ones are skipped (their penalties are not spent).
     /// @dev Each reallocation either allocates the vault's idle assets, or first deallocates assets from its source market.
     /// @dev The allocation destination is always marketParams, so the bundler cannot move a vault's liquidity anywhere else than the market it is about to act on.
     /// @dev Each penalty is read from the public allocator, so the bundle is bounded by msg.value rather than by a signed penalty: an allocator raising the penalty makes the bundle revert instead of overpaying.
     /// @dev Reverts are not tolerated: a reallocation whose source has been drained, whose cap has been reached, or whose penalty has been raised fails the whole bundle.
-    function reallocateLiquidity(MarketParams memory marketParams, PublicReallocation[] memory reallocations)
-        internal
-        returns (uint256)
-    {
+    function reallocateLiquidity(
+        MarketParams memory marketParams,
+        PublicReallocation[] memory reallocations,
+        uint256 missingAssets
+    ) internal returns (uint256) {
         uint256 nativeAssets = msg.value;
-        for (uint256 i; i < reallocations.length; i++) {
+        for (uint256 i; i < reallocations.length && missingAssets > 0; i++) {
             PublicReallocation memory reallocation = reallocations[i];
+            uint128 toAllocate = UtilsLib.min(reallocation.assets, missingAssets).toUint128();
+            missingAssets -= toAllocate;
+
             (, uint256 nativePenalty,) = IBluePublicAllocator(PUBLIC_ALLOCATOR).vaultData(reallocation.vault);
             require(nativePenalty <= nativeAssets, InsufficientNativeAssets());
             nativeAssets -= nativePenalty;
 
             if (reallocation.fromIdle) {
                 IBluePublicAllocator(PUBLIC_ALLOCATOR).allocateFromIdle{value: nativePenalty}(
-                    reallocation.vault, reallocation.adapter, marketParams, reallocation.assets
+                    reallocation.vault, reallocation.adapter, marketParams, toAllocate
                 );
             } else {
                 IBluePublicAllocator(PUBLIC_ALLOCATOR).reallocate{value: nativePenalty}(
@@ -318,7 +338,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
                     reallocation.sourceMarketParams,
                     reallocation.adapter,
                     marketParams,
-                    reallocation.assets
+                    toAllocate
                 );
             }
         }
