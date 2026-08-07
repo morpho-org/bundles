@@ -233,6 +233,14 @@ contract BluePublicAllocatorTest is Test {
         weth.deposit{value: amount}();
     }
 
+    function _supplyLoanAssets(MarketParams memory mp, address account, uint256 assets) internal {
+        deal(address(loanToken), account, assets);
+        vm.startPrank(account);
+        loanToken.approve(address(morpho), type(uint256).max);
+        morpho.supply(mp, assets, 0, account, "");
+        vm.stopPrank();
+    }
+
     /// @dev Gives `account` collateral on `mp` with ample headroom above the LLTV, then borrows `borrowAssets`.
     function _openBorrow(MarketParams memory mp, address account, uint256 borrowAssets) internal {
         uint256 collateral = 2 * borrowAssets;
@@ -546,6 +554,140 @@ contract BluePublicAllocatorTest is Test {
         assertEq(_allocation(marketParams), borrowAssets, "vault funded the borrow");
     }
 
+    /// @dev Existing market liquidity is consumed first, the final necessary reallocation is trimmed, and backup
+    /// routes are skipped and refunded.
+    function testSupplyCollateralAndBorrowOnlyReallocatesMissingLiquidity() public {
+        uint256 borrowAssets = 10e18;
+        uint256 availableAssets = 4e18;
+        uint256 collateral = 2 * borrowAssets;
+        _fundVault(VAULT_ASSETS / 2);
+        _supplyLoanAssets(marketParams, depositor, availableAssets);
+
+        PublicReallocation[] memory reallocations = new PublicReallocation[](2);
+        reallocations[0] = _reallocation(liquidMarketParams, VAULT_ASSETS / 2)[0];
+        reallocations[1] = _idleReallocation(VAULT_ASSETS / 2)[0];
+
+        _fundWeth(user, collateral);
+        vm.deal(user, 2 * NATIVE_PENALTY);
+        vm.startPrank(user);
+        weth.approve(address(blueBundles), type(uint256).max);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: 2 * NATIVE_PENALTY}(
+            marketParams,
+            collateral,
+            borrowAssets,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            reallocations,
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(_allocation(marketParams), borrowAssets - availableAssets, "only missing liquidity allocated");
+        assertEq(_accruedNativePenalty(), NATIVE_PENALTY, "backup route skipped");
+        assertEq(user.balance, NATIVE_PENALTY, "backup penalty refunded");
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
+    }
+
+    /// @dev A zero-cap candidate is not a necessary PA call and does not consume its penalty.
+    function testSupplyCollateralAndBorrowSkipsZeroCapReallocation() public {
+        uint256 borrowAssets = 10e18;
+        uint256 collateral = 2 * borrowAssets;
+        _fundVault(VAULT_ASSETS);
+
+        PublicReallocation[] memory reallocations = new PublicReallocation[](2);
+        reallocations[0] = _reallocation(liquidMarketParams, 0)[0];
+        reallocations[1] = _reallocation(liquidMarketParams, borrowAssets)[0];
+
+        _fundWeth(user, collateral);
+        vm.deal(user, 2 * NATIVE_PENALTY);
+        vm.startPrank(user);
+        weth.approve(address(blueBundles), type(uint256).max);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: 2 * NATIVE_PENALTY}(
+            marketParams,
+            collateral,
+            borrowAssets,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            reallocations,
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(_allocation(marketParams), borrowAssets, "non-zero route funded the borrow");
+        assertEq(_accruedNativePenalty(), NATIVE_PENALTY, "zero-cap penalty not spent");
+        assertEq(user.balance, NATIVE_PENALTY, "zero-cap penalty refunded");
+    }
+
+    /// @dev Native collateral is separated from the full candidate penalty budget before every route is skipped, so
+    /// the collateral is wrapped and the unused penalty is refunded.
+    function testSupplyCollateralAndBorrowWrapNativeRefundsSkippedPenalty() public {
+        uint256 borrowAssets = 10e18;
+        uint256 collateral = 2 * borrowAssets;
+        _fundVault(VAULT_ASSETS);
+        _supplyLoanAssets(marketParams, depositor, borrowAssets);
+
+        vm.deal(user, collateral + NATIVE_PENALTY);
+        vm.prank(user);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: collateral + NATIVE_PENALTY}(
+            marketParams,
+            collateral,
+            borrowAssets,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            _reallocation(liquidMarketParams, VAULT_ASSETS),
+            0,
+            address(0),
+            block.timestamp
+        );
+
+        assertEq(morpho.position(marketParams.id(), user).collateral, collateral, "native collateral supplied");
+        assertEq(_allocation(marketParams), 0, "reallocation skipped");
+        assertEq(_accruedNativePenalty(), 0, "penalty not spent");
+        assertEq(user.balance, NATIVE_PENALTY, "unused penalty refunded");
+    }
+
+    /// @dev Borrow reserves every candidate route's current penalty even if an earlier route would be enough, because
+    /// that full budget is what distinguishes PA penalties from native collateral without another function input.
+    function testSupplyCollateralAndBorrowRequiresAllCandidatePenalties() public {
+        uint256 borrowAssets = 10e18;
+        uint256 collateral = 2 * borrowAssets;
+        _fundVault(VAULT_ASSETS / 2);
+
+        PublicReallocation[] memory reallocations = new PublicReallocation[](2);
+        reallocations[0] = _reallocation(liquidMarketParams, borrowAssets)[0];
+        reallocations[1] = _idleReallocation(borrowAssets)[0];
+
+        _fundWeth(user, collateral);
+        vm.deal(user, NATIVE_PENALTY);
+        vm.startPrank(user);
+        weth.approve(address(blueBundles), type(uint256).max);
+        vm.expectRevert(IBlueBundlesV1.InsufficientNativeAssets.selector);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: NATIVE_PENALTY}(
+            marketParams,
+            collateral,
+            borrowAssets,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            reallocations,
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+    }
+
     /// @dev msg.value covers the penalties first, and only the remainder is wrapped as collateral.
     function testSupplyCollateralAndBorrowWrapNativeWithPenalty() public {
         uint256 borrowAssets = 10e18;
@@ -636,6 +778,135 @@ contract BluePublicAllocatorTest is Test {
         assertEq(morpho.position(destMarketParams.id(), user).collateral, collateral, "destination collateral");
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "destination debt");
         assertEq(_allocation(destMarketParams), borrowAssets, "vault funded the destination");
+    }
+
+    /// @dev Existing destination liquidity is consumed first, the necessary route is trimmed, and the backup route
+    /// and its penalty are skipped.
+    function testMigrateBorrowPositionOnlyReallocatesMissingLiquidity() public {
+        uint256 borrowAssets = 10e18;
+        uint256 availableAssets = 4e18;
+        _fundVault(VAULT_ASSETS / 2);
+        _supplyLoanAssets(marketParams, depositor, borrowAssets);
+        _openBorrow(marketParams, user, borrowAssets);
+        _supplyLoanAssets(destMarketParams, depositor, availableAssets);
+
+        PublicReallocation[] memory reallocations = new PublicReallocation[](2);
+        reallocations[0] = _reallocation(liquidMarketParams, VAULT_ASSETS / 2)[0];
+        reallocations[1] = _idleReallocation(VAULT_ASSETS / 2)[0];
+
+        vm.deal(user, 2 * NATIVE_PENALTY);
+        vm.prank(user);
+        blueBundles.blueBundlesV1MigrateBorrowPosition{value: 2 * NATIVE_PENALTY}(
+            marketParams,
+            destMarketParams,
+            type(uint256).max,
+            0,
+            LLTV_DEST,
+            _noAuthSig(),
+            reallocations,
+            0,
+            address(0),
+            block.timestamp
+        );
+
+        assertEq(_allocation(destMarketParams), borrowAssets - availableAssets, "only missing liquidity allocated");
+        assertEq(_accruedNativePenalty(), NATIVE_PENALTY, "backup route skipped");
+        assertEq(user.balance, NATIVE_PENALTY, "backup penalty refunded");
+        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "destination debt");
+    }
+
+    /// @dev A fully liquid destination needs no PA call, so the whole penalty budget is refunded.
+    function testMigrateBorrowPositionSkipsReallocationWhenDestinationIsLiquid() public {
+        uint256 borrowAssets = 10e18;
+        _fundVault(VAULT_ASSETS);
+        _supplyLoanAssets(marketParams, depositor, borrowAssets);
+        _openBorrow(marketParams, user, borrowAssets);
+        _supplyLoanAssets(destMarketParams, depositor, borrowAssets);
+
+        vm.deal(user, NATIVE_PENALTY);
+        vm.prank(user);
+        blueBundles.blueBundlesV1MigrateBorrowPosition{value: NATIVE_PENALTY}(
+            marketParams,
+            destMarketParams,
+            type(uint256).max,
+            0,
+            LLTV_DEST,
+            _noAuthSig(),
+            _reallocation(liquidMarketParams, VAULT_ASSETS),
+            0,
+            address(0),
+            block.timestamp
+        );
+
+        assertEq(_allocation(destMarketParams), 0, "reallocation skipped");
+        assertEq(_accruedNativePenalty(), 0, "penalty not spent");
+        assertEq(user.balance, NATIVE_PENALTY, "penalty refunded");
+        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "destination debt");
+    }
+
+    /// @dev The required destination liquidity includes the referral fee borrowed on top of the source repayment.
+    function testMigrateBorrowPositionReallocatesReferralFee() public {
+        uint256 borrowAssets = 9e18;
+        uint256 referralFeePct = 0.1e18;
+        uint256 referralFeeAssets = borrowAssets * referralFeePct / (WAD - referralFeePct);
+        address referralFeeRecipient = makeAddr("referralFeeRecipient");
+        _fundVault(VAULT_ASSETS);
+        _supplyLoanAssets(marketParams, depositor, borrowAssets);
+        _openBorrow(marketParams, user, borrowAssets);
+        _supplyLoanAssets(destMarketParams, depositor, borrowAssets);
+
+        vm.deal(user, NATIVE_PENALTY);
+        vm.prank(user);
+        blueBundles.blueBundlesV1MigrateBorrowPosition{value: NATIVE_PENALTY}(
+            marketParams,
+            destMarketParams,
+            type(uint256).max,
+            0,
+            LLTV_DEST,
+            _noAuthSig(),
+            _reallocation(liquidMarketParams, VAULT_ASSETS),
+            referralFeePct,
+            referralFeeRecipient,
+            block.timestamp
+        );
+
+        assertEq(_allocation(destMarketParams), referralFeeAssets, "fee liquidity allocated");
+        assertEq(
+            morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets + referralFeeAssets, "destination debt"
+        );
+        assertEq(loanToken.balanceOf(referralFeeRecipient), referralFeeAssets, "referral fee");
+    }
+
+    /// @dev Source interest is previewed before reallocating, so the destination receives enough liquidity for the
+    /// debt as it exists at execution time rather than the originally borrowed assets.
+    function testMigrateBorrowPositionReallocatesAccruedDebt() public {
+        uint256 borrowAssets = 10e18;
+        (MarketParams memory interestMarketParams,) = _createInterestMarket();
+        _fundVault(VAULT_ASSETS);
+        _supplyLoanAssets(interestMarketParams, depositor, borrowAssets);
+        _openBorrow(interestMarketParams, user, borrowAssets);
+
+        skip(30 days);
+        uint256 expectedDebt = morpho.expectedBorrowAssets(interestMarketParams, user);
+        assertGt(expectedDebt, borrowAssets, "interest accrued");
+
+        vm.deal(user, NATIVE_PENALTY);
+        vm.prank(user);
+        blueBundles.blueBundlesV1MigrateBorrowPosition{value: NATIVE_PENALTY}(
+            interestMarketParams,
+            destMarketParams,
+            type(uint256).max,
+            0,
+            LLTV_DEST,
+            _noAuthSig(),
+            _reallocation(liquidMarketParams, VAULT_ASSETS),
+            0,
+            address(0),
+            block.timestamp
+        );
+
+        assertEq(_allocation(destMarketParams), expectedDebt, "accrued debt liquidity allocated");
+        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), expectedDebt, "destination debt");
     }
 
     /// NATIVE ACCOUNTING ///

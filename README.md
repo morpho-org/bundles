@@ -33,7 +33,8 @@ Users should expect tokens left to the bundles as lost.
 
 The three entrypoints that consume market liquidity — `blueBundlesV1SupplyCollateralAndBorrow`, `blueBundlesV1Withdraw` and `blueBundlesV1MigrateBorrowPosition` — take a list of `PublicReallocation`s.
 Each one calls Vault V2's public allocator to move a vault's assets into the market the bundle acts on (from another of the vault's markets, or from its idle assets) before borrowing or withdrawing, so an illiquid market can still be used.
-`msg.value` pays the reallocations' native penalties.
+Each reallocation amount is an ordered cap: the bundle computes the missing liquidity on-chain, trims the final necessary reallocation, skips the rest, and refunds their unused native penalties.
+For `blueBundlesV1SupplyCollateralAndBorrow`, `msg.value` must fund every listed penalty so the remainder can unambiguously select native collateral; skipped penalties are refunded.
 
 ### Vault bundles
 
