@@ -73,12 +73,13 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
+        (uint256 totalSupplyAssets,, uint256 totalBorrowAssets,) =
+            MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParams);
+        uint256 missingAssets = borrowAssets.zeroFloorSub(totalSupplyAssets - totalBorrowAssets);
         uint256 maxNativePenalty = totalNativePenalty(reallocations);
         require(maxNativePenalty <= msg.value, InsufficientNativeAssets());
         uint256 nativeCollateralAssets = msg.value - maxNativePenalty;
-        uint256 unspentNativePenalty = reallocateLiquidity(
-            marketParams, reallocations, missingLiquidity(marketParams, borrowAssets), maxNativePenalty
-        );
+        uint256 unspentNativePenalty = reallocateLiquidity(marketParams, reallocations, missingAssets, maxNativePenalty);
         TokenLib.pullOrWrapNative(
             marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit, nativeCollateralAssets
         );
@@ -263,12 +264,11 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 expectedRepayAssets =
             MorphoBalancesLib.expectedBorrowAssets(IMorpho(BLUE), sourceMarketParams, msg.sender);
         uint256 expectedReferralFeeAssets = expectedRepayAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
-        uint256 nativeAssets = reallocateLiquidity(
-            destMarketParams,
-            reallocations,
-            missingLiquidity(destMarketParams, expectedRepayAssets + expectedReferralFeeAssets),
-            msg.value
-        );
+        (uint256 destTotalSupplyAssets,, uint256 destTotalBorrowAssets,) =
+            MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), destMarketParams);
+        uint256 missingAssets = (expectedRepayAssets + expectedReferralFeeAssets)
+        .zeroFloorSub(destTotalSupplyAssets - destTotalBorrowAssets);
+        uint256 nativeAssets = reallocateLiquidity(destMarketParams, reallocations, missingAssets, msg.value);
 
         bytes memory data = abi.encode(
             sourceMarketParams,
@@ -316,17 +316,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     }
 
     /// INTERNAL ///
-
-    /// @dev Returns the assets the market is missing to serve requiredAssets after accruing its expected interest.
-    function missingLiquidity(MarketParams memory marketParams, uint256 requiredAssets)
-        internal
-        view
-        returns (uint256)
-    {
-        (uint256 totalSupplyAssets,, uint256 totalBorrowAssets,) =
-            MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParams);
-        return requiredAssets.zeroFloorSub(totalSupplyAssets - totalBorrowAssets);
-    }
 
     /// @dev Returns the current native penalties of every candidate reallocation, including candidates that may be skipped.
     function totalNativePenalty(PublicReallocation[] memory reallocations) internal view returns (uint256 total) {
