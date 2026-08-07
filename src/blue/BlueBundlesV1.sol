@@ -49,7 +49,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// EXTERNAL ///
 
     /// @dev Pulls collateralAssets of marketParams.collateralToken from msg.sender (optionally via ERC-2612 or Permit2), supplies it as collateral on Blue for msg.sender, then borrows borrowAssets of the loan token on behalf of msg.sender.
-    /// @dev When native tokens are sent, they are wrapped into marketParams.collateralToken (which must be the wrapped-native token) instead of pulling.
+    /// @dev When native tokens are sent, collateralPermit.kind must be PermitKind.None and collateralAssets must equal msg.value; the native tokens are wrapped into marketParams.collateralToken (which must be the wrapped-native token) instead of being pulled.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev referralFeeAssets = borrowAssets * referralFeePct / WAD; net = borrowAssets - referralFeeAssets.
     /// @dev To receive an amount W, pass borrowAssets = floor(W * WAD / (WAD - referralFeePct)).
@@ -96,7 +96,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     }
 
     /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt, reimburses the unused remainder (if any) at the end of the call, and withdraws collateral if collateralAssets > 0.
-    /// @dev When native tokens are sent, they are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of pulling, and the reimbursed remainder is unwrapped back to native.
+    /// @dev When native tokens are sent, loanTokenPermit.kind must be PermitKind.None and maxRepayAssets must equal msg.value; the native tokens are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of being pulled, and the reimbursed remainder is unwrapped back to native.
     /// @dev Reimbursing native tokens requires msg.sender to be able to receive native tokens, or else it will revert.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization, if some collateral is withdrawn.
     /// @dev Exactly one of repayAssets and repayShares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as repayShares.
@@ -149,7 +149,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     }
 
     /// @dev Pulls assets from msg.sender (optionally via ERC-2612 or Permit2) and supplies them to the market for msg.sender.
-    /// @dev When native tokens are sent, they are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of pulling.
+    /// @dev When native tokens are sent, loanTokenPermit.kind must be PermitKind.None and assets must equal msg.value; the native tokens are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of being pulled.
     /// @dev The referral fee is deducted from assets; the remainder is supplied to the market for msg.sender.
     /// @dev Fee = assets * referralFeePct / WAD; supplied = assets - fee.
     /// @dev maxSharePriceE27 upper-bounds the realized supply share price (supplied assets per share, scaled by 1e27).

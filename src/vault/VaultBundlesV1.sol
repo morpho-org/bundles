@@ -13,7 +13,8 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Adapters of Vault V2 that are used with this contract must be either MorphoMarketV1AdapterV2 or MorphoVaultV1Adapter.
 /// @dev Inherits the token safety requirements of the vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev Gated vaults (Vault V2) require this contract to be permitted by sendAssetsGate to deposit and by receiveAssetsGate to withdraw.
+/// @dev The receiveAssetsGate of vaults (V2) that are used with this contract must allow this contract, as it receives the withdrawn assets. The gate can query the bundle's initiator thanks to the exposed transient variable.
+/// @dev The sendSharesGate of vaults (V2) that are used with this contract must allow the transaction initiator to spend their shares.
 /// @dev This contract can approve tokens to arbitrary addresses. This is safe because a token amount pulled is always fully spent in the same transaction, and because the only tokens pulled to this contract are owned by msg.sender.
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
@@ -25,7 +26,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     /// EXTERNAL ///
 
     /// @dev Pulls assets of the vault asset from msg.sender (optionally via ERC-2612 or Permit2) and deposits them into vault.
-    /// @dev When native tokens are sent, they are wrapped into the vault asset (which must be the wrapped-native token) instead of pulling.
+    /// @dev When native tokens are sent, assetPermit.kind must be PermitKind.None and assets must equal msg.value; the native tokens are wrapped into the vault asset (which must be the wrapped-native token) instead of being pulled.
     /// @dev The referral fee is deducted from assets; the remainder is deposited into vault for msg.sender.
     /// @dev Fee = assets * referralFeePct / WAD; deposited = assets - fee.
     /// @dev maxSharePriceE27 upper-bounds the realized deposit share price (deposited assets per share, scaled by 1e27).
