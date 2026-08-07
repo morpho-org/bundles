@@ -17,7 +17,6 @@ struct SignedAuthorization {
 /// @dev adapter holds the destination market, sourceAdapter the market assets are deallocated from; both must be active on the public allocator.
 /// @dev When fromIdle is true, the vault's idle assets are allocated and sourceAdapter and sourceMarketParams are ignored; otherwise assets are first deallocated from sourceAdapter's sourceMarketParams.
 /// @dev The destination is always the market the bundle acts on, so a bundle can only push liquidity where it is about to borrow or withdraw.
-/// @dev In blueBundlesV1Withdraw, assets is a cap: the amounts actually allocated are computed on-chain from the market's missing liquidity.
 struct PublicReallocation {
     address vault;
     address adapter;

@@ -9,7 +9,6 @@ import {MorphoLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoLib.so
 import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
 import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
-import {IrmMock} from "../lib/morpho-blue/src/mocks/IrmMock.sol";
 import {ErrorsLib as BlueErrorsLib} from "../lib/morpho-blue/src/libraries/ErrorsLib.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
@@ -185,29 +184,6 @@ contract BluePublicAllocatorTest is Test {
         vm.startPrank(allocator);
         publicAllocator.setIsActiveAdapter(address(vault), secondAdapter, true);
         publicAllocator.setCanDeallocate(address(vault), secondAdapter, liquidMarketParams, true);
-        vm.stopPrank();
-    }
-
-    /// @dev Creates a market accruing interest, and a second adapter bound to its IRM the vault can allocate through.
-    function _createInterestMarket() internal returns (MarketParams memory mp, address interestAdapter) {
-        address irm = address(new IrmMock());
-        vm.prank(owner);
-        morpho.enableIrm(irm);
-        mp = MarketParams(address(loanToken), address(weth), address(oracle), irm, LLTV);
-        morpho.createMarket(mp);
-
-        IMorphoMarketV1AdapterV2Factory factory = IMorphoMarketV1AdapterV2Factory(
-            deployCode("MorphoMarketV1AdapterV2Factory.sol:MorphoMarketV1AdapterV2Factory", abi.encode(morpho, irm))
-        );
-        interestAdapter = factory.createMorphoMarketV1AdapterV2(address(vault));
-
-        _submitAndExec(abi.encodeCall(IVaultV2.addAdapter, (interestAdapter)));
-        _increaseCaps(abi.encode("this", interestAdapter));
-        _increaseCaps(abi.encode("this/marketParams", interestAdapter, mp));
-
-        vm.startPrank(allocator);
-        publicAllocator.setIsActiveAdapter(address(vault), interestAdapter, true);
-        publicAllocator.setAbsoluteCap(address(vault), interestAdapter, mp, type(uint128).max);
         vm.stopPrank();
     }
 
@@ -397,123 +373,6 @@ contract BluePublicAllocatorTest is Test {
         assertEq(_accruedNativePenalty(), 2 * NATIVE_PENALTY, "both penalties accrued");
     }
 
-    /// @dev A full exit by shares needs no buffer: the withdrawal is sized on-chain, and only the market's missing
-    /// liquidity is reallocated, the reallocation's assets acting as a cap.
-    function testWithdrawMaxByShares() public {
-        uint256 assets = 10e18;
-        _fundVault(VAULT_ASSETS);
-        _supplyThenDrain(marketParams, assets);
-
-        uint256 shares = morpho.supplyShares(marketParams.id(), user);
-
-        vm.deal(user, NATIVE_PENALTY);
-        vm.prank(user);
-        blueBundles.blueBundlesV1Withdraw{value: NATIVE_PENALTY}(
-            marketParams,
-            0,
-            shares,
-            _noAuthSig(),
-            _reallocation(liquidMarketParams, VAULT_ASSETS),
-            0,
-            address(0),
-            block.timestamp
-        );
-
-        assertEq(loanToken.balanceOf(user), assets, "user received the loan token");
-        assertEq(morpho.supplyShares(marketParams.id(), user), 0, "user supply position closed");
-        assertEq(_allocation(marketParams), assets, "only the missing liquidity was reallocated");
-        assertEq(_allocation(liquidMarketParams), VAULT_ASSETS - assets, "liquid market allocation reduced");
-    }
-
-    /// @dev The by-shares conversion accrues interest, so a max exit stays exact when the position has grown.
-    function testWithdrawMaxBySharesWithInterest() public {
-        uint256 assets = 10e18;
-        (MarketParams memory mp, address interestAdapter) = _createInterestMarket();
-        _fundVault(VAULT_ASSETS);
-        _supplyThenDrain(mp, assets);
-
-        skip(30 days);
-
-        uint256 shares = morpho.supplyShares(mp.id(), user);
-        uint256 expectedAssets = morpho.expectedSupplyAssets(mp, user);
-        assertGt(expectedAssets, assets, "interest accrued");
-
-        PublicReallocation[] memory reallocations = _reallocation(liquidMarketParams, VAULT_ASSETS);
-        reallocations[0].adapter = interestAdapter;
-
-        vm.deal(user, NATIVE_PENALTY);
-        vm.prank(user);
-        blueBundles.blueBundlesV1Withdraw{value: NATIVE_PENALTY}(
-            mp, 0, shares, _noAuthSig(), reallocations, 0, address(0), block.timestamp
-        );
-
-        assertEq(loanToken.balanceOf(user), expectedAssets, "user received the accrued position");
-        assertEq(morpho.supplyShares(mp.id(), user), 0, "user supply position closed, no dust");
-        // The reallocation moves exactly expectedAssets; the vault's ledger can trail it by the wei the adapter loses
-        // to share rounding on the supply.
-        assertApproxEqAbs(
-            vault.allocation(_vaultBlueId(interestAdapter, mp)),
-            expectedAssets,
-            1,
-            "exactly the missing liquidity was reallocated"
-        );
-    }
-
-    /// @dev Sizing on the down-rounded share price keeps a route capped at the exact requirement from spilling a wei
-    /// into the next reallocation, whose flat penalty would dwarf the wei it moves.
-    function testWithdrawMaxBySharesTightCapChargesOnePenalty() public {
-        uint256 assets = 10e18;
-        (MarketParams memory mp, address interestAdapter) = _createInterestMarket();
-        _fundVault(VAULT_ASSETS / 2);
-        _supplyThenDrain(mp, assets);
-
-        skip(30 days);
-
-        uint256 shares = morpho.supplyShares(mp.id(), user);
-        uint256 expectedAssets = morpho.expectedSupplyAssets(mp, user);
-
-        // The first route's cap is the exact requirement, as a frontend quoting the position would set it.
-        PublicReallocation[] memory reallocations = new PublicReallocation[](2);
-        reallocations[0] = _reallocation(liquidMarketParams, expectedAssets)[0];
-        reallocations[0].adapter = interestAdapter;
-        reallocations[1] = _idleReallocation(VAULT_ASSETS / 2)[0];
-        reallocations[1].adapter = interestAdapter;
-
-        vm.deal(user, 2 * NATIVE_PENALTY);
-        vm.prank(user);
-        blueBundles.blueBundlesV1Withdraw{value: 2 * NATIVE_PENALTY}(
-            mp, 0, shares, _noAuthSig(), reallocations, 0, address(0), block.timestamp
-        );
-
-        assertEq(loanToken.balanceOf(user), expectedAssets, "user received the accrued position");
-        assertEq(morpho.supplyShares(mp.id(), user), 0, "user supply position closed, no dust");
-        assertEq(_accruedNativePenalty(), NATIVE_PENALTY, "the second reallocation was skipped");
-        assertEq(user.balance, NATIVE_PENALTY, "its penalty refunded");
-    }
-
-    /// @dev A reallocation is skipped once the previous ones cover the withdrawal, sparing its penalty.
-    function testWithdrawReallocationSkippedOnceCovered() public {
-        uint256 assets = 10e18;
-        _fundVault(VAULT_ASSETS / 2);
-        _supplyThenDrain(marketParams, assets);
-
-        PublicReallocation[] memory reallocations = new PublicReallocation[](2);
-        reallocations[0] = _reallocation(liquidMarketParams, VAULT_ASSETS / 2)[0];
-        reallocations[1] = _idleReallocation(VAULT_ASSETS / 2)[0];
-
-        vm.deal(user, 2 * NATIVE_PENALTY);
-        vm.prank(user);
-        blueBundles.blueBundlesV1Withdraw{value: 2 * NATIVE_PENALTY}(
-            marketParams, assets, 0, _noAuthSig(), reallocations, 0, address(0), block.timestamp
-        );
-
-        assertEq(loanToken.balanceOf(user), assets, "user received the loan token");
-        assertEq(_allocation(marketParams), assets, "first reallocation trimmed to the missing liquidity");
-        assertEq(_allocation(liquidMarketParams), VAULT_ASSETS / 2 - assets, "liquid market allocation reduced");
-        assertEq(_accruedNativePenalty(), NATIVE_PENALTY, "second penalty not spent");
-        assertEq(user.balance, NATIVE_PENALTY, "second penalty refunded");
-    }
-
     /// SUPPLY COLLATERAL AND BORROW ///
 
     /// @dev An empty market can be borrowed from once the vault has been pushed into it.
@@ -640,14 +499,15 @@ contract BluePublicAllocatorTest is Test {
 
     /// NATIVE ACCOUNTING ///
 
-    /// @dev Native left unspent by the penalties is refunded, since skipped reallocations make the spend unpredictable.
-    function testWithdrawUnspentNativeRefunded() public {
+    /// @dev Native left unspent by the penalties would be stuck in the bundler, so it reverts instead.
+    function testWithdrawUnspentNativeAssets() public {
         uint256 assets = 10e18;
         _fundVault(VAULT_ASSETS);
         _supplyThenDrain(marketParams, assets);
 
         vm.deal(user, 2 * NATIVE_PENALTY);
         vm.prank(user);
+        vm.expectRevert(IBlueBundlesV1.UnspentNativeAssets.selector);
         blueBundles.blueBundlesV1Withdraw{value: 2 * NATIVE_PENALTY}(
             marketParams,
             assets,
@@ -658,11 +518,6 @@ contract BluePublicAllocatorTest is Test {
             address(0),
             block.timestamp
         );
-
-        assertEq(loanToken.balanceOf(user), assets, "user received the loan token");
-        assertEq(user.balance, NATIVE_PENALTY, "unspent native refunded");
-        assertEq(_accruedNativePenalty(), NATIVE_PENALTY, "penalty accrued");
-        assertEq(address(blueBundles).balance, 0, "bundler native residual");
     }
 
     /// @dev An allocator raising the penalty after the bundle was built makes it revert rather than overpay.
