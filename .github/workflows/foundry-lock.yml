@@ -12,34 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@8789b3e21e6c11b2697f5eb56eddae542f746c10 # v1
+
       - name: Check foundry.lock matches submodule pins
-        run: |
-          python3 - <<'PYEOF'
-          import json, subprocess, sys
-          lock = json.load(open("foundry.lock"))
-          def rev(e):
-              if "rev" in e: return e["rev"]
-              for k in ("tag", "branch"):
-                  if k in e: return e[k]["rev"]
-              raise KeyError(f"unrecognized lock entry: {e}")
-          # committed submodule pins under lib/, read straight from the git tree
-          out = subprocess.check_output(["git", "ls-tree", "-r", "HEAD", "lib/"], text=True)
-          gitlinks = {}
-          for line in out.splitlines():
-              meta, _, path = line.partition("\t")
-              mode, typ, sha = meta.split()
-              if typ == "commit":
-                  gitlinks[path] = sha
-          errs = []
-          for p in sorted(set(gitlinks) | set(lock)):
-              want = rev(lock[p]) if p in lock else None
-              have = gitlinks.get(p)
-              if   want is None: errs.append(f"{p}: committed submodule pin missing from foundry.lock")
-              elif have is None: errs.append(f"{p}: in foundry.lock but not a committed submodule")
-              elif want != have: errs.append(f"{p}: lock={want[:12]} != submodule={have[:12]}")
-          if errs:
-              print("foundry.lock drift detected:")
-              for e in errs: print("  -", e)
-              sys.exit(1)
-          print("foundry.lock matches all submodule pins")
-          PYEOF
+        run: forge build --locked
