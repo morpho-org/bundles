@@ -6,6 +6,7 @@
 //   - no bundler donations: the receiver and the recipient are different from the bundler.
 //   - well-behaved ERC20 (no fee-on-transfer/rebasing): matching the token restriction in BlueBundles' header.
 //   - the bundler is not the wrapped-native token.
+//   - the public allocator and its configured vault/adapters do not call back into or donate to the bundler.
 
 methods {
     // ERC20: the bundler's own transfers move bundlerBalance.
@@ -20,6 +21,12 @@ methods {
     function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryBorrow(marketParams.loanToken, assets, shares, receiver) expect(uint256, uint256);
     function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryWithdraw(marketParams.loanToken, receiver) expect(uint256, uint256);
     function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address receiver) external => summaryWithdrawCollateral(marketParams.collateralToken, assets, receiver) expect void;
+
+    // Public allocator: the penalty getter is nondeterministic, while allocation calls only spend the attached native value from the bundler.
+    // Their state changes are irrelevant to the residue property; NONDET encodes the no-callback/no-donation assumption above.
+    function _.vaultData(address vault) external => NONDET;
+    function _.reallocate(address vault, address deallocateAdapter, BlueBundlesV1.MarketParams deallocateMarketParams, address allocateAdapter, BlueBundlesV1.MarketParams allocateMarketParams, uint128 assets) external => NONDET;
+    function _.allocateFromIdle(address vault, address adapter, BlueBundlesV1.MarketParams marketParams, uint128 assets) external => NONDET;
 
     // Model the WNative contract's deposit and withdraw behavior: mints on deposit and burns on withdraw.
     function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
@@ -107,26 +114,28 @@ rule supplyPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint
     assert bundlerNativeBalance() == nativeBefore;
 }
 
-rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 feePct, address recipient, address token, uint256 deadline) {
+rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicReallocation[] reallocations, uint256 feePct, address recipient, address token, uint256 deadline) {
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require recipient != currentContract, "no bundler donations of the fee";
+    require PUBLIC_ALLOCATOR(e) != currentContract, "the public allocator is not the bundler";
 
     mathint before = bundlerBalance[token];
     mathint nativeBefore = bundlerNativeBalance();
-    blueBundlesV1Withdraw(e, marketParams, assets, shares, signedAuthorization, feePct, recipient, deadline);
+    blueBundlesV1Withdraw(e, marketParams, assets, shares, signedAuthorization, reallocations, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
     assert bundlerNativeBalance() == nativeBefore;
 }
 
-rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAmount, uint256 borrowAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit permit, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 feePct, address recipient, address token, uint256 deadline) {
+rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAmount, uint256 borrowAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit permit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicReallocation[] reallocations, uint256 feePct, address recipient, address token, uint256 deadline) {
     require permit.kind == TokenLib.PermitKind.None, "simplification for prover performance";
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require recipient != currentContract, "no bundler donations of the fee";
     require marketParams.collateralToken != currentContract, "the bundler is not the wrapped-native token";
+    require PUBLIC_ALLOCATOR(e) != currentContract, "the public allocator is not the bundler";
 
     mathint before = bundlerBalance[token];
     mathint nativeBefore = bundlerNativeBalance();
-    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAmount, borrowAssets, minSharePriceE27, maxLtv, permit, signedAuthorization, feePct, recipient, deadline);
+    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAmount, borrowAssets, minSharePriceE27, maxLtv, permit, signedAuthorization, reallocations, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
     assert bundlerNativeBalance() == nativeBefore;
 }
