@@ -71,7 +71,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        reallocateLiquidity(marketParams, reallocations);
+        allocateVaultLiquidity(marketParams, reallocations);
         TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
         if (collateralAssets > 0) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
@@ -196,7 +196,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        reallocateLiquidity(marketParams, reallocations);
+        allocateVaultLiquidity(marketParams, reallocations);
         (assets,) = IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
 
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
@@ -235,7 +235,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
             InconsistentTokens()
         );
-        reallocateLiquidity(destMarketParams, reallocations);
+        allocateVaultLiquidity(destMarketParams, reallocations);
 
         Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), msg.sender);
 
@@ -290,7 +290,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev The allocation destination is always marketParams, so the bundler cannot move a vault's liquidity anywhere else than the market it is about to act on.
     /// @dev Each penalty is read from the public allocator, so the bundle is bounded by msg.value rather than by a signed penalty: an allocator raising the penalty makes the bundle revert instead of overpaying.
     /// @dev A reallocation whose source has been drained, whose cap has been reached, or whose penalty has been raised fails the whole bundle.
-    function reallocateLiquidity(MarketParams memory marketParams, PublicReallocation[] memory reallocations) internal {
+    function allocateVaultLiquidity(MarketParams memory marketParams, PublicReallocation[] memory reallocations)
+        internal
+    {
         uint256 nativeAssets = msg.value;
         for (uint256 i; i < reallocations.length; i++) {
             PublicReallocation memory reallocation = reallocations[i];
