@@ -235,8 +235,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
             InconsistentTokens()
         );
-        allocateVaultLiquidity(destMarketParams, reallocations);
-
         Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), msg.sender);
 
         bytes memory data = abi.encode(
@@ -248,6 +246,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             referralFeeRecipient,
             destMinSharePriceE27
         );
+        allocateVaultLiquidity(destMarketParams, reallocations);
         (uint256 assets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, msg.sender, data);
         require(assets.mulDivUp(1e27, position.borrowShares) <= sourceMaxSharePriceE27, SlippageExceeded());
 
