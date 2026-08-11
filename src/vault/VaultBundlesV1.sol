@@ -48,7 +48,7 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         uint256 toDeposit = assets - referralFeeAssets;
 
         address asset = IERC4626(vault).asset();
-        TokenLib.pullOrWrapNative(asset, msg.sender, assets, assetPermit, msg.value);
+        TokenLib.pullOrWrapNative(asset, msg.sender, assets, assetPermit);
         TokenLib.forceApproveMax(asset, vault);
 
         uint256 shares = IERC4626(vault).deposit(toDeposit, msg.sender);

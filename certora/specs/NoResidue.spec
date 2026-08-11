@@ -135,7 +135,7 @@ rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundlesV1.MarketParams
     require permit.kind == TokenLib.PermitKind.None, "simplification for prover performance";
     require e.msg.sender != currentContract, "bundler is never its own caller";
     require recipient != currentContract, "no bundler donations of the fee";
-    require marketParams.collateralToken != currentContract, "the bundler is not the wrapped-native token";
+    require marketParams.collateralToken != currentContract, "the bundler is not the collateral token";
     require PUBLIC_ALLOCATOR(e) != currentContract, "the public allocator is not the bundler";
 
     mathint before = bundlerBalance[token];

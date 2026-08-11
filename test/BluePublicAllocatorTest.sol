@@ -23,7 +23,7 @@ import {
 
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
 import {IBlueBundlesV1, SignedAuthorization, PublicReallocation} from "../src/blue/interfaces/IBlueBundlesV1.sol";
-import {TokenLib, TokenPermit} from "../src/libraries/TokenLib.sol";
+import {TokenPermit} from "../src/libraries/TokenLib.sol";
 import {WETHMock} from "./BlueBundlesTest.sol";
 import {
     IBluePublicAllocator
@@ -50,7 +50,7 @@ contract BluePublicAllocatorTest is Test {
     BlueBundlesV1 internal blueBundles;
 
     ERC20Mock internal loanToken;
-    WETHMock internal weth; // collateral of every market, so native collateral can be wrapped.
+    WETHMock internal weth; // ERC20 collateral of every market.
     OracleMock internal oracle;
 
     /// @dev The market the bundle acts on, kept illiquid by the tests.
@@ -405,47 +405,18 @@ contract BluePublicAllocatorTest is Test {
         assertEq(_allocation(marketParams), borrowAssets, "vault funded the borrow");
     }
 
-    /// @dev msg.value covers the penalties first, and only the remainder is wrapped as collateral.
-    function testSupplyCollateralAndBorrowWrapNativeWithPenalty() public {
+    /// @dev msg.value may only cover reallocation penalties; any excess reverts instead of becoming collateral.
+    function testSupplyCollateralAndBorrowUnspentNativeAssets() public {
         uint256 borrowAssets = 10e18;
         uint256 collateral = 2 * borrowAssets;
         _fundVault(VAULT_ASSETS);
 
         vm.deal(user, collateral + NATIVE_PENALTY);
         vm.prank(user);
+        vm.expectRevert(IBlueBundlesV1.UnspentNativeAssets.selector);
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: collateral + NATIVE_PENALTY}(
             marketParams,
             collateral,
-            borrowAssets,
-            0,
-            WAD,
-            _noPermit(),
-            _noAuthSig(),
-            _reallocation(liquidMarketParams, borrowAssets),
-            0,
-            address(0),
-            block.timestamp
-        );
-
-        assertEq(morpho.position(marketParams.id(), user).collateral, collateral, "collateral wrapped and supplied");
-        assertEq(loanToken.balanceOf(user), borrowAssets, "user borrowed");
-        assertEq(user.balance, 0, "user native residual");
-        assertEq(address(blueBundles).balance, 0, "bundler native residual");
-        assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
-    }
-
-    /// @dev The native left after the penalties must match collateralAssets exactly.
-    function testSupplyCollateralAndBorrowWrapNativeInconsistentAmount() public {
-        uint256 borrowAssets = 10e18;
-        uint256 collateral = 2 * borrowAssets;
-        _fundVault(VAULT_ASSETS);
-
-        vm.deal(user, collateral + NATIVE_PENALTY);
-        vm.prank(user);
-        vm.expectRevert(TokenLib.InconsistentAmountAndNative.selector);
-        blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: collateral + NATIVE_PENALTY}(
-            marketParams,
-            collateral + NATIVE_PENALTY,
             borrowAssets,
             0,
             WAD,

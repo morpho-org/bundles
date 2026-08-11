@@ -81,19 +81,12 @@ library TokenLib {
         }
     }
 
-    /// @dev Same as pullToken, but when nativeAssets is non-zero, instead wraps nativeAssets into token.
-    /// @dev nativeAssets is the part of msg.value left for wrapping, once the call's other native spendings are done.
-    function pullOrWrapNative(
-        address token,
-        address from,
-        uint256 amount,
-        TokenPermit memory permit,
-        uint256 nativeAssets
-    ) internal {
-        if (nativeAssets > 0) {
+    /// @dev Same as pullToken, but when native tokens are sent with the call, instead wraps msg.value into token.
+    function pullOrWrapNative(address token, address from, uint256 amount, TokenPermit memory permit) internal {
+        if (msg.value > 0) {
             require(permit.kind == PermitKind.None, BothNativeAndToken());
-            require(amount == nativeAssets, InconsistentAmountAndNative());
-            IWNative(token).deposit{value: nativeAssets}();
+            require(amount == msg.value, InconsistentAmountAndNative());
+            IWNative(token).deposit{value: msg.value}();
         } else {
             pullToken(token, from, amount, permit);
         }

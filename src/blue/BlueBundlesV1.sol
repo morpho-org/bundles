@@ -47,14 +47,13 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
     /// EXTERNAL ///
 
-    /// @dev Pulls collateralAssets of marketParams.collateralToken from msg.sender (optionally via ERC-2612 or Permit2), supplies it as collateral on Blue for msg.sender, then borrows borrowAssets of the loan token on behalf of msg.sender.
-    /// @dev When native tokens are sent, collateralPermit.kind must be PermitKind.None and msg.value must equal collateralAssets plus PA reallocation penalties; the native tokens are wrapped into marketParams.collateralToken (which must be the wrapped-native token) instead of being pulled.
+    /// @dev Pulls collateralAssets as an ERC20 (optionally via ERC-2612 or Permit2), supplies it on Blue, then borrows borrowAssets on behalf of msg.sender; native collateral is not supported.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev referralFeeAssets = borrowAssets * referralFeePct / WAD; net = borrowAssets - referralFeeAssets.
     /// @dev To receive an amount W, pass borrowAssets = floor(W * WAD / (WAD - referralFeePct)).
     /// @dev maxLtv caps msg.sender's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
-    /// @dev msg.value pays the reallocations' native penalties first; what is left is wrapped into marketParams.collateralToken.
+    /// @dev msg.value pays the reallocations' native penalties.
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAssets,
@@ -72,10 +71,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        uint256 nativeAssets = reallocateLiquidity(marketParams, reallocations);
-        TokenLib.pullOrWrapNative(
-            marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit, nativeAssets
-        );
+        reallocateLiquidity(marketParams, reallocations);
+        TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
         if (collateralAssets > 0) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
@@ -119,7 +116,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit, msg.value);
+        TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         (repayAssets, repayShares) = IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, msg.sender, "");
@@ -166,7 +163,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
         uint256 toSupply = assets - referralFeeAssets;
 
-        TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, assets, loanTokenPermit, msg.value);
+        TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, assets, loanTokenPermit);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         (, uint256 suppliedShares) = IMorpho(BLUE).supply(marketParams, toSupply, 0, msg.sender, "");
@@ -199,7 +196,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        require(reallocateLiquidity(marketParams, reallocations) == 0, UnspentNativeAssets());
+        reallocateLiquidity(marketParams, reallocations);
         (assets,) = IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
 
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
@@ -238,7 +235,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
             InconsistentTokens()
         );
-        require(reallocateLiquidity(destMarketParams, reallocations) == 0, UnspentNativeAssets());
+        reallocateLiquidity(destMarketParams, reallocations);
 
         Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), msg.sender);
 
@@ -288,14 +285,12 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
 
     /// INTERNAL ///
 
+    /// @dev Spends msg.value on the reallocations' native penalties and reverts unless it is fully spent.
     /// @dev Each reallocation either allocates the vault's idle assets, or first deallocates assets from its source market.
     /// @dev The allocation destination is always marketParams, so the bundler cannot move a vault's liquidity anywhere else than the market it is about to act on.
     /// @dev Each penalty is read from the public allocator, so the bundle is bounded by msg.value rather than by a signed penalty: an allocator raising the penalty makes the bundle revert instead of overpaying.
     /// @dev A reallocation whose source has been drained, whose cap has been reached, or whose penalty has been raised fails the whole bundle.
-    function reallocateLiquidity(MarketParams memory marketParams, PublicReallocation[] memory reallocations)
-        internal
-        returns (uint256)
-    {
+    function reallocateLiquidity(MarketParams memory marketParams, PublicReallocation[] memory reallocations) internal {
         uint256 nativeAssets = msg.value;
         for (uint256 i; i < reallocations.length; i++) {
             PublicReallocation memory reallocation = reallocations[i];
@@ -318,12 +313,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
                 );
             }
         }
-        return nativeAssets;
+        require(nativeAssets == 0, UnspentNativeAssets());
     }
 
-    /// @dev The parameters signed by the user should be the same as the inputs of this function.
-    /// @dev Skipped when the signature is empty (v, r and s all zero; which doesn't correspond to a valid signature), for when the authorization is already done.
-    /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the signature is not checked in that case, and Blue checks authorization at the point of use.
+    /// @dev The sum of penalties must be exactly msg.value, or it reverts.
     /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until signedAuthorization.deadline, as revoking on Blue does not consume the nonce.
     function setAuthorizationWithSig(SignedAuthorization memory signedAuthorization) internal {
         Signature memory signature = signedAuthorization.signature;
