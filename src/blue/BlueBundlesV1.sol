@@ -54,7 +54,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev To receive an amount W, pass borrowAssets = floor(W * WAD / (WAD - referralFeePct)).
     /// @dev maxLtv caps msg.sender's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
-    /// @dev reallocations infuse loan-token liquidity into marketParams before borrowing, so an illiquid market can still be borrowed from.
+    /// @dev reallocations move loan-token liquidity into marketParams before borrowing, so an illiquid market can still be borrowed from.
     /// @dev msg.value pays the reallocations' native penalties first; what is left is wrapped into marketParams.collateralToken.
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
@@ -185,7 +185,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev To receive an amount W, pass assets = floor(W * WAD / (WAD - referralFeePct)).
     /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
-    /// @dev reallocations infuse liquidity into marketParams before withdrawing, so a fully utilized market can still be exited: the vault takes over the withdrawn supply.
+    /// @dev reallocations move liquidity into marketParams before withdrawing, so a fully utilized market can still be exited: the vault takes over the withdrawn supply.
     /// @dev msg.value must be exactly the reallocations' total native penalty.
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
@@ -218,7 +218,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Use destination LLTV to disable.
     /// @dev sourceMaxSharePriceE27 upper-bounds the realized source repay share price; destMinSharePriceE27 lower-bounds the realized destination borrow share price (both assets per share, scaled by 1e27).
     /// @dev Migrating a position without debt reverts on Blue.
-    /// @dev reallocations infuse liquidity into destMarketParams before the migration, so an illiquid destination can still be borrowed from.
+    /// @dev reallocations move liquidity into destMarketParams before the migration, so an illiquid destination can still be borrowed from.
     /// @dev msg.value must be exactly the reallocations' total native penalty.
     function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,

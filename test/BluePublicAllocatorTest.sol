@@ -265,7 +265,7 @@ contract BluePublicAllocatorTest is Test {
 
     /// WITHDRAW ///
 
-    /// @dev A fully utilized market cannot be exited without infusing liquidity first.
+    /// @dev A fully utilized market cannot be exited without moving liquidity into it first.
     function testWithdrawIlliquidRevertsWithoutReallocation() public {
         uint256 assets = 10e18;
         _supplyThenDrain(marketParams, assets);
