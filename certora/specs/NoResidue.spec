@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // No token residue: every entry point preserves the bundler's balance of every token (delta 0).
-// Scope: all entry points, excluding migrate borrow position.
+// Scope: all entry points.
 // Assumptions shared with that suite:
 //   - no bundler donations: the receiver and the recipient are different from the bundler.
 //   - well-behaved ERC20 (no fee-on-transfer/rebasing): matching the token restriction in BlueBundles' header.
@@ -16,7 +16,7 @@ methods {
     // Morpho: pull on supply/repay/supplyCollateral, send on borrow/withdraw/withdrawCollateral.
     // Also assumes that the Morpho Blue address is different from the bundler's.
     function _.supply(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(marketParams.loanToken, assets, shares) expect(uint256, uint256);
-    function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(marketParams.loanToken) expect(uint256, uint256);
+    function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(calledContract, marketParams.loanToken, data) expect(uint256, uint256);
     function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(marketParams.collateralToken, assets) expect void;
     function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryBorrow(marketParams.loanToken, assets, shares, receiver) expect(uint256, uint256);
     function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryWithdraw(marketParams.loanToken, receiver) expect(uint256, uint256);
@@ -63,9 +63,14 @@ function summarySupply(address token, uint256 assets, uint256 shares) returns (u
     return (assets, returnedShares);
 }
 
-function summaryRepay(address token) returns (uint256, uint256) {
+function summaryRepay(address blue, address token, bytes data) returns (uint256, uint256) {
     uint256 assets;
     uint256 shares;
+    if (data.length > 0) {
+        env callbackEnv;
+        require callbackEnv.msg.sender == blue;
+        onMorphoRepay(callbackEnv, assets, data);
+    }
     bundlerBalance[token] = bundlerBalance[token] - assets;
     return (assets, shares);
 }
@@ -149,6 +154,21 @@ rule repayAndWithdrawCollateralPreservesBalance(env e, BlueBundlesV1.MarketParam
     mathint before = bundlerBalance[token];
     mathint nativeBefore = bundlerNativeBalance();
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, assets, shares, maxRepayAssets, maxSharePriceE27, withdrawCollateralAssets, maxLtv, permit, signedAuthorization, feePct, recipient, deadline);
+    assert bundlerBalance[token] == before;
+    assert bundlerNativeBalance() == nativeBefore;
+}
+
+rule migrateBorrowPositionPreservesBalance(env e, BlueBundlesV1.MarketParams sourceMarketParams, BlueBundlesV1.MarketParams destMarketParams, uint256 sourceMaxSharePriceE27, uint256 destMinSharePriceE27, uint256 maxLtv, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicReallocation[] reallocations, uint256 feePct, address recipient, address token, uint256 deadline) {
+    require e.msg.sender != currentContract, "bundler is never its own caller";
+    require recipient != currentContract, "no bundler donations of the fee";
+    require sourceMarketParams.loanToken != currentContract, "the bundler is not the loan token";
+    require sourceMarketParams.collateralToken != currentContract, "the bundler is not the collateral token";
+    require BLUE(e) != currentContract, "Blue is not the bundler";
+    require PUBLIC_ALLOCATOR(e) != currentContract, "the public allocator is not the bundler";
+
+    mathint before = bundlerBalance[token];
+    mathint nativeBefore = bundlerNativeBalance();
+    blueBundlesV1MigrateBorrowPosition(e, sourceMarketParams, destMarketParams, sourceMaxSharePriceE27, destMinSharePriceE27, maxLtv, signedAuthorization, reallocations, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
     assert bundlerNativeBalance() == nativeBefore;
 }
