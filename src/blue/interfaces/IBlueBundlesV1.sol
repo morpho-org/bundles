@@ -30,7 +30,6 @@ interface IBlueBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
     error InconsistentTokens();
-    error InsufficientNativeAssets();
     error LtvExceeded();
     error NativeTransferFailed();
     error PctExceeded();

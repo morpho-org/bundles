@@ -502,7 +502,7 @@ contract BluePublicAllocatorTest is Test {
 
         vm.deal(user, NATIVE_PENALTY);
         vm.prank(user);
-        vm.expectRevert(IBlueBundlesV1.InsufficientNativeAssets.selector);
+        vm.expectRevert();
         blueBundles.blueBundlesV1Withdraw{value: NATIVE_PENALTY}(
             marketParams,
             assets,

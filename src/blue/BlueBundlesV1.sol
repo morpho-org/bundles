@@ -293,12 +293,11 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     function allocateVaultLiquidity(MarketParams memory marketParams, PublicReallocation[] memory reallocations)
         internal
     {
-        uint256 nativeAssets = msg.value;
+        uint256 totalNativePenalties = 0;
         for (uint256 i; i < reallocations.length; i++) {
             PublicReallocation memory reallocation = reallocations[i];
             (, uint256 nativePenalty,) = IBluePublicAllocator(PUBLIC_ALLOCATOR).vaultData(reallocation.vault);
-            require(nativePenalty <= nativeAssets, InsufficientNativeAssets());
-            nativeAssets -= nativePenalty;
+            totalNativePenalties += nativePenalty;
 
             if (reallocation.fromIdle) {
                 IBluePublicAllocator(PUBLIC_ALLOCATOR).allocateFromIdle{value: nativePenalty}(
@@ -315,7 +314,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
                 );
             }
         }
-        require(nativeAssets == 0, UnspentNativeAssets());
+        require(totalNativePenalties == msg.value, UnspentNativeAssets());
     }
 
     /// @dev The sum of penalties must be exactly msg.value, or it reverts.
