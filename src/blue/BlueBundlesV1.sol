@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IBlueBundlesV1, SignedAuthorization, PublicReallocation} from "./interfaces/IBlueBundlesV1.sol";
+import {IBlueBundlesV1, SignedAuthorization, PublicAllocations} from "./interfaces/IBlueBundlesV1.sol";
 import {
     IBluePublicAllocator
 } from "../../lib/vault-v2/src/periphery/blue-public-allocator/interfaces/IBluePublicAllocator.sol";
@@ -62,7 +62,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
         SignedAuthorization memory signedAuthorization,
-        PublicReallocation[] memory reallocations,
+        PublicAllocations[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -71,7 +71,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        allocateVaultLiquidity(marketParams, reallocations);
+        executePublicAllocations(marketParams, reallocations);
         TokenLib.pullToken(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
         if (collateralAssets > 0) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
@@ -187,7 +187,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 assets,
         uint256 shares,
         SignedAuthorization memory signedAuthorization,
-        PublicReallocation[] memory reallocations,
+        PublicAllocations[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -196,7 +196,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        allocateVaultLiquidity(marketParams, reallocations);
+        executePublicAllocations(marketParams, reallocations);
         (assets,) = IMorpho(BLUE).withdraw(marketParams, assets, shares, msg.sender, address(this));
 
         uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
@@ -221,7 +221,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
         uint256 destMinSharePriceE27,
         uint256 maxLtv,
         SignedAuthorization memory signedAuthorization,
-        PublicReallocation[] memory reallocations,
+        PublicAllocations[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -246,7 +246,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
             referralFeeRecipient,
             destMinSharePriceE27
         );
-        allocateVaultLiquidity(destMarketParams, reallocations);
+        executePublicAllocations(destMarketParams, reallocations);
         (uint256 assets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, msg.sender, data);
         require(assets.mulDivUp(1e27, position.borrowShares) <= sourceMaxSharePriceE27, SlippageExceeded());
 
@@ -289,12 +289,12 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback {
     /// @dev The allocation destination is always marketParams, so the bundler cannot move a vault's liquidity anywhere else than the market it is about to act on.
     /// @dev Each penalty is read from the public allocator, so the bundle is bounded by msg.value rather than by a signed penalty: an allocator raising the penalty makes the bundle revert instead of overpaying.
     /// @dev A reallocation whose source has been drained, whose cap has been reached, or whose penalty has been raised fails the whole bundle.
-    function allocateVaultLiquidity(MarketParams memory marketParams, PublicReallocation[] memory reallocations)
+    function executePublicAllocations(MarketParams memory marketParams, PublicAllocations[] memory reallocations)
         internal
     {
         uint256 totalNativePenalties = 0;
         for (uint256 i; i < reallocations.length; i++) {
-            PublicReallocation memory reallocation = reallocations[i];
+            PublicAllocations memory reallocation = reallocations[i];
             (, uint256 nativePenalty,) = IBluePublicAllocator(PUBLIC_ALLOCATOR).vaultData(reallocation.vault);
             totalNativePenalties += nativePenalty;
 

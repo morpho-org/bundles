@@ -14,7 +14,7 @@ import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
-import {IBlueBundlesV1, SignedAuthorization, PublicReallocation} from "../src/blue/interfaces/IBlueBundlesV1.sol";
+import {IBlueBundlesV1, SignedAuthorization, PublicAllocations} from "../src/blue/interfaces/IBlueBundlesV1.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 
 contract BlueBundlesTest is Test {
@@ -109,7 +109,7 @@ contract BlueBundlesTest is Test {
 
     function _noAuthSig() internal pure returns (SignedAuthorization memory) {}
 
-    function _noReallocations() internal pure returns (PublicReallocation[] memory) {}
+    function _noReallocations() internal pure returns (PublicAllocations[] memory) {}
 
     /// @dev Signs a Blue authorization for the bundler over the authorizer's current nonce and the given deadline,
     /// returning the signed authorization to pass to the bundle.

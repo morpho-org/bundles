@@ -22,7 +22,7 @@ import {
 } from "../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2Factory.sol";
 
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
-import {IBlueBundlesV1, SignedAuthorization, PublicReallocation} from "../src/blue/interfaces/IBlueBundlesV1.sol";
+import {IBlueBundlesV1, SignedAuthorization, PublicAllocations} from "../src/blue/interfaces/IBlueBundlesV1.sol";
 import {TokenPermit} from "../src/libraries/TokenLib.sol";
 import {WETHMock} from "./BlueBundlesTest.sol";
 import {
@@ -236,10 +236,10 @@ contract BluePublicAllocatorTest is Test {
     function _reallocation(MarketParams memory source, uint256 assets)
         internal
         view
-        returns (PublicReallocation[] memory list)
+        returns (PublicAllocations[] memory list)
     {
-        list = new PublicReallocation[](1);
-        list[0] = PublicReallocation({
+        list = new PublicAllocations[](1);
+        list[0] = PublicAllocations({
             vault: address(vault),
             adapter: address(adapter),
             fromIdle: false,
@@ -249,9 +249,9 @@ contract BluePublicAllocatorTest is Test {
         });
     }
 
-    function _idleReallocation(uint256 assets) internal view returns (PublicReallocation[] memory list) {
-        list = new PublicReallocation[](1);
-        list[0] = PublicReallocation({
+    function _idleReallocation(uint256 assets) internal view returns (PublicAllocations[] memory list) {
+        list = new PublicAllocations[](1);
+        list[0] = PublicAllocations({
             vault: address(vault),
             adapter: address(adapter),
             fromIdle: true,
@@ -273,7 +273,7 @@ contract BluePublicAllocatorTest is Test {
         vm.prank(user);
         vm.expectRevert(bytes(BlueErrorsLib.INSUFFICIENT_LIQUIDITY));
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, assets, 0, _noAuthSig(), new PublicReallocation[](0), 0, address(0), block.timestamp
+            marketParams, assets, 0, _noAuthSig(), new PublicAllocations[](0), 0, address(0), block.timestamp
         );
     }
 
@@ -333,7 +333,7 @@ contract BluePublicAllocatorTest is Test {
 
         _supplyThenDrain(marketParams, assets);
 
-        PublicReallocation[] memory reallocations = _reallocation(liquidMarketParams, assets);
+        PublicAllocations[] memory reallocations = _reallocation(liquidMarketParams, assets);
         reallocations[0].sourceAdapter = sourceAdapter;
 
         vm.deal(user, NATIVE_PENALTY);
@@ -358,7 +358,7 @@ contract BluePublicAllocatorTest is Test {
         _fundVault(VAULT_ASSETS / 2);
         _supplyThenDrain(marketParams, assets);
 
-        PublicReallocation[] memory reallocations = new PublicReallocation[](2);
+        PublicAllocations[] memory reallocations = new PublicAllocations[](2);
         reallocations[0] = _reallocation(liquidMarketParams, assets / 2)[0];
         reallocations[1] = _idleReallocation(assets - assets / 2)[0];
 

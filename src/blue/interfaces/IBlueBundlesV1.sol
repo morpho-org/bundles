@@ -17,7 +17,7 @@ struct SignedAuthorization {
 /// @dev adapter holds the destination market, sourceAdapter the market assets are deallocated from; both must be active on the public allocator.
 /// @dev When fromIdle is true, the vault's idle assets are allocated and sourceAdapter and sourceMarketParams are ignored; otherwise assets are first deallocated from sourceAdapter's sourceMarketParams.
 /// @dev The destination is always the market the bundle acts on, so a bundle can only push liquidity where it is about to borrow or withdraw.
-struct PublicReallocation {
+struct PublicAllocations {
     address vault;
     address adapter;
     bool fromIdle;
@@ -50,7 +50,7 @@ interface IBlueBundlesV1 {
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
         SignedAuthorization memory signedAuthorization,
-        PublicReallocation[] memory reallocations,
+        PublicAllocations[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -86,7 +86,7 @@ interface IBlueBundlesV1 {
         uint256 assets,
         uint256 shares,
         SignedAuthorization memory signedAuthorization,
-        PublicReallocation[] memory reallocations,
+        PublicAllocations[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -99,7 +99,7 @@ interface IBlueBundlesV1 {
         uint256 destMinSharePriceE27,
         uint256 maxLtv,
         SignedAuthorization memory signedAuthorization,
-        PublicReallocation[] memory reallocations,
+        PublicAllocations[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
