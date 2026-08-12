@@ -17,6 +17,7 @@ struct SignedAuthorization {
 /// @dev adapter holds the destination market, sourceAdapter the market assets are deallocated from; both must be active on the public allocator.
 /// @dev When fromIdle is true, the vault's idle assets are allocated and sourceAdapter and sourceMarketParams are ignored; otherwise assets are first deallocated from sourceAdapter's sourceMarketParams.
 /// @dev The destination is always the market the bundle acts on, so a bundle can only push liquidity where it is about to borrow or withdraw.
+/// @dev maxPenalty is the maximum WAD-scaled public allocator penalty accepted for this allocation.
 struct PublicAllocations {
     address vault;
     address adapter;
@@ -24,10 +25,12 @@ struct PublicAllocations {
     address sourceAdapter;
     MarketParams sourceMarketParams;
     uint128 assets;
+    uint64 maxPenalty;
 }
 
 interface IBlueBundlesV1 {
     /// ERRORS ///
+    error AlreadyInitiated();
     error DeadlinePassed();
     error InconsistentTokens();
     error LtvExceeded();
@@ -35,9 +38,9 @@ interface IBlueBundlesV1 {
     error PctExceeded();
     error SlippageExceeded();
     error UnauthorizedCallback();
-    error UnspentNativeAssets();
 
     /// STORAGE GETTERS ///
+    function initiator() external view returns (address);
     function BLUE() external view returns (address);
     function PUBLIC_ALLOCATOR() external view returns (address);
 
@@ -54,7 +57,7 @@ interface IBlueBundlesV1 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external payable;
+    ) external;
 
     function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
@@ -90,7 +93,7 @@ interface IBlueBundlesV1 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external payable;
+    ) external;
 
     function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
@@ -103,5 +106,5 @@ interface IBlueBundlesV1 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
-    ) external payable;
+    ) external;
 }

@@ -613,26 +613,31 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev Native collateral is not supported; msg.value may only pay public allocator penalties.
+    /// @dev Native collateral is not supported and the entrypoint is nonpayable.
     function testSupplyCollateralAndBorrowNativeCollateralUnsupported() public {
         uint256 collateral = _collateralFor(1e18);
         vm.deal(user, collateral);
 
         vm.prank(user);
-        vm.expectRevert(IBlueBundlesV1.UnspentNativeAssets.selector);
-        blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: collateral}(
-            marketParams,
-            collateral,
-            1e18,
-            0,
-            WAD,
-            _noPermit(),
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
+        (bool success,) = address(blueBundles).call{value: collateral}(
+            abi.encodeCall(
+                IBlueBundlesV1.blueBundlesV1SupplyCollateralAndBorrow,
+                (
+                    marketParams,
+                    collateral,
+                    1e18,
+                    0,
+                    WAD,
+                    _noPermit(),
+                    _noAuthSig(),
+                    _noReallocations(),
+                    0,
+                    address(0),
+                    block.timestamp
+                )
+            )
         );
+        assertFalse(success);
     }
 
     function testSupplyCollateralAndBorrowWithReferralFee(uint256 borrowAssets, uint256 referralFeePct) public {
