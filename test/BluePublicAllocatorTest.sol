@@ -595,7 +595,7 @@ contract BluePublicAllocatorTest is Test {
         assertEq(loanToken.balanceOf(user), assets - penaltyAssets, "only actual penalty deducted");
     }
 
-    /// @dev With no penalty set, the entrypoints stay usable and the flash principal is fully returned.
+    /// @dev With no penalty set, the entrypoints stay usable and skip the flash loan entirely.
     function testWithdrawZeroPenalty() public {
         uint256 assets = 10e18;
         _fundVault(VAULT_ASSETS);
