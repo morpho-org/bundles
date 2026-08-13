@@ -304,7 +304,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     }
 
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
-        require(msg.sender == BLUE && initiator != address(0), UnauthorizedCallback());
+        require(msg.sender == BLUE, UnauthorizedCallback());
         (
             MarketParams memory sourceMarketParams,
             MarketParams memory destMarketParams,
@@ -333,7 +333,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     }
 
     function onMorphoFlashLoan(uint256 assets, bytes calldata data) external {
-        require(msg.sender == BLUE && initiator != address(0), UnauthorizedCallback());
+        require(msg.sender == BLUE, UnauthorizedCallback());
         (bytes4 selector, bytes memory operationData, uint64[] memory penalties) =
             abi.decode(data, (bytes4, bytes, uint64[]));
         executeFlashOperation(selector, operationData, penalties, assets);
