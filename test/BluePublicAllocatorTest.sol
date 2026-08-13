@@ -451,33 +451,34 @@ contract BluePublicAllocatorTest is Test {
         assertEq(_allocation(marketParams), borrowAssets, "vault funded the borrow");
     }
 
-    /// @dev The nonpayable entrypoint cannot accidentally retain native assets as collateral or penalty funding.
-    function testSupplyCollateralAndBorrowRejectsNativeAssets() public {
+    /// @dev Native collateral is wrapped before being supplied, even when a reallocation also flash loans a penalty.
+    function testSupplyCollateralAndBorrowWrapNativeWithReallocation() public {
         uint256 borrowAssets = 10e18;
         uint256 collateral = 2 * borrowAssets;
         _fundVault(VAULT_ASSETS);
 
         vm.deal(user, collateral);
         vm.prank(user);
-        (bool success,) = address(blueBundles).call{value: collateral}(
-            abi.encodeCall(
-                IBlueBundlesV1.blueBundlesV1SupplyCollateralAndBorrow,
-                (
-                    marketParams,
-                    collateral,
-                    borrowAssets,
-                    0,
-                    WAD,
-                    _noPermit(),
-                    _noAuthSig(),
-                    _reallocation(liquidMarketParams, borrowAssets),
-                    0,
-                    address(0),
-                    block.timestamp
-                )
-            )
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: collateral}(
+            marketParams,
+            collateral,
+            borrowAssets,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            _reallocation(liquidMarketParams, borrowAssets),
+            0,
+            address(0),
+            block.timestamp
         );
-        assertFalse(success);
+
+        assertEq(loanToken.balanceOf(user), borrowAssets - _penaltyAssets(borrowAssets), "user borrowed net of penalty");
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
+        assertEq(_allocation(marketParams), borrowAssets, "vault funded the borrow");
+        assertEq(user.balance, 0, "user native residual");
+        assertEq(address(blueBundles).balance, 0, "bundler native residual");
+        assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
     }
 
     /// MIGRATE BORROW POSITION ///

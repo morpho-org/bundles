@@ -661,31 +661,50 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev Native collateral is not supported and the entrypoint is nonpayable.
-    function testSupplyCollateralAndBorrowNativeCollateralUnsupported() public {
-        uint256 collateral = _collateralFor(1e18);
-        vm.deal(user, collateral);
+    function testSupplyCollateralAndBorrowWrapNative(uint256 borrowAssets) public {
+        borrowAssets = bound(borrowAssets, 1, 1e30);
+        uint256 collateral = _collateralFor(borrowAssets);
 
+        // Market whose collateral token is the wrapped-native token.
+        WETHMock weth = new WETHMock();
+        MarketParams memory wethMarketParams = MarketParams({
+            loanToken: address(loanToken),
+            collateralToken: address(weth),
+            oracle: address(oracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethMarketParams);
+        deal(address(loanToken), supplier, LIQUIDITY);
+        vm.startPrank(supplier);
+        loanToken.approve(address(morpho), type(uint256).max);
+        morpho.supply(wethMarketParams, LIQUIDITY, 0, supplier, "");
+        vm.stopPrank();
+
+        vm.deal(user, collateral);
+        // When native tokens are sent, collateralAssets must equal msg.value and no collateralPermit may be set.
         vm.prank(user);
-        (bool success,) = address(blueBundles).call{value: collateral}(
-            abi.encodeCall(
-                IBlueBundlesV1.blueBundlesV1SupplyCollateralAndBorrow,
-                (
-                    marketParams,
-                    collateral,
-                    1e18,
-                    0,
-                    WAD,
-                    _noPermit(),
-                    _noAuthSig(),
-                    _noReallocations(),
-                    0,
-                    address(0),
-                    block.timestamp
-                )
-            )
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow{value: collateral}(
+            wethMarketParams,
+            collateral,
+            borrowAssets,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            _noReallocations(),
+            0,
+            address(0),
+            block.timestamp
         );
-        assertFalse(success);
+
+        assertEq(morpho.collateral(wethMarketParams.id(), user), collateral, "collateral");
+        assertEq(morpho.expectedBorrowAssets(wethMarketParams, user), borrowAssets, "debt");
+        assertEq(loanToken.balanceOf(user), borrowAssets, "user");
+        assertEq(user.balance, 0, "user native residual");
+        assertEq(address(blueBundles).balance, 0, "bundler native residual");
+        assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler loan residual");
     }
 
     function testSupplyCollateralAndBorrowWithReferralFee(uint256 borrowAssets, uint256 referralFeePct) public {
