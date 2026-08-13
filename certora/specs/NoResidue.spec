@@ -7,7 +7,6 @@ methods {
     // ERC20 transfers.
     function _.transferFrom(address from, address to, uint256 amt) external => cvlTransferFrom(calledContract, from, to, amt) expect(bool);
     function _.transfer(address to, uint256 amt) external with(env e) => cvlTransferFrom(calledContract, e.msg.sender, to, amt) expect(bool);
-    function _.balanceOf(address account) external => cvlBalanceOf(calledContract, account) expect(uint256);
 
     // Permit2 transfers.
     function _.permitTransferFrom(ISignatureTransfer.PermitTransferFrom permit, ISignatureTransfer.SignatureTransferDetails transferDetails, address owner, bytes signature) external => summaryPermit2Transfer(permit.permitted.token, owner, transferDetails.to, transferDetails.requestedAmount) expect void;
@@ -51,13 +50,6 @@ function cvlTransferFrom(address token, address from, address to, uint256 amount
     if (from == currentContract) bundlerBalance[token] = bundlerBalance[token] - amount;
     if (to == currentContract) bundlerBalance[token] = bundlerBalance[token] + amount;
     return true;
-}
-
-function cvlBalanceOf(address token, address account) returns uint256 {
-    uint256 balance;
-    if (account == currentContract) balance = require_uint256(bundlerBalance[token]);
-    else balance = 0;
-    return balance;
 }
 
 function summaryPermit2Transfer(address token, address from, address to, uint256 amount) {

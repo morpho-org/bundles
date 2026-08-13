@@ -33,7 +33,7 @@ Users should expect tokens left to the bundles as lost.
 
 The three entrypoints that consume market liquidity — `blueBundlesV1SupplyCollateralAndBorrow`, `blueBundlesV1Withdraw` and `blueBundlesV1MigrateBorrowPosition` — take a list of `PublicAllocations`.
 Each one calls Vault V2's public allocator to move a vault's assets into the market the bundle acts on (from another of the vault's markets, or from its idle assets) before borrowing or withdrawing, so an illiquid market can still be used.
-The bundle reads and validates the live penalty rates, calculates their exact per-allocation upward-rounded cost, and flash loans only the aggregate loan-token penalty from Blue. It verifies the actual amount spent against that quote. Penalties are deducted from borrow and withdrawal proceeds, and added to the destination debt of a borrow-position migration.
+The bundle reads and validates the live penalty rates, calculates their exact per-allocation upward-rounded cost, and flash loans only the aggregate loan-token penalty from Blue. Penalties are deducted from borrow and withdrawal proceeds, and added to the destination debt of a borrow-position migration.
 Each allocation includes a `maxPenalty`, which caps the live WAD-scaled penalty rate while accepting favorable decreases.
 The flash loan temporarily reduces Blue's global token balance by the penalty: market-sourced allocations need their deallocation amount plus the penalty in global liquidity, and idle-sourced allocations still require Blue to fund the initial penalty flash loan.
 
