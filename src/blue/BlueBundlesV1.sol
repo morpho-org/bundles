@@ -336,7 +336,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         require(msg.sender == BLUE, UnauthorizedCallback());
         (bytes4 selector, bytes memory operationData, uint64[] memory penalties) =
             abi.decode(data, (bytes4, bytes, uint64[]));
-        executeFlashOperation(selector, operationData, penalties, assets);
+        dispatchOperation(selector, operationData, penalties, assets);
     }
 
     /// INTERNAL ///
@@ -351,7 +351,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     ) internal {
         (uint256 flashLoanAssets, uint64[] memory penalties) = previewPublicAllocationPenalties(reallocations);
         if (flashLoanAssets == 0) {
-            executeFlashOperation(selector, operationData, penalties, 0);
+            dispatchOperation(selector, operationData, penalties, 0);
             return;
         }
 
@@ -360,7 +360,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         IMorpho(BLUE).flashLoan(loanToken, flashLoanAssets, data);
     }
 
-    function executeFlashOperation(
+    function dispatchOperation(
         bytes4 selector,
         bytes memory operationData,
         uint64[] memory penalties,
