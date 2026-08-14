@@ -175,54 +175,6 @@ contract BlueBundlesTest is Test {
         vm.stopPrank();
     }
 
-    /// ALREADY INITIATED ///
-
-    /// @dev The initiator remains set for the whole transaction, so every guarded entrypoint rejects a second call.
-    function testAlreadyInitiated() public {
-        uint256 assets = 1e18;
-        deal(address(loanToken), user, assets);
-
-        vm.startPrank(user);
-        loanToken.approve(address(blueBundles), assets);
-        blueBundles.blueBundlesV1Supply(
-            marketParams, assets, type(uint256).max, _noPermit(), 0, address(0), block.timestamp
-        );
-        assertEq(blueBundles.initiator(), user);
-
-        vm.expectRevert(IBlueBundlesV1.AlreadyInitiated.selector);
-        blueBundles.blueBundlesV1Supply(marketParams, 0, type(uint256).max, _noPermit(), 0, address(0), block.timestamp);
-
-        vm.expectRevert(IBlueBundlesV1.AlreadyInitiated.selector);
-        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams, 0, 0, 0, WAD, _noPermit(), _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
-        );
-
-        vm.expectRevert(IBlueBundlesV1.AlreadyInitiated.selector);
-        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams, 0, 0, 0, type(uint256).max, 0, WAD, _noPermit(), _noAuthSig(), 0, address(0), block.timestamp
-        );
-
-        vm.expectRevert(IBlueBundlesV1.AlreadyInitiated.selector);
-        blueBundles.blueBundlesV1Withdraw(
-            marketParams, 0, 0, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
-        );
-
-        vm.expectRevert(IBlueBundlesV1.AlreadyInitiated.selector);
-        blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            WAD,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
-        );
-        vm.stopPrank();
-    }
-
     /// AUTHORIZATION SIGNATURE ///
 
     /// @dev A user with no prior Blue authorization can use the bundle in a single transaction via

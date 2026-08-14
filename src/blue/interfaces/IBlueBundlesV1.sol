@@ -30,7 +30,6 @@ struct PublicAllocations {
 
 interface IBlueBundlesV1 {
     /// ERRORS ///
-    error AlreadyInitiated();
     error DeadlinePassed();
     error InconsistentTokens();
     error LtvExceeded();
@@ -40,7 +39,6 @@ interface IBlueBundlesV1 {
     error UnauthorizedCallback();
 
     /// STORAGE GETTERS ///
-    function initiator() external view returns (address);
     function BLUE() external view returns (address);
     function PUBLIC_ALLOCATOR() external view returns (address);
 
