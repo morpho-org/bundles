@@ -499,6 +499,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         uint64[] memory penalties,
         uint256 penaltyAssets
     ) internal {
+        if (reallocations.length == 0) return;
+
         TokenLib.safeApprove(loanToken, PUBLIC_ALLOCATOR, 0);
         TokenLib.safeApprove(loanToken, PUBLIC_ALLOCATOR, penaltyAssets);
 
