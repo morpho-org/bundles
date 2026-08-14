@@ -697,21 +697,30 @@ contract BluePublicAllocatorTest is Test {
         );
     }
 
-    /// @dev A reallocation can target any market sharing the bundle's loan token, not only the market the bundle acts on.
-    function testReallocationDestinationOtherMarket() public {
+    /// @dev Each reallocation independently selects its destination: market-sourced and idle-sourced entries can target
+    /// different markets sharing the bundle's loan token, neither of which is the market the bundle acts on.
+    function testReallocationDestinationsOtherMarkets() public {
         uint256 borrowAssets = 10e18;
         uint256 collateral = 2 * borrowAssets;
-        _fundVault(VAULT_ASSETS);
+        uint256 marketSourcedAssets = 4e18;
+        uint256 idleSourcedAssets = 6e18;
+        _fundVault(VAULT_ASSETS / 2);
 
-        // The bundle's market is already liquid; the reallocation pushes vault liquidity into another market.
+        // The bundle's market is already liquid, so neither reallocation needs to target it.
         deal(address(loanToken), depositor, borrowAssets);
         vm.startPrank(depositor);
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(marketParams, borrowAssets, 0, depositor, "");
         vm.stopPrank();
 
-        PublicAllocations[] memory reallocations = _reallocation(liquidMarketParams, borrowAssets);
+        vm.prank(allocator);
+        publicAllocator.setAbsoluteCap(address(vault), address(adapter), liquidMarketParams, type(uint128).max);
+
+        PublicAllocations[] memory reallocations = new PublicAllocations[](2);
+        reallocations[0] = _reallocation(liquidMarketParams, marketSourcedAssets)[0];
         reallocations[0].marketParams = destMarketParams;
+        reallocations[1] = _idleReallocation(idleSourcedAssets)[0];
+        reallocations[1].marketParams = liquidMarketParams;
 
         _fundWeth(user, collateral);
         vm.startPrank(user);
@@ -731,8 +740,14 @@ contract BluePublicAllocatorTest is Test {
         );
         vm.stopPrank();
 
-        assertEq(loanToken.balanceOf(user), borrowAssets - _penaltyAssets(borrowAssets), "user borrowed net of penalty");
-        assertEq(_allocation(destMarketParams), borrowAssets, "liquidity landed in the other market");
+        uint256 penaltyAssets = _penaltyAssets(marketSourcedAssets) + _penaltyAssets(idleSourcedAssets);
+        assertEq(loanToken.balanceOf(user), borrowAssets - penaltyAssets, "user borrowed net of penalties");
+        assertEq(_allocation(destMarketParams), marketSourcedAssets, "market-sourced destination");
+        assertEq(
+            _allocation(liquidMarketParams),
+            VAULT_ASSETS / 2 - marketSourcedAssets + idleSourcedAssets,
+            "idle-sourced destination"
+        );
         assertEq(_allocation(marketParams), 0, "bundle market not funded by the vault");
     }
 
