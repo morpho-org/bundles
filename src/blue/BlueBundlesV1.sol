@@ -81,7 +81,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
             IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
         }
 
-        uint256 balanceBefore = IERC20(marketParams.loanToken).balanceOf(address(this));
         uint256 penaltyAssets = totalPenaltyAssets(reallocations);
         if (penaltyAssets == 0) {
             executeBorrow(marketParams, borrowAssets, minSharePriceE27, reallocations, msg.sender);
@@ -96,7 +95,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         }
         requireMaxLtv(marketParams, msg.sender, maxLtv);
 
-        uint256 receivedAssets = IERC20(marketParams.loanToken).balanceOf(address(this)) - balanceBefore;
+        uint256 receivedAssets = borrowAssets - penaltyAssets;
         uint256 referralFeeAssets = receivedAssets.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
@@ -399,7 +398,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
     /// @dev Each reallocation either allocates the vault's idle assets, or first deallocates assets from its source market.
     /// @dev Each allocation's destination is its own marketParams, whose loan token must be the flash-loaned loanToken, so all penalties are paid in that single token.
-    /// @dev Each reallocation pays its own penalty rate, which must equal the vault's current rate or the public allocator reverts.
     /// @dev Returns the aggregate charged penalty, computed with the same per-call upward rounding as the public allocator.
     function executePublicAllocations(address loanToken, PublicAllocations[] memory reallocations)
         internal
