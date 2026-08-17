@@ -3,6 +3,7 @@
 pragma solidity 0.8.34;
 
 import {IBlueBundlesV1, SignedAuthorization, PublicAllocations} from "./interfaces/IBlueBundlesV1.sol";
+import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {
     IBluePublicAllocator
 } from "../../lib/vault-v2/src/periphery/blue-public-allocator/interfaces/IBluePublicAllocator.sol";
@@ -50,23 +51,23 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
     /// EXTERNAL ///
 
-    /// @dev Pulls collateralAssets as an ERC20 (optionally via ERC-2612 or Permit2), supplies it on Blue, then borrows borrowAssets on behalf of msg.sender.
+    /// @dev Pulls collateralAssets as an ERC20 (optionally via ERC-2612 or Permit2), supplies it on Blue, then borrows on behalf of msg.sender.
     /// @dev When native tokens are sent, collateralPermit.kind must be PermitKind.None and collateralAssets must equal msg.value; the native tokens are wrapped into marketParams.collateralToken (which must be the wrapped-native token) instead of being pulled.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
-    /// @dev referralFeeAssets = borrowAssets * referralFeePct / WAD; public allocator penalties are deducted from the
-    /// borrowed assets; net = borrowAssets - referralFeeAssets - public allocator penalties.
-    /// @dev maxLtv caps msg.sender's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
+    /// @dev The msg.sender receives exactly assets: the referral fee and public allocator penalties are borrowed on top, adding to the debt. Fee = assets * referralFeePct / (WAD - referralFeePct); total borrowed = assets + fee + penalties.
+    /// @dev maxLtv caps msg.sender's resulting LTV, which includes fees and penalties; at or above the market LLTV it is a no-op (WAD disables it).
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
-    /// @dev Each reallocation's maxPenalty bounds its WAD-scaled penalty rate.
+    /// @dev maxPenaltyAssets is flash loaned to pay the public allocator penalties upfront and upper-bounds their aggregate amount.
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAssets,
-        uint256 borrowAssets,
+        uint256 assets,
         uint256 minSharePriceE27,
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
         SignedAuthorization memory signedAuthorization,
         PublicAllocations[] memory reallocations,
+        uint256 maxPenaltyAssets,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -76,22 +77,48 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
         setAuthorizationWithSig(signedAuthorization);
         TokenLib.pullOrWrapNative(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
-        executeWithFlashLoan(
-            marketParams.loanToken,
-            reallocations,
-            msg.sender,
-            this.blueBundlesV1SupplyCollateralAndBorrow.selector,
-            abi.encode(
-                marketParams,
-                collateralAssets,
-                borrowAssets,
-                minSharePriceE27,
-                maxLtv,
-                reallocations,
-                referralFeePct,
-                referralFeeRecipient
-            )
-        );
+        if (collateralAssets > 0) {
+            TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
+            IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
+        }
+
+        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD - referralFeePct);
+        if (maxPenaltyAssets == 0) {
+            executeSupplyCollateralAndBorrow(
+                marketParams, assets + referralFeeAssets, minSharePriceE27, reallocations, 0, msg.sender
+            );
+        } else {
+            bytes memory operationData =
+                abi.encode(marketParams, assets + referralFeeAssets, minSharePriceE27, reallocations);
+            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+            IMorpho(BLUE)
+                .flashLoan(
+                    marketParams.loanToken,
+                    maxPenaltyAssets,
+                    abi.encode(msg.sender, this.blueBundlesV1SupplyCollateralAndBorrow.selector, operationData)
+                );
+        }
+        requireMaxLtv(marketParams, msg.sender, maxLtv);
+
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
+        }
+        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, assets);
+    }
+
+    /// @dev assets is the requested assets plus the referral fee; the penalties are borrowed on top of it.
+    function executeSupplyCollateralAndBorrow(
+        MarketParams memory marketParams,
+        uint256 assets,
+        uint256 minSharePriceE27,
+        PublicAllocations[] memory reallocations,
+        uint256 maxPenaltyAssets,
+        address sender
+    ) internal {
+        uint256 penaltyAssets = executePublicAllocations(marketParams, reallocations, maxPenaltyAssets);
+        uint256 borrowAssets = assets + penaltyAssets;
+        (, uint256 borrowShares) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
+        require(borrowAssets.mulDivDown(1e27, borrowShares) >= minSharePriceE27, SlippageExceeded());
     }
 
     /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt, reimburses the unused remainder (if any) at the end of the call, and withdraws collateral if collateralAssets > 0.
@@ -181,16 +208,18 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Withdraws from msg.sender's supply position.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev Exactly one of assets and shares should be non-zero: the position is withdrawn by assets, or by shares. To close the full supply position so no supply shares remain, pass msg.sender's full supply shares as shares.
-    /// @dev The referral fee and public allocator penalties are deducted from the withdrawn assets; the remainder is
-    /// sent to msg.sender. Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee - penalties.
+    /// @dev The public allocator penalties are deducted from the withdrawn assets (the flash-loan repayment enforces
+    /// penalties <= withdrawnAssets) and the referral fee is charged on the remaining proceeds; the rest is sent to
+    /// msg.sender. Fee = (withdrawnAssets - penalties) * referralFeePct / WAD; net = withdrawnAssets - penalties - fee.
     /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
-    /// @dev Each reallocation's maxPenalty bounds its WAD-scaled penalty rate.
+    /// @dev maxPenaltyAssets is flash loaned to pay the public allocator penalties upfront and upper-bounds their aggregate amount.
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 shares,
         SignedAuthorization memory signedAuthorization,
         PublicAllocations[] memory reallocations,
+        uint256 maxPenaltyAssets,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -199,13 +228,38 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         require(referralFeePct < WAD, PctExceeded());
 
         setAuthorizationWithSig(signedAuthorization);
-        executeWithFlashLoan(
-            marketParams.loanToken,
-            reallocations,
-            msg.sender,
-            this.blueBundlesV1Withdraw.selector,
-            abi.encode(marketParams, assets, shares, reallocations, referralFeePct, referralFeeRecipient)
-        );
+
+        if (maxPenaltyAssets == 0) {
+            executeWithdraw(marketParams, assets, shares, reallocations, 0, msg.sender);
+        } else {
+            bytes memory operationData = abi.encode(marketParams, assets, shares, reallocations);
+            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+            IMorpho(BLUE)
+                .flashLoan(
+                    marketParams.loanToken,
+                    maxPenaltyAssets,
+                    abi.encode(msg.sender, this.blueBundlesV1Withdraw.selector, operationData)
+                );
+        }
+
+        uint256 proceeds = IERC20(marketParams.loanToken).balanceOf(address(this));
+        uint256 referralFeeAssets = proceeds.mulDivDown(referralFeePct, WAD);
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
+        }
+        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, proceeds - referralFeeAssets);
+    }
+
+    function executeWithdraw(
+        MarketParams memory marketParams,
+        uint256 assets,
+        uint256 shares,
+        PublicAllocations[] memory reallocations,
+        uint256 maxPenaltyAssets,
+        address sender
+    ) internal {
+        executePublicAllocations(marketParams, reallocations, maxPenaltyAssets);
+        IMorpho(BLUE).withdraw(marketParams, assets, shares, sender, address(this));
     }
 
     /// @dev Moves the full position of msg.sender (collateral and borrow shares, read from Blue) from the source market to the destination market.
@@ -216,7 +270,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Use destination LLTV to disable.
     /// @dev sourceMaxSharePriceE27 upper-bounds the realized source repay share price; destMinSharePriceE27 lower-bounds the realized destination borrow share price (both assets per share, scaled by 1e27).
     /// @dev Migrating a position without debt reverts on Blue.
-    /// @dev Each reallocation's maxPenalty bounds its WAD-scaled penalty rate.
+    /// @dev maxPenaltyAssets is flash loaned to pay the public allocator penalties upfront and upper-bounds their aggregate amount.
     function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
@@ -225,6 +279,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         uint256 maxLtv,
         SignedAuthorization memory signedAuthorization,
         PublicAllocations[] memory reallocations,
+        uint256 maxPenaltyAssets,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -238,22 +293,72 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
                 && sourceMarketParams.collateralToken == destMarketParams.collateralToken,
             InconsistentTokens()
         );
-        executeWithFlashLoan(
-            destMarketParams.loanToken,
-            reallocations,
-            msg.sender,
-            this.blueBundlesV1MigrateBorrowPosition.selector,
-            abi.encode(
+
+        Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), msg.sender);
+        if (maxPenaltyAssets == 0) {
+            executeMigrateBorrowPosition(
                 sourceMarketParams,
                 destMarketParams,
+                position.collateral,
+                position.borrowShares,
                 sourceMaxSharePriceE27,
                 destMinSharePriceE27,
-                maxLtv,
+                reallocations,
+                referralFeePct,
+                referralFeeRecipient,
+                0,
+                msg.sender
+            );
+        } else {
+            bytes memory operationData = abi.encode(
+                sourceMarketParams,
+                destMarketParams,
+                uint256(position.collateral),
+                uint256(position.borrowShares),
+                sourceMaxSharePriceE27,
+                destMinSharePriceE27,
                 reallocations,
                 referralFeePct,
                 referralFeeRecipient
-            )
+            );
+            TokenLib.forceApproveMax(destMarketParams.loanToken, BLUE);
+            IMorpho(BLUE)
+                .flashLoan(
+                    destMarketParams.loanToken,
+                    maxPenaltyAssets,
+                    abi.encode(msg.sender, this.blueBundlesV1MigrateBorrowPosition.selector, operationData)
+                );
+        }
+        requireMaxLtv(destMarketParams, msg.sender, maxLtv);
+    }
+
+    function executeMigrateBorrowPosition(
+        MarketParams memory sourceMarketParams,
+        MarketParams memory destMarketParams,
+        uint256 collateral,
+        uint256 borrowShares,
+        uint256 sourceMaxSharePriceE27,
+        uint256 destMinSharePriceE27,
+        PublicAllocations[] memory reallocations,
+        uint256 referralFeePct,
+        address referralFeeRecipient,
+        uint256 maxPenaltyAssets,
+        address sender
+    ) internal {
+        uint256 penaltyAssets = executePublicAllocations(destMarketParams, reallocations, maxPenaltyAssets);
+
+        bytes memory data = abi.encode(
+            sourceMarketParams,
+            destMarketParams,
+            collateral,
+            sender,
+            referralFeePct,
+            referralFeeRecipient,
+            destMinSharePriceE27,
+            penaltyAssets
         );
+        (uint256 assets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, borrowShares, sender, data);
+        require(assets.mulDivUp(1e27, borrowShares) <= sourceMaxSharePriceE27, SlippageExceeded());
     }
 
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
@@ -288,111 +393,59 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
     function onMorphoFlashLoan(uint256 assets, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
-        (address sender, bytes4 selector, bytes memory operationData, uint64[] memory penalties) =
-            abi.decode(data, (address, bytes4, bytes, uint64[]));
-        dispatchOperation(sender, selector, operationData, penalties, assets);
+        (address sender, bytes4 selector, bytes memory operationData) = abi.decode(data, (address, bytes4, bytes));
+        dispatchOperation(sender, selector, operationData, assets);
     }
 
     /// INTERNAL ///
 
-    /// @dev Previews each public allocation's exact penalty with the same upward rounding as the public allocator,
-    /// then flash loans only their aggregate loan-token penalty.
-    function executeWithFlashLoan(
-        address loanToken,
-        PublicAllocations[] memory reallocations,
-        address sender,
-        bytes4 selector,
-        bytes memory operationData
-    ) internal {
-        (uint256 flashLoanAssets, uint64[] memory penalties) = previewPublicAllocationPenalties(reallocations);
-        if (flashLoanAssets == 0) {
-            dispatchOperation(sender, selector, operationData, penalties, 0);
-            return;
-        }
-
-        bytes memory data = abi.encode(sender, selector, operationData, penalties);
-        TokenLib.forceApproveMax(loanToken, BLUE);
-        IMorpho(BLUE).flashLoan(loanToken, flashLoanAssets, data);
-    }
-
-    function dispatchOperation(
-        address sender,
-        bytes4 selector,
-        bytes memory operationData,
-        uint64[] memory penalties,
-        uint256 penaltyAssets
-    ) internal {
+    function dispatchOperation(address sender, bytes4 selector, bytes memory operationData, uint256 maxPenaltyAssets)
+        internal
+    {
         if (selector == this.blueBundlesV1SupplyCollateralAndBorrow.selector) {
             (
                 MarketParams memory marketParams,
-                uint256 collateralAssets,
                 uint256 borrowAssets,
                 uint256 minSharePriceE27,
-                uint256 maxLtv,
-                PublicAllocations[] memory reallocations,
-                uint256 referralFeePct,
-                address referralFeeRecipient
-            ) = abi.decode(
-                operationData, (MarketParams, uint256, uint256, uint256, uint256, PublicAllocations[], uint256, address)
-            );
-            supplyCollateralAndBorrow(
-                marketParams,
-                collateralAssets,
-                borrowAssets,
-                minSharePriceE27,
-                maxLtv,
-                reallocations,
-                referralFeePct,
-                referralFeeRecipient,
-                penalties,
-                penaltyAssets,
-                sender
+                PublicAllocations[] memory reallocations
+            ) = abi.decode(operationData, (MarketParams, uint256, uint256, PublicAllocations[]));
+            executeSupplyCollateralAndBorrow(
+                marketParams, borrowAssets, minSharePriceE27, reallocations, maxPenaltyAssets, sender
             );
         } else if (selector == this.blueBundlesV1Withdraw.selector) {
             (
                 MarketParams memory marketParams,
                 uint256 assets,
                 uint256 shares,
-                PublicAllocations[] memory reallocations,
-                uint256 referralFeePct,
-                address referralFeeRecipient
-            ) = abi.decode(operationData, (MarketParams, uint256, uint256, PublicAllocations[], uint256, address));
-            withdraw(
-                marketParams,
-                assets,
-                shares,
-                reallocations,
-                referralFeePct,
-                referralFeeRecipient,
-                penalties,
-                penaltyAssets,
-                sender
-            );
+                PublicAllocations[] memory reallocations
+            ) = abi.decode(operationData, (MarketParams, uint256, uint256, PublicAllocations[]));
+            executeWithdraw(marketParams, assets, shares, reallocations, maxPenaltyAssets, sender);
         } else if (selector == this.blueBundlesV1MigrateBorrowPosition.selector) {
             (
                 MarketParams memory sourceMarketParams,
                 MarketParams memory destMarketParams,
+                uint256 collateral,
+                uint256 borrowShares,
                 uint256 sourceMaxSharePriceE27,
                 uint256 destMinSharePriceE27,
-                uint256 maxLtv,
                 PublicAllocations[] memory reallocations,
                 uint256 referralFeePct,
                 address referralFeeRecipient
             ) = abi.decode(
                 operationData,
-                (MarketParams, MarketParams, uint256, uint256, uint256, PublicAllocations[], uint256, address)
+                (MarketParams, MarketParams, uint256, uint256, uint256, uint256, PublicAllocations[], uint256, address)
             );
-            migrateBorrowPosition(
+            executeMigrateBorrowPosition(
                 sourceMarketParams,
                 destMarketParams,
+                collateral,
+                borrowShares,
                 sourceMaxSharePriceE27,
                 destMinSharePriceE27,
-                maxLtv,
                 reallocations,
                 referralFeePct,
                 referralFeeRecipient,
-                penalties,
-                penaltyAssets,
+                maxPenaltyAssets,
                 sender
             );
         } else {
@@ -400,110 +453,23 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         }
     }
 
-    function supplyCollateralAndBorrow(
-        MarketParams memory marketParams,
-        uint256 collateralAssets,
-        uint256 borrowAssets,
-        uint256 minSharePriceE27,
-        uint256 maxLtv,
-        PublicAllocations[] memory reallocations,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint64[] memory penalties,
-        uint256 penaltyAssets,
-        address sender
-    ) internal {
-        executePublicAllocations(marketParams, reallocations, penalties, penaltyAssets);
-        if (collateralAssets > 0) {
-            TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
-            IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, sender, "");
-        }
-
-        (, uint256 borrowShares) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
-        require(borrowAssets.mulDivDown(1e27, borrowShares) >= minSharePriceE27, SlippageExceeded());
-
-        requireMaxLtv(marketParams, sender, maxLtv);
-
-        uint256 referralFeeAssets = borrowAssets.mulDivDown(referralFeePct, WAD);
-        require(penaltyAssets <= borrowAssets - referralFeeAssets, SlippageExceeded());
-        if (referralFeeAssets > 0) {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
-        }
-        SafeTransferLib.safeTransfer(marketParams.loanToken, sender, borrowAssets - referralFeeAssets - penaltyAssets);
-    }
-
-    function withdraw(
-        MarketParams memory marketParams,
-        uint256 assets,
-        uint256 shares,
-        PublicAllocations[] memory reallocations,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint64[] memory penalties,
-        uint256 penaltyAssets,
-        address sender
-    ) internal {
-        executePublicAllocations(marketParams, reallocations, penalties, penaltyAssets);
-        (uint256 withdrawnAssets,) = IMorpho(BLUE).withdraw(marketParams, assets, shares, sender, address(this));
-
-        uint256 referralFeeAssets = withdrawnAssets.mulDivDown(referralFeePct, WAD);
-        require(penaltyAssets <= withdrawnAssets - referralFeeAssets, SlippageExceeded());
-        if (referralFeeAssets > 0) {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
-        }
-        SafeTransferLib.safeTransfer(
-            marketParams.loanToken, sender, withdrawnAssets - referralFeeAssets - penaltyAssets
-        );
-    }
-
-    function migrateBorrowPosition(
-        MarketParams memory sourceMarketParams,
-        MarketParams memory destMarketParams,
-        uint256 sourceMaxSharePriceE27,
-        uint256 destMinSharePriceE27,
-        uint256 maxLtv,
-        PublicAllocations[] memory reallocations,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint64[] memory penalties,
-        uint256 penaltyAssets,
-        address sender
-    ) internal {
-        Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), sender);
-        executePublicAllocations(destMarketParams, reallocations, penalties, penaltyAssets);
-
-        bytes memory data = abi.encode(
-            sourceMarketParams,
-            destMarketParams,
-            position.collateral,
-            sender,
-            referralFeePct,
-            referralFeeRecipient,
-            destMinSharePriceE27,
-            penaltyAssets
-        );
-        (uint256 assets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, position.borrowShares, sender, data);
-        require(assets.mulDivUp(1e27, position.borrowShares) <= sourceMaxSharePriceE27, SlippageExceeded());
-
-        requireMaxLtv(destMarketParams, sender, maxLtv);
-    }
-
     /// @dev Each reallocation either allocates the vault's idle assets, or first deallocates assets from its source market.
     /// @dev The allocation destination is always marketParams, so the bundler cannot move a vault's liquidity anywhere else than the market it is about to act on.
-    /// @dev Uses the penalty rates read before the flash loan. The public allocator rejects a rate change and charges
-    /// the aggregate penaltyAssets calculated with the same per-call upward rounding.
+    /// @dev Each vault's current penalty rate is read just before its call, so the public allocator's exact-match check passes.
+    /// @dev Returns the aggregate charged penalty, computed with the same per-call upward rounding as the public allocator; the maxPenaltyAssets allowance bounds what the public allocator can pull.
     function executePublicAllocations(
         MarketParams memory marketParams,
         PublicAllocations[] memory reallocations,
-        uint64[] memory penalties,
-        uint256 penaltyAssets
-    ) internal {
+        uint256 maxPenaltyAssets
+    ) internal returns (uint256) {
         TokenLib.safeApprove(marketParams.loanToken, PUBLIC_ALLOCATOR, 0);
-        TokenLib.safeApprove(marketParams.loanToken, PUBLIC_ALLOCATOR, penaltyAssets);
+        TokenLib.safeApprove(marketParams.loanToken, PUBLIC_ALLOCATOR, maxPenaltyAssets);
 
+        uint256 penaltyAssets;
         for (uint256 i; i < reallocations.length; i++) {
             PublicAllocations memory reallocation = reallocations[i];
-            uint64 penalty = penalties[i];
+            (, uint64 penalty) = IBluePublicAllocator(PUBLIC_ALLOCATOR).vaultData(reallocation.vault);
+            penaltyAssets += uint256(reallocation.assets).mulDivUp(penalty, WAD);
 
             if (reallocation.fromIdle) {
                 IBluePublicAllocator(PUBLIC_ALLOCATOR)
@@ -525,21 +491,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         }
 
         TokenLib.safeApprove(marketParams.loanToken, PUBLIC_ALLOCATOR, 0);
-    }
-
-    function previewPublicAllocationPenalties(PublicAllocations[] memory reallocations)
-        internal
-        view
-        returns (uint256 penaltyAssets, uint64[] memory penalties)
-    {
-        penalties = new uint64[](reallocations.length);
-        for (uint256 i; i < reallocations.length; i++) {
-            PublicAllocations memory reallocation = reallocations[i];
-            (, uint64 penalty) = IBluePublicAllocator(PUBLIC_ALLOCATOR).vaultData(reallocation.vault);
-            require(penalty <= reallocation.maxPenalty, SlippageExceeded());
-            penalties[i] = penalty;
-            penaltyAssets += uint256(reallocation.assets).mulDivUp(penalty, WAD);
-        }
+        return penaltyAssets;
     }
 
     /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until signedAuthorization.deadline, as revoking on Blue does not consume the nonce.
@@ -550,13 +502,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         if (!emptySignature && IMorpho(BLUE).nonce(msg.sender) <= signedAuthorization.nonce) {
             IMorpho(BLUE)
                 .setAuthorizationWithSig(
-                    Authorization({
-                    authorizer: msg.sender,
-                    authorized: address(this),
-                    isAuthorized: true,
-                    nonce: signedAuthorization.nonce,
-                    deadline: signedAuthorization.deadline
-                }),
+                    Authorization(
+                        msg.sender, address(this), true, signedAuthorization.nonce, signedAuthorization.deadline
+                    ),
                     signature
                 );
         }

@@ -17,7 +17,6 @@ struct SignedAuthorization {
 /// @dev adapter holds the destination market, sourceAdapter the market assets are deallocated from; both must be active on the public allocator.
 /// @dev When fromIdle is true, the vault's idle assets are allocated and sourceAdapter and sourceMarketParams are ignored; otherwise assets are first deallocated from sourceAdapter's sourceMarketParams.
 /// @dev The destination is always the market the bundle acts on, so a bundle can only push liquidity where it is about to borrow or withdraw.
-/// @dev maxPenalty is the maximum WAD-scaled public allocator penalty accepted for this allocation.
 struct PublicAllocations {
     address vault;
     address adapter;
@@ -25,7 +24,6 @@ struct PublicAllocations {
     address sourceAdapter;
     MarketParams sourceMarketParams;
     uint128 assets;
-    uint64 maxPenalty;
 }
 
 interface IBlueBundlesV1 {
@@ -46,12 +44,13 @@ interface IBlueBundlesV1 {
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAssets,
-        uint256 borrowAssets,
+        uint256 assets,
         uint256 minSharePriceE27,
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
         SignedAuthorization memory signedAuthorization,
         PublicAllocations[] memory reallocations,
+        uint256 maxPenaltyAssets,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -88,6 +87,7 @@ interface IBlueBundlesV1 {
         uint256 shares,
         SignedAuthorization memory signedAuthorization,
         PublicAllocations[] memory reallocations,
+        uint256 maxPenaltyAssets,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -101,6 +101,7 @@ interface IBlueBundlesV1 {
         uint256 maxLtv,
         SignedAuthorization memory signedAuthorization,
         PublicAllocations[] memory reallocations,
+        uint256 maxPenaltyAssets,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline

@@ -10,6 +10,7 @@ import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/Morp
 import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {ErrorsLib as BlueErrorsLib} from "../lib/morpho-blue/src/libraries/ErrorsLib.sol";
+import {ErrorsLib as VaultErrorsLib} from "../lib/vault-v2/src/libraries/ErrorsLib.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 
@@ -250,8 +251,7 @@ contract BluePublicAllocatorTest is Test {
             fromIdle: false,
             sourceAdapter: address(adapter),
             sourceMarketParams: source,
-            assets: uint128(assets),
-            maxPenalty: PENALTY
+            assets: uint128(assets)
         });
     }
 
@@ -263,8 +263,7 @@ contract BluePublicAllocatorTest is Test {
             fromIdle: true,
             sourceAdapter: address(0),
             sourceMarketParams: MarketParams(address(0), address(0), address(0), address(0), 0),
-            assets: uint128(assets),
-            maxPenalty: PENALTY
+            assets: uint128(assets)
         });
     }
 
@@ -285,7 +284,7 @@ contract BluePublicAllocatorTest is Test {
         vm.prank(user);
         vm.expectRevert(bytes(BlueErrorsLib.INSUFFICIENT_LIQUIDITY));
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, assets, 0, _noAuthSig(), new PublicAllocations[](0), 0, address(0), block.timestamp
+            marketParams, assets, 0, _noAuthSig(), new PublicAllocations[](0), 0, 0, address(0), block.timestamp
         );
     }
 
@@ -296,6 +295,7 @@ contract BluePublicAllocatorTest is Test {
         _fundVault(VAULT_ASSETS);
         _supplyThenDrain(marketParams, assets);
 
+        uint256 penaltyAssets = _penaltyAssets(assets);
         vm.prank(user);
         blueBundles.blueBundlesV1Withdraw(
             marketParams,
@@ -303,12 +303,12 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
+            penaltyAssets,
             0,
             address(0),
             block.timestamp
         );
 
-        uint256 penaltyAssets = _penaltyAssets(assets);
         assertEq(loanToken.balanceOf(user), assets - penaltyAssets, "user received assets net of penalty");
         assertEq(morpho.supplyShares(marketParams.id(), user), 0, "user supply position closed");
         assertEq(_allocation(marketParams), assets, "vault took over the market");
@@ -334,6 +334,7 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
+            penaltyAssets,
             0,
             address(0),
             block.timestamp
@@ -358,7 +359,15 @@ contract BluePublicAllocatorTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, assets, 0, _noAuthSig(), _idleReallocation(assets), 0, address(0), block.timestamp
+            marketParams,
+            assets,
+            0,
+            _noAuthSig(),
+            _idleReallocation(assets),
+            penaltyAssets,
+            0,
+            address(0),
+            block.timestamp
         );
 
         assertEq(loanToken.balanceOf(user), assets - _penaltyAssets(assets), "user received assets net of penalty");
@@ -382,7 +391,7 @@ contract BluePublicAllocatorTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, assets, 0, _noAuthSig(), reallocations, 0, address(0), block.timestamp
+            marketParams, assets, 0, _noAuthSig(), reallocations, _penaltyAssets(assets), 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(user), assets - _penaltyAssets(assets), "user received assets net of penalty");
@@ -405,12 +414,11 @@ contract BluePublicAllocatorTest is Test {
         reallocations[0] = _reallocation(liquidMarketParams, assets / 2)[0];
         reallocations[1] = _idleReallocation(assets - assets / 2)[0];
 
+        uint256 penaltyAssets = 2 * _penaltyAssets(assets / 2);
         vm.prank(user);
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, assets, 0, _noAuthSig(), reallocations, 0, address(0), block.timestamp
+            marketParams, assets, 0, _noAuthSig(), reallocations, penaltyAssets, 0, address(0), block.timestamp
         );
-
-        uint256 penaltyAssets = 2 * _penaltyAssets(assets / 2);
         assertEq(loanToken.balanceOf(user), assets - penaltyAssets, "user received assets net of penalties");
         assertEq(_allocation(marketParams), assets, "vault took over the market");
         assertEq(
@@ -422,9 +430,12 @@ contract BluePublicAllocatorTest is Test {
 
     /// SUPPLY COLLATERAL AND BORROW ///
 
-    /// @dev An empty market can be borrowed from once the vault has been pushed into it.
+    /// @dev An empty market can be borrowed from once the vault has been pushed into it. The penalty is borrowed on
+    /// top of the requested assets, so the reallocation is grossed up to fund both.
     function testSupplyCollateralAndBorrowIlliquidWithReallocation() public {
         uint256 borrowAssets = 10e18;
+        uint256 reallocationAssets = _grossUpForPenalty(borrowAssets);
+        uint256 penaltyAssets = _penaltyAssets(reallocationAssets);
         uint256 collateral = 2 * borrowAssets;
         _fundVault(VAULT_ASSETS);
 
@@ -439,21 +450,25 @@ contract BluePublicAllocatorTest is Test {
             WAD,
             _noPermit(),
             _noAuthSig(),
-            _reallocation(liquidMarketParams, borrowAssets),
+            _reallocation(liquidMarketParams, reallocationAssets),
+            penaltyAssets,
             0,
             address(0),
             block.timestamp
         );
         vm.stopPrank();
 
-        assertEq(loanToken.balanceOf(user), borrowAssets - _penaltyAssets(borrowAssets), "user borrowed net of penalty");
-        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
-        assertEq(_allocation(marketParams), borrowAssets, "vault funded the borrow");
+        assertEq(loanToken.balanceOf(user), borrowAssets, "user received exactly the requested assets");
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets + penaltyAssets, "debt incl penalty");
+        assertEq(_allocation(marketParams), reallocationAssets, "vault funded debt and penalty");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler token residual");
     }
 
     /// @dev Native collateral is wrapped before being supplied, even when a reallocation also flash loans a penalty.
     function testSupplyCollateralAndBorrowWrapNativeWithReallocation() public {
         uint256 borrowAssets = 10e18;
+        uint256 reallocationAssets = _grossUpForPenalty(borrowAssets);
+        uint256 penaltyAssets = _penaltyAssets(reallocationAssets);
         uint256 collateral = 2 * borrowAssets;
         _fundVault(VAULT_ASSETS);
 
@@ -467,15 +482,16 @@ contract BluePublicAllocatorTest is Test {
             WAD,
             _noPermit(),
             _noAuthSig(),
-            _reallocation(liquidMarketParams, borrowAssets),
+            _reallocation(liquidMarketParams, reallocationAssets),
+            penaltyAssets,
             0,
             address(0),
             block.timestamp
         );
 
-        assertEq(loanToken.balanceOf(user), borrowAssets - _penaltyAssets(borrowAssets), "user borrowed net of penalty");
-        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
-        assertEq(_allocation(marketParams), borrowAssets, "vault funded the borrow");
+        assertEq(loanToken.balanceOf(user), borrowAssets, "user received exactly the requested assets");
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets + penaltyAssets, "debt incl penalty");
+        assertEq(_allocation(marketParams), reallocationAssets, "vault funded debt and penalty");
         assertEq(user.balance, 0, "user native residual");
         assertEq(address(blueBundles).balance, 0, "bundler native residual");
         assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
@@ -508,6 +524,7 @@ contract BluePublicAllocatorTest is Test {
             LLTV_DEST,
             _noAuthSig(),
             _reallocation(liquidMarketParams, reallocationAssets),
+            _penaltyAssets(reallocationAssets),
             0,
             address(0),
             block.timestamp
@@ -526,28 +543,29 @@ contract BluePublicAllocatorTest is Test {
 
     /// PENALTY SLIPPAGE ///
 
-    /// @dev Each migration reallocation independently caps the PA penalty rate it accepts.
-    function testMigrateBorrowPositionPenaltyAboveReallocationMaxReverts() public {
-        PublicAllocations[] memory reallocations = _reallocation(liquidMarketParams, 10e18);
-        reallocations[0].maxPenalty = PENALTY - 1;
+    /// @dev The maxPenaltyAssets allowance is all the public allocator can pull: a bound below the actual penalty
+    /// makes the penalty transfer revert.
+    function testWithdrawMaxPenaltyAssetsTooLowReverts() public {
+        uint256 assets = 10e18;
+        _fundVault(VAULT_ASSETS);
+        _supplyThenDrain(marketParams, assets);
 
         vm.prank(user);
-        vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
-        blueBundles.blueBundlesV1MigrateBorrowPosition(
+        vm.expectRevert(VaultErrorsLib.TransferFromReverted.selector);
+        blueBundles.blueBundlesV1Withdraw(
             marketParams,
-            destMarketParams,
-            type(uint256).max,
+            assets,
             0,
-            LLTV_DEST,
             _noAuthSig(),
-            reallocations,
+            _reallocation(liquidMarketParams, assets),
+            _penaltyAssets(assets) - 1,
             0,
             address(0),
             block.timestamp
         );
     }
 
-    /// @dev An allocator raising the penalty above the per-reallocation maximum makes the bundle revert.
+    /// @dev An allocator raising the penalty above the bundle's maxPenaltyAssets makes the bundle revert.
     function testWithdrawPenaltyRaisedReverts() public {
         uint256 assets = 10e18;
         _fundVault(VAULT_ASSETS);
@@ -557,13 +575,14 @@ contract BluePublicAllocatorTest is Test {
         publicAllocator.setPenalty(address(vault), 2 * PENALTY);
 
         vm.prank(user);
-        vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
+        vm.expectRevert(VaultErrorsLib.TransferFromReverted.selector);
         blueBundles.blueBundlesV1Withdraw(
             marketParams,
             assets,
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
+            _penaltyAssets(assets),
             0,
             address(0),
             block.timestamp
@@ -587,6 +606,7 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
+            _penaltyAssets(assets),
             0,
             address(0),
             block.timestamp
@@ -612,6 +632,7 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
+            0,
             0,
             address(0),
             block.timestamp
@@ -639,6 +660,7 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
+            _penaltyAssets(assets),
             0,
             address(0),
             block.timestamp
@@ -662,6 +684,7 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
+            _penaltyAssets(assets),
             0,
             address(0),
             block.timestamp
@@ -685,6 +708,7 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
+            _penaltyAssets(assets),
             0,
             address(0),
             block.timestamp
@@ -705,6 +729,7 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
+            _penaltyAssets(assets),
             0,
             address(0),
             block.timestamp
