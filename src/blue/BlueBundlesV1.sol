@@ -534,7 +534,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         TokenLib.safeApprove(loanToken, PUBLIC_ALLOCATOR, 0);
     }
 
-    /// @dev Reverts unless every reallocation's destination loan token is loanToken, in which penalties are paid.
     function previewPublicAllocationPenalties(address loanToken, PublicAllocations[] memory reallocations)
         internal
         view
