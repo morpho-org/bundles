@@ -45,7 +45,7 @@ interface IBlueBundlesV1 {
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAssets,
-        uint256 assets,
+        uint256 borrowAssets,
         uint256 minSharePriceE27,
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
@@ -84,8 +84,8 @@ interface IBlueBundlesV1 {
 
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
-        uint256 assets,
-        uint256 shares,
+        uint256 withdrawAssets,
+        uint256 withdrawShares,
         SignedAuthorization memory signedAuthorization,
         PublicAllocations[] memory reallocations,
         uint256 maxPenaltyAssets,

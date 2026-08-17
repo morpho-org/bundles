@@ -432,12 +432,9 @@ contract BluePublicAllocatorTest is Test {
 
     /// SUPPLY COLLATERAL AND BORROW ///
 
-    /// @dev An empty market can be borrowed from once the vault has been pushed into it. The penalty is borrowed on
-    /// top of the requested assets, so the reallocation is grossed up to fund both.
+    /// @dev An empty market can be borrowed from once the vault has been pushed into it.
     function testSupplyCollateralAndBorrowIlliquidWithReallocation() public {
         uint256 borrowAssets = 10e18;
-        uint256 reallocationAssets = _grossUpForPenalty(borrowAssets);
-        uint256 penaltyAssets = _penaltyAssets(reallocationAssets);
         uint256 collateral = 2 * borrowAssets;
         _fundVault(VAULT_ASSETS);
 
@@ -452,25 +449,23 @@ contract BluePublicAllocatorTest is Test {
             WAD,
             _noPermit(),
             _noAuthSig(),
-            _reallocation(liquidMarketParams, reallocationAssets),
-            penaltyAssets,
+            _reallocation(liquidMarketParams, borrowAssets),
+            _penaltyAssets(borrowAssets),
             0,
             address(0),
             block.timestamp
         );
         vm.stopPrank();
 
-        assertEq(loanToken.balanceOf(user), borrowAssets, "user received exactly the requested assets");
-        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets + penaltyAssets, "debt incl penalty");
-        assertEq(_allocation(marketParams), reallocationAssets, "vault funded debt and penalty");
+        assertEq(loanToken.balanceOf(user), borrowAssets - _penaltyAssets(borrowAssets), "user borrowed net of penalty");
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
+        assertEq(_allocation(marketParams), borrowAssets, "vault funded the borrow");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler token residual");
     }
 
     /// @dev Native collateral is wrapped before being supplied, even when a reallocation also flash loans a penalty.
     function testSupplyCollateralAndBorrowWrapNativeWithReallocation() public {
         uint256 borrowAssets = 10e18;
-        uint256 reallocationAssets = _grossUpForPenalty(borrowAssets);
-        uint256 penaltyAssets = _penaltyAssets(reallocationAssets);
         uint256 collateral = 2 * borrowAssets;
         _fundVault(VAULT_ASSETS);
 
@@ -484,16 +479,16 @@ contract BluePublicAllocatorTest is Test {
             WAD,
             _noPermit(),
             _noAuthSig(),
-            _reallocation(liquidMarketParams, reallocationAssets),
-            penaltyAssets,
+            _reallocation(liquidMarketParams, borrowAssets),
+            _penaltyAssets(borrowAssets),
             0,
             address(0),
             block.timestamp
         );
 
-        assertEq(loanToken.balanceOf(user), borrowAssets, "user received exactly the requested assets");
-        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets + penaltyAssets, "debt incl penalty");
-        assertEq(_allocation(marketParams), reallocationAssets, "vault funded debt and penalty");
+        assertEq(loanToken.balanceOf(user), borrowAssets - _penaltyAssets(borrowAssets), "user borrowed net of penalty");
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
+        assertEq(_allocation(marketParams), borrowAssets, "vault funded the borrow");
         assertEq(user.balance, 0, "user native residual");
         assertEq(address(blueBundles).balance, 0, "bundler native residual");
         assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
@@ -730,12 +725,11 @@ contract BluePublicAllocatorTest is Test {
         uint256 penaltyAssets = _penaltyAssets(marketSourcedAssets) + _penaltyAssets(idleSourcedAssets);
         _fundVault(VAULT_ASSETS / 2);
 
-        // The bundle's market is already liquid (incl. the penalties borrowed on top), so neither reallocation needs
-        // to target it.
-        deal(address(loanToken), depositor, borrowAssets + penaltyAssets);
+        // The bundle's market is already liquid, so neither reallocation needs to target it.
+        deal(address(loanToken), depositor, borrowAssets);
         vm.startPrank(depositor);
         loanToken.approve(address(morpho), type(uint256).max);
-        morpho.supply(marketParams, borrowAssets + penaltyAssets, 0, depositor, "");
+        morpho.supply(marketParams, borrowAssets, 0, depositor, "");
         vm.stopPrank();
 
         vm.prank(allocator);
@@ -766,8 +760,8 @@ contract BluePublicAllocatorTest is Test {
         );
         vm.stopPrank();
 
-        assertEq(loanToken.balanceOf(user), borrowAssets, "user received exactly the requested assets");
-        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets + penaltyAssets, "debt incl penalties");
+        assertEq(loanToken.balanceOf(user), borrowAssets - penaltyAssets, "user borrowed net of penalties");
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
         assertEq(_allocation(destMarketParams), marketSourcedAssets, "market-sourced destination");
         assertEq(
             _allocation(liquidMarketParams),

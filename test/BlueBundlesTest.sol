@@ -682,17 +682,13 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler loan residual");
     }
 
-    /// @dev The fee is borrowed on top of the requested assets, so the user receives exactly borrowAssets and the fee
-    /// shows up as extra debt.
     function testSupplyCollateralAndBorrowWithReferralFee(uint256 borrowAssets, uint256 referralFeePct) public {
         borrowAssets = bound(borrowAssets, 1, 1e30);
-        // Collateral is 2x the requested assets and the LLTV is 0.8, so total borrow must stay under 1.6x. The fee is
-        // borrowed on top (pct / (WAD - pct)), so cap pct at 0.35e18 => fee <= 0.539x => total <= 1.539x.
-        referralFeePct = bound(referralFeePct, 0, 0.35e18);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
         uint256 collateral = _collateralFor(borrowAssets);
         deal(address(collateralToken), user, collateral);
 
-        uint256 expectedFee = borrowAssets * referralFeePct / (WAD - referralFeePct);
+        uint256 expectedFee = borrowAssets * referralFeePct / WAD;
 
         vm.startPrank(user);
         collateralToken.approve(address(blueBundles), collateral);
@@ -712,8 +708,8 @@ contract BlueBundlesTest is Test {
         );
         vm.stopPrank();
 
-        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets + expectedFee, "debt incl fee");
-        assertEq(loanToken.balanceOf(user), borrowAssets, "user received exactly the requested assets");
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
+        assertEq(loanToken.balanceOf(user), borrowAssets - expectedFee, "user net");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
@@ -721,11 +717,11 @@ contract BlueBundlesTest is Test {
     /// @dev collateralAssets = 0 skips the collateral leg: borrows against previously supplied collateral.
     function testPureBorrow(uint256 borrowAssets, uint256 referralFeePct) public {
         borrowAssets = bound(borrowAssets, 1, 1e30);
-        referralFeePct = bound(referralFeePct, 0, 0.35e18);
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
         uint256 collateral = _collateralFor(borrowAssets);
         deal(address(collateralToken), user, collateral);
 
-        uint256 expectedFee = borrowAssets * referralFeePct / (WAD - referralFeePct);
+        uint256 expectedFee = borrowAssets * referralFeePct / WAD;
 
         vm.startPrank(user);
         collateralToken.approve(address(morpho), collateral);
@@ -747,8 +743,8 @@ contract BlueBundlesTest is Test {
         vm.stopPrank();
 
         assertEq(morpho.collateral(id, user), collateral, "collateral");
-        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets + expectedFee, "debt incl fee");
-        assertEq(loanToken.balanceOf(user), borrowAssets, "user received exactly the requested assets");
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
+        assertEq(loanToken.balanceOf(user), borrowAssets - expectedFee, "user net");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
