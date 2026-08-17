@@ -302,6 +302,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
                 sourceMaxSharePriceE27,
                 reallocations,
                 migrationData,
+                0,
                 msg.sender
             );
         } else {
@@ -318,16 +319,17 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         requireMaxLtv(destMarketParams, msg.sender, maxLtv);
     }
 
-    /// @dev migrationData is the onMorphoRepay callback data, passed through opaquely; the charged penaltyAssets is appended to it once known.
+    /// @dev migrationData is the onMorphoRepay callback data, passed through opaquely; the flash-loaned penaltyAssets is appended to it.
     function executeMigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         uint256 borrowShares,
         uint256 sourceMaxSharePriceE27,
         PublicAllocations[] memory reallocations,
         bytes memory migrationData,
+        uint256 penaltyAssets,
         address sender
     ) internal {
-        uint256 penaltyAssets = executePublicAllocations(sourceMarketParams.loanToken, reallocations);
+        executePublicAllocations(sourceMarketParams.loanToken, reallocations);
 
         bytes memory data = abi.encode(migrationData, penaltyAssets);
         (uint256 assets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, borrowShares, sender, data);
@@ -364,7 +366,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         TokenLib.forceApproveMax(sourceMarketParams.loanToken, BLUE);
     }
 
-    function onMorphoFlashLoan(uint256, bytes calldata data) external {
+    function onMorphoFlashLoan(uint256 penaltyAssets, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
         (address sender, bytes4 selector, bytes memory operationData) = abi.decode(data, (address, bytes4, bytes));
 
@@ -395,7 +397,13 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
                 bytes memory migrationData
             ) = abi.decode(operationData, (MarketParams, uint256, uint256, PublicAllocations[], bytes));
             executeMigrateBorrowPosition(
-                sourceMarketParams, borrowShares, sourceMaxSharePriceE27, reallocations, migrationData, sender
+                sourceMarketParams,
+                borrowShares,
+                sourceMaxSharePriceE27,
+                reallocations,
+                migrationData,
+                penaltyAssets,
+                sender
             );
             TokenLib.forceApproveMax(sourceMarketParams.loanToken, BLUE);
         } else {
@@ -407,20 +415,13 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
     /// @dev Each reallocation either allocates the vault's idle assets, or first deallocates assets from its source market.
     /// @dev Each allocation's destination is its own marketParams, whose loan token must be the flash-loaned loanToken, so all penalties are paid in that single token.
-    /// @dev Returns the aggregate charged penalty, computed with the same per-call upward rounding as the public allocator.
-    function executePublicAllocations(address loanToken, PublicAllocations[] memory reallocations)
-        internal
-        returns (uint256)
-    {
-        if (reallocations.length == 0) return 0;
+    function executePublicAllocations(address loanToken, PublicAllocations[] memory reallocations) internal {
 
         TokenLib.forceApproveMax(loanToken, PUBLIC_ALLOCATOR);
 
-        uint256 penaltyAssets;
         for (uint256 i; i < reallocations.length; i++) {
             PublicAllocations memory reallocation = reallocations[i];
             require(reallocation.marketParams.loanToken == loanToken, InconsistentTokens());
-            penaltyAssets += uint256(reallocation.assets).mulDivUp(reallocation.penalty, WAD);
 
             if (reallocation.fromIdle) {
                 IBluePublicAllocator(PUBLIC_ALLOCATOR)
@@ -444,8 +445,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
                     );
             }
         }
-
-        return penaltyAssets;
     }
 
     function totalPenaltyAssets(PublicAllocations[] memory reallocations) internal pure returns (uint256) {
