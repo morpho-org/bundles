@@ -247,6 +247,7 @@ contract BluePublicAllocatorTest is Test {
         list[0] = PublicAllocations({
             vault: address(vault),
             adapter: address(adapter),
+            marketParams: marketParams,
             fromIdle: false,
             sourceAdapter: address(adapter),
             sourceMarketParams: source,
@@ -260,6 +261,7 @@ contract BluePublicAllocatorTest is Test {
         list[0] = PublicAllocations({
             vault: address(vault),
             adapter: address(adapter),
+            marketParams: marketParams,
             fromIdle: true,
             sourceAdapter: address(0),
             sourceMarketParams: MarketParams(address(0), address(0), address(0), address(0), 0),
@@ -499,6 +501,9 @@ contract BluePublicAllocatorTest is Test {
         _openBorrow(marketParams, user, borrowAssets);
         uint256 collateral = morpho.position(marketParams.id(), user).collateral;
 
+        PublicAllocations[] memory reallocations = _reallocation(liquidMarketParams, reallocationAssets);
+        reallocations[0].marketParams = destMarketParams;
+
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
             marketParams,
@@ -507,7 +512,7 @@ contract BluePublicAllocatorTest is Test {
             0,
             LLTV_DEST,
             _noAuthSig(),
-            _reallocation(liquidMarketParams, reallocationAssets),
+            reallocations,
             0,
             address(0),
             block.timestamp
@@ -529,6 +534,7 @@ contract BluePublicAllocatorTest is Test {
     /// @dev Each migration reallocation independently caps the PA penalty rate it accepts.
     function testMigrateBorrowPositionPenaltyAboveReallocationMaxReverts() public {
         PublicAllocations[] memory reallocations = _reallocation(liquidMarketParams, 10e18);
+        reallocations[0].marketParams = destMarketParams;
         reallocations[0].maxPenalty = PENALTY - 1;
 
         vm.prank(user);
@@ -691,26 +697,73 @@ contract BluePublicAllocatorTest is Test {
         );
     }
 
-    /// @dev The bundle can only push liquidity into the market it acts on: the destination is never caller-supplied.
-    function testReallocationDestinationIsBundleMarket() public {
-        uint256 assets = 10e18;
-        _fundVault(VAULT_ASSETS);
-        _supplyThenDrain(marketParams, assets);
+    /// @dev Each reallocation independently selects its destination: market-sourced and idle-sourced entries can target
+    /// different markets sharing the bundle's loan token, neither of which is the market the bundle acts on.
+    function testReallocationDestinationsOtherMarkets() public {
+        uint256 borrowAssets = 10e18;
+        uint256 collateral = 2 * borrowAssets;
+        uint256 marketSourcedAssets = 4e18;
+        uint256 idleSourcedAssets = 6e18;
+        _fundVault(VAULT_ASSETS / 2);
 
-        // sourceMarketParams names the liquid market; destMarketParams is left untouched by the withdraw bundle.
-        vm.prank(user);
-        blueBundles.blueBundlesV1Withdraw(
+        // The bundle's market is already liquid, so neither reallocation needs to target it.
+        deal(address(loanToken), depositor, borrowAssets);
+        vm.startPrank(depositor);
+        loanToken.approve(address(morpho), type(uint256).max);
+        morpho.supply(marketParams, borrowAssets, 0, depositor, "");
+        vm.stopPrank();
+
+        vm.prank(allocator);
+        publicAllocator.setAbsoluteCap(address(vault), address(adapter), liquidMarketParams, type(uint128).max);
+
+        PublicAllocations[] memory reallocations = new PublicAllocations[](2);
+        reallocations[0] = _reallocation(liquidMarketParams, marketSourcedAssets)[0];
+        reallocations[0].marketParams = destMarketParams;
+        reallocations[1] = _idleReallocation(idleSourcedAssets)[0];
+        reallocations[1].marketParams = liquidMarketParams;
+
+        _fundWeth(user, collateral);
+        vm.startPrank(user);
+        weth.approve(address(blueBundles), type(uint256).max);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
             marketParams,
-            assets,
+            collateral,
+            borrowAssets,
             0,
+            WAD,
+            _noPermit(),
             _noAuthSig(),
-            _reallocation(liquidMarketParams, assets),
+            reallocations,
             0,
             address(0),
             block.timestamp
         );
+        vm.stopPrank();
 
-        assertEq(_allocation(marketParams), assets, "liquidity landed in the bundle's market");
-        assertEq(_allocation(destMarketParams), 0, "no other market was funded");
+        uint256 penaltyAssets = _penaltyAssets(marketSourcedAssets) + _penaltyAssets(idleSourcedAssets);
+        assertEq(loanToken.balanceOf(user), borrowAssets - penaltyAssets, "user borrowed net of penalties");
+        assertEq(_allocation(destMarketParams), marketSourcedAssets, "market-sourced destination");
+        assertEq(
+            _allocation(liquidMarketParams),
+            VAULT_ASSETS / 2 - marketSourcedAssets + idleSourcedAssets,
+            "idle-sourced destination"
+        );
+        assertEq(_allocation(marketParams), 0, "bundle market not funded by the vault");
+    }
+
+    /// @dev A reallocation destination whose loan token differs from the bundle's is rejected: penalties are paid in the bundle's loan token.
+    function testReallocationDestinationLoanTokenMismatchReverts() public {
+        uint256 assets = 10e18;
+        _fundVault(VAULT_ASSETS);
+        _supplyThenDrain(marketParams, assets);
+
+        PublicAllocations[] memory reallocations = _reallocation(liquidMarketParams, assets);
+        reallocations[0].marketParams.loanToken = address(weth);
+
+        vm.prank(user);
+        vm.expectRevert(IBlueBundlesV1.InconsistentTokens.selector);
+        blueBundles.blueBundlesV1Withdraw(
+            marketParams, assets, 0, _noAuthSig(), reallocations, 0, address(0), block.timestamp
+        );
     }
 }

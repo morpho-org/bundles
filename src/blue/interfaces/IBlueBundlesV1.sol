@@ -13,14 +13,15 @@ struct SignedAuthorization {
     uint256 deadline;
 }
 
-/// @dev A single allocation of liquidity to the market the bundle acts on, through the public allocator.
-/// @dev adapter holds the destination market, sourceAdapter the market assets are deallocated from; both must be active on the public allocator.
+/// @dev A single allocation of liquidity to marketParams, through the public allocator.
+/// @dev adapter holds the destination market marketParams, sourceAdapter the market assets are deallocated from; both must be active on the public allocator.
 /// @dev When fromIdle is true, the vault's idle assets are allocated and sourceAdapter and sourceMarketParams are ignored; otherwise assets are first deallocated from sourceAdapter's sourceMarketParams.
-/// @dev The destination is always the market the bundle acts on, so a bundle can only push liquidity where it is about to borrow or withdraw.
+/// @dev marketParams.loanToken must be the loan token of the market the bundle acts on: penalties are all paid in that token.
 /// @dev maxPenalty is the maximum WAD-scaled public allocator penalty accepted for this allocation.
 struct PublicAllocations {
     address vault;
     address adapter;
+    MarketParams marketParams;
     bool fromIdle;
     address sourceAdapter;
     MarketParams sourceMarketParams;
