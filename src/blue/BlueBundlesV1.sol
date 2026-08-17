@@ -3,7 +3,6 @@
 pragma solidity 0.8.34;
 
 import {IBlueBundlesV1, SignedAuthorization, PublicAllocations} from "./interfaces/IBlueBundlesV1.sol";
-import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {
     IBluePublicAllocator
 } from "../../lib/vault-v2/src/periphery/blue-public-allocator/interfaces/IBluePublicAllocator.sol";
@@ -40,6 +39,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
     address public immutable BLUE;
     address public immutable PUBLIC_ALLOCATOR;
+
+    /// @dev Carries the withdrawn assets from the flash-loan callback back to the entrypoint, where the payout happens.
+    uint256 internal transient withdrawnAssetsTransient;
 
     constructor(address _blue, address _publicAllocator) {
         BLUE = _blue;
@@ -220,7 +222,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
         setAuthorizationWithSig(signedAuthorization);
 
-        uint256 balanceBefore = IERC20(marketParams.loanToken).balanceOf(address(this));
         uint256 penaltyAssets = totalPenaltyAssets(reallocations);
         if (penaltyAssets == 0) {
             executeWithdraw(marketParams, withdrawAssets, withdrawShares, reallocations, msg.sender);
@@ -234,7 +235,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
                 );
         }
 
-        uint256 receivedAssets = IERC20(marketParams.loanToken).balanceOf(address(this)) - balanceBefore;
+        uint256 receivedAssets = withdrawnAssetsTransient - penaltyAssets;
         uint256 referralFeeAssets = receivedAssets.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
@@ -250,7 +251,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         address sender
     ) internal {
         executePublicAllocations(marketParams.loanToken, reallocations);
-        IMorpho(BLUE).withdraw(marketParams, withdrawAssets, withdrawShares, sender, address(this));
+        (withdrawnAssetsTransient,) =
+            IMorpho(BLUE).withdraw(marketParams, withdrawAssets, withdrawShares, sender, address(this));
     }
 
     /// @dev Moves the full position of msg.sender (collateral and borrow shares, read from Blue) from the source market to the destination market.

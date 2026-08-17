@@ -26,12 +26,31 @@ methods {
     function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
     function _.withdraw(uint256 amount) external => summaryUnwrapNative(calledContract, amount) expect void;
 
-    // Balance reads.
-    function _.balanceOf(address account) external => cvlBalanceOf(calledContract, account) expect(uint256);
-
     // Balance-neutral calls.
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => NONDET;
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
+
+    // The bundler's penalty total (UtilsLib) and the public allocator's pulls (MathLib) share one uninterpreted
+    // function, so their equality follows by congruence instead of nonlinear arithmetic.
+    function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
+    function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
+
+    // The public allocator's penalty pull is a low-level token.call whose sighash the prover cannot resolve
+    // statically, so the _.transferFrom wildcard misses it; summarize the library function instead.
+    function SafeERC20Lib.safeTransferFrom(address token, address from, address to, uint256 value) internal => cvlSafeTransferFrom(token, from, to, value);
+}
+
+// Uninterpreted rounding-up mulDiv shared by both implementations.
+persistent ghost mulDivUpG(uint256, uint256, uint256) returns uint256;
+
+// The public allocator can never register the bundler as a vault (its setters require isVaultV2), so a reallocation
+// whose vault is the bundler always reverts on InactiveAdapter; the linked allocator's symbolic storage cannot know
+// this, so exclude it (up to loop_iter elements).
+function reallocationsAssumptions(BlueBundlesV1.PublicAllocations[] reallocations) {
+    require reallocations.length <= 3, "loop bound";
+    require reallocations.length > 0 => reallocations[0].vault != currentContract, "bundler is not a vault";
+    require reallocations.length > 1 => reallocations[1].vault != currentContract, "bundler is not a vault";
+    require reallocations.length > 2 => reallocations[2].vault != currentContract, "bundler is not a vault";
 }
 
 // Bundler ERC20 balances.
@@ -55,10 +74,8 @@ function cvlTransferFrom(address token, address from, address to, uint256 amount
     return true;
 }
 
-function cvlBalanceOf(address token, address account) returns uint256 {
-    if (account == currentContract) return require_uint256(bundlerBalance[token]);
-    uint256 other;
-    return other;
+function cvlSafeTransferFrom(address token, address from, address to, uint256 value) {
+    cvlTransferFrom(token, from, to, value);
 }
 
 function summaryPermit2Transfer(address token, address from, address to, uint256 amount) {
@@ -136,6 +153,7 @@ rule supplyPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint
 rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 withdrawAssets, uint256 withdrawShares, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 feePct, address recipient, address token, uint256 deadline) {
     require e.msg.sender != currentContract, "external caller";
     require recipient != currentContract, "no fee residue";
+    reallocationsAssumptions(reallocations);
 
     mathint before = bundlerBalance[token];
     mathint nativeSentBefore = nativeSentByBundler;
@@ -148,6 +166,7 @@ rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, ui
 rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAmount, uint256 borrowAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit permit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 feePct, address recipient, address token, uint256 deadline) {
     require e.msg.sender != currentContract, "external caller";
     require recipient != currentContract, "no fee residue";
+    reallocationsAssumptions(reallocations);
 
     mathint before = bundlerBalance[token];
     mathint nativeSentBefore = nativeSentByBundler;
@@ -172,6 +191,7 @@ rule repayAndWithdrawCollateralPreservesBalance(env e, BlueBundlesV1.MarketParam
 rule migrateBorrowPositionPreservesBalance(env e, BlueBundlesV1.MarketParams sourceMarketParams, BlueBundlesV1.MarketParams destMarketParams, uint256 sourceMaxSharePriceE27, uint256 destMinSharePriceE27, uint256 maxLtv, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 feePct, address recipient, address token, uint256 deadline) {
     require e.msg.sender != currentContract, "external caller";
     require recipient != currentContract, "no fee residue";
+    reallocationsAssumptions(reallocations);
 
     mathint before = bundlerBalance[token];
     mathint nativeSentBefore = nativeSentByBundler;
