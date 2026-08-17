@@ -10,7 +10,6 @@ import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/Morp
 import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {ErrorsLib as BlueErrorsLib} from "../lib/morpho-blue/src/libraries/ErrorsLib.sol";
-import {ErrorsLib as VaultErrorsLib} from "../lib/vault-v2/src/libraries/ErrorsLib.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 
@@ -252,7 +251,8 @@ contract BluePublicAllocatorTest is Test {
             fromIdle: false,
             sourceAdapter: address(adapter),
             sourceMarketParams: source,
-            assets: uint128(assets)
+            assets: uint128(assets),
+            penalty: PENALTY
         });
     }
 
@@ -265,7 +265,8 @@ contract BluePublicAllocatorTest is Test {
             fromIdle: true,
             sourceAdapter: address(0),
             sourceMarketParams: MarketParams(address(0), address(0), address(0), address(0), 0),
-            assets: uint128(assets)
+            assets: uint128(assets),
+            penalty: PENALTY
         });
     }
 
@@ -286,7 +287,7 @@ contract BluePublicAllocatorTest is Test {
         vm.prank(user);
         vm.expectRevert(bytes(BlueErrorsLib.INSUFFICIENT_LIQUIDITY));
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, assets, 0, _noAuthSig(), new PublicAllocations[](0), 0, 0, address(0), block.timestamp
+            marketParams, assets, 0, _noAuthSig(), new PublicAllocations[](0), 0, address(0), block.timestamp
         );
     }
 
@@ -305,7 +306,6 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
-            penaltyAssets,
             0,
             address(0),
             block.timestamp
@@ -336,7 +336,6 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
-            penaltyAssets,
             0,
             address(0),
             block.timestamp
@@ -361,15 +360,7 @@ contract BluePublicAllocatorTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1Withdraw(
-            marketParams,
-            assets,
-            0,
-            _noAuthSig(),
-            _idleReallocation(assets),
-            penaltyAssets,
-            0,
-            address(0),
-            block.timestamp
+            marketParams, assets, 0, _noAuthSig(), _idleReallocation(assets), 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(user), assets - _penaltyAssets(assets), "user received assets net of penalty");
@@ -393,7 +384,7 @@ contract BluePublicAllocatorTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, assets, 0, _noAuthSig(), reallocations, _penaltyAssets(assets), 0, address(0), block.timestamp
+            marketParams, assets, 0, _noAuthSig(), reallocations, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(user), assets - _penaltyAssets(assets), "user received assets net of penalty");
@@ -419,7 +410,7 @@ contract BluePublicAllocatorTest is Test {
         uint256 penaltyAssets = 2 * _penaltyAssets(assets / 2);
         vm.prank(user);
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, assets, 0, _noAuthSig(), reallocations, penaltyAssets, 0, address(0), block.timestamp
+            marketParams, assets, 0, _noAuthSig(), reallocations, 0, address(0), block.timestamp
         );
         assertEq(loanToken.balanceOf(user), assets - penaltyAssets, "user received assets net of penalties");
         assertEq(_allocation(marketParams), assets, "vault took over the market");
@@ -450,7 +441,6 @@ contract BluePublicAllocatorTest is Test {
             _noPermit(),
             _noAuthSig(),
             _reallocation(liquidMarketParams, borrowAssets),
-            _penaltyAssets(borrowAssets),
             0,
             address(0),
             block.timestamp
@@ -480,7 +470,6 @@ contract BluePublicAllocatorTest is Test {
             _noPermit(),
             _noAuthSig(),
             _reallocation(liquidMarketParams, borrowAssets),
-            _penaltyAssets(borrowAssets),
             0,
             address(0),
             block.timestamp
@@ -524,7 +513,6 @@ contract BluePublicAllocatorTest is Test {
             LLTV_DEST,
             _noAuthSig(),
             reallocations,
-            _penaltyAssets(reallocationAssets),
             0,
             address(0),
             block.timestamp
@@ -543,29 +531,7 @@ contract BluePublicAllocatorTest is Test {
 
     /// PENALTY SLIPPAGE ///
 
-    /// @dev The maxPenaltyAssets allowance is all the public allocator can pull: a bound below the actual penalty
-    /// makes the penalty transfer revert.
-    function testWithdrawMaxPenaltyAssetsTooLowReverts() public {
-        uint256 assets = 10e18;
-        _fundVault(VAULT_ASSETS);
-        _supplyThenDrain(marketParams, assets);
-
-        vm.prank(user);
-        vm.expectRevert(VaultErrorsLib.TransferFromReverted.selector);
-        blueBundles.blueBundlesV1Withdraw(
-            marketParams,
-            assets,
-            0,
-            _noAuthSig(),
-            _reallocation(liquidMarketParams, assets),
-            _penaltyAssets(assets) - 1,
-            0,
-            address(0),
-            block.timestamp
-        );
-    }
-
-    /// @dev An allocator raising the penalty above the bundle's maxPenaltyAssets makes the bundle revert.
+    /// @dev An allocator raising the penalty rate above the one passed makes the public allocator revert the bundle.
     function testWithdrawPenaltyRaisedReverts() public {
         uint256 assets = 10e18;
         _fundVault(VAULT_ASSETS);
@@ -575,45 +541,40 @@ contract BluePublicAllocatorTest is Test {
         publicAllocator.setPenalty(address(vault), 2 * PENALTY);
 
         vm.prank(user);
-        vm.expectRevert(VaultErrorsLib.TransferFromReverted.selector);
+        vm.expectRevert(IBluePublicAllocator.IncorrectPenalty.selector);
         blueBundles.blueBundlesV1Withdraw(
             marketParams,
             assets,
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
-            _penaltyAssets(assets),
             0,
             address(0),
             block.timestamp
         );
     }
 
-    /// @dev A favorable penalty change is accepted and only the actual lower penalty is deducted.
-    function testWithdrawPenaltyLowered() public {
+    /// @dev The public allocator's penalty check is an exact match: even a favorable rate change reverts the bundle.
+    function testWithdrawPenaltyLoweredReverts() public {
         uint256 assets = 10e18;
         _fundVault(VAULT_ASSETS);
         _supplyThenDrain(marketParams, assets);
 
-        uint64 lowerPenalty = PENALTY / 2;
         vm.prank(allocator);
-        publicAllocator.setPenalty(address(vault), lowerPenalty);
+        publicAllocator.setPenalty(address(vault), PENALTY / 2);
 
         vm.prank(user);
+        vm.expectRevert(IBluePublicAllocator.IncorrectPenalty.selector);
         blueBundles.blueBundlesV1Withdraw(
             marketParams,
             assets,
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
-            _penaltyAssets(assets),
             0,
             address(0),
             block.timestamp
         );
-
-        uint256 penaltyAssets = (assets * lowerPenalty + WAD - 1) / WAD;
-        assertEq(loanToken.balanceOf(user), assets - penaltyAssets, "only actual penalty deducted");
     }
 
     /// @dev With no penalty set, the entrypoints stay usable and skip the flash loan entirely.
@@ -625,17 +586,12 @@ contract BluePublicAllocatorTest is Test {
         vm.prank(allocator);
         publicAllocator.setPenalty(address(vault), 0);
 
+        PublicAllocations[] memory reallocations = _reallocation(liquidMarketParams, assets);
+        reallocations[0].penalty = 0;
+
         vm.prank(user);
         blueBundles.blueBundlesV1Withdraw(
-            marketParams,
-            assets,
-            0,
-            _noAuthSig(),
-            _reallocation(liquidMarketParams, assets),
-            0,
-            0,
-            address(0),
-            block.timestamp
+            marketParams, assets, 0, _noAuthSig(), reallocations, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(user), assets, "user received the loan token");
@@ -660,7 +616,6 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
-            _penaltyAssets(assets),
             0,
             address(0),
             block.timestamp
@@ -684,7 +639,6 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
-            _penaltyAssets(assets),
             0,
             address(0),
             block.timestamp
@@ -708,7 +662,6 @@ contract BluePublicAllocatorTest is Test {
             0,
             _noAuthSig(),
             _reallocation(liquidMarketParams, assets),
-            _penaltyAssets(assets),
             0,
             address(0),
             block.timestamp
@@ -753,7 +706,6 @@ contract BluePublicAllocatorTest is Test {
             _noPermit(),
             _noAuthSig(),
             reallocations,
-            penaltyAssets,
             0,
             address(0),
             block.timestamp
@@ -783,7 +735,7 @@ contract BluePublicAllocatorTest is Test {
         vm.prank(user);
         vm.expectRevert(IBlueBundlesV1.InconsistentTokens.selector);
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, assets, 0, _noAuthSig(), reallocations, _penaltyAssets(assets), 0, address(0), block.timestamp
+            marketParams, assets, 0, _noAuthSig(), reallocations, 0, address(0), block.timestamp
         );
     }
 }

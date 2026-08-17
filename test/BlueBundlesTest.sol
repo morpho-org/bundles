@@ -200,7 +200,6 @@ contract BlueBundlesTest is Test {
             authSig,
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -222,7 +221,7 @@ contract BlueBundlesTest is Test {
         morpho.supply(marketParams, assets, 0, sigUser, "");
 
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, assets, 0, authSig, _noReallocations(), 0, 0, address(0), block.timestamp
+            marketParams, assets, 0, authSig, _noReallocations(), 0, address(0), block.timestamp
         );
         vm.stopPrank();
 
@@ -261,7 +260,6 @@ contract BlueBundlesTest is Test {
             authSig,
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -292,7 +290,6 @@ contract BlueBundlesTest is Test {
             _noPermit(),
             authSig,
             _noReallocations(),
-            0,
             0,
             address(0),
             block.timestamp
@@ -326,7 +323,6 @@ contract BlueBundlesTest is Test {
             authSig,
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -355,7 +351,6 @@ contract BlueBundlesTest is Test {
             _noPermit(),
             authSig,
             _noReallocations(),
-            0,
             0,
             address(0),
             block.timestamp
@@ -396,7 +391,6 @@ contract BlueBundlesTest is Test {
             _noPermit(),
             authSig,
             _noReallocations(),
-            0,
             0,
             address(0),
             block.timestamp
@@ -469,7 +463,6 @@ contract BlueBundlesTest is Test {
             authSig,
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -500,7 +493,6 @@ contract BlueBundlesTest is Test {
             authSig,
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -517,18 +509,7 @@ contract BlueBundlesTest is Test {
 
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams,
-            1,
-            1,
-            0,
-            WAD,
-            _noPermit(),
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            WAD,
-            address(0),
-            block.timestamp
+            marketParams, 1, 1, 0, WAD, _noPermit(), _noAuthSig(), _noReallocations(), WAD, address(0), block.timestamp
         );
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
@@ -551,7 +532,7 @@ contract BlueBundlesTest is Test {
         );
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, 1, 0, _noAuthSig(), _noReallocations(), 0, WAD, address(0), block.timestamp
+            marketParams, 1, 0, _noAuthSig(), _noReallocations(), WAD, address(0), block.timestamp
         );
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
@@ -562,7 +543,6 @@ contract BlueBundlesTest is Test {
             WAD,
             _noAuthSig(),
             _noReallocations(),
-            0,
             WAD,
             address(0),
             block.timestamp
@@ -577,7 +557,7 @@ contract BlueBundlesTest is Test {
         vm.startPrank(user);
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams, 1, 1, 0, WAD, _noPermit(), _noAuthSig(), _noReallocations(), 0, 0, address(0), past
+            marketParams, 1, 1, 0, WAD, _noPermit(), _noAuthSig(), _noReallocations(), 0, address(0), past
         );
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
@@ -586,7 +566,7 @@ contract BlueBundlesTest is Test {
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.blueBundlesV1Supply(marketParams, 1, type(uint256).max, _noPermit(), 0, address(0), past);
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
-        blueBundles.blueBundlesV1Withdraw(marketParams, 1, 0, _noAuthSig(), _noReallocations(), 0, 0, address(0), past);
+        blueBundles.blueBundlesV1Withdraw(marketParams, 1, 0, _noAuthSig(), _noReallocations(), 0, address(0), past);
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
             marketParams,
@@ -596,7 +576,6 @@ contract BlueBundlesTest is Test {
             WAD,
             _noAuthSig(),
             _noReallocations(),
-            0,
             0,
             address(0),
             past
@@ -622,7 +601,6 @@ contract BlueBundlesTest is Test {
             _noPermit(),
             _noAuthSig(),
             _noReallocations(),
-            0,
             0,
             address(0),
             block.timestamp
@@ -668,7 +646,6 @@ contract BlueBundlesTest is Test {
             _noAuthSig(),
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -701,7 +678,6 @@ contract BlueBundlesTest is Test {
             _noPermit(),
             _noAuthSig(),
             _noReallocations(),
-            0,
             referralFeePct,
             referrer,
             block.timestamp
@@ -735,7 +711,6 @@ contract BlueBundlesTest is Test {
             _noPermit(),
             _noAuthSig(),
             _noReallocations(),
-            0,
             referralFeePct,
             referrer,
             block.timestamp
@@ -772,7 +747,6 @@ contract BlueBundlesTest is Test {
             _noAuthSig(),
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -786,7 +760,6 @@ contract BlueBundlesTest is Test {
             _noPermit(),
             _noAuthSig(),
             _noReallocations(),
-            0,
             0,
             address(0),
             block.timestamp
@@ -1262,7 +1235,7 @@ contract BlueBundlesTest is Test {
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(marketParams, supplyAssets, 0, user, "");
         blueBundles.blueBundlesV1Withdraw(
-            marketParams, withdrawAssets, 0, _noAuthSig(), _noReallocations(), 0, 0, address(0), block.timestamp
+            marketParams, withdrawAssets, 0, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
         );
         vm.stopPrank();
 
@@ -1283,15 +1256,7 @@ contract BlueBundlesTest is Test {
         loanToken.approve(address(morpho), type(uint256).max);
         morpho.supply(marketParams, supplyAssets, 0, user, "");
         blueBundles.blueBundlesV1Withdraw(
-            marketParams,
-            withdrawAssets,
-            0,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            referralFeePct,
-            referrer,
-            block.timestamp
+            marketParams, withdrawAssets, 0, _noAuthSig(), _noReallocations(), referralFeePct, referrer, block.timestamp
         );
         vm.stopPrank();
 
@@ -1318,15 +1283,7 @@ contract BlueBundlesTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1Withdraw(
-            marketParams,
-            withdrawAssets,
-            0,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            referralFeePct,
-            referrer,
-            block.timestamp
+            marketParams, withdrawAssets, 0, _noAuthSig(), _noReallocations(), referralFeePct, referrer, block.timestamp
         );
 
         assertEq(loanToken.balanceOf(user), targetNet, "net equals target");
@@ -1347,7 +1304,6 @@ contract BlueBundlesTest is Test {
             morpho.supplyShares(id, user),
             _noAuthSig(),
             _noReallocations(),
-            0,
             referralFeePct,
             referrer,
             block.timestamp
@@ -1387,7 +1343,6 @@ contract BlueBundlesTest is Test {
             _noAuthSig(),
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -1413,7 +1368,6 @@ contract BlueBundlesTest is Test {
             _noAuthSig(),
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -1427,7 +1381,6 @@ contract BlueBundlesTest is Test {
             fitLtv,
             _noAuthSig(),
             _noReallocations(),
-            0,
             0,
             address(0),
             block.timestamp
@@ -1455,7 +1408,6 @@ contract BlueBundlesTest is Test {
             maxLtv,
             _noAuthSig(),
             _noReallocations(),
-            0,
             referralFeePct,
             referrer,
             block.timestamp
@@ -1470,7 +1422,6 @@ contract BlueBundlesTest is Test {
             maxLtv,
             _noAuthSig(),
             _noReallocations(),
-            0,
             0,
             address(0),
             block.timestamp
@@ -1498,7 +1449,6 @@ contract BlueBundlesTest is Test {
             LLTV_DEST,
             _noAuthSig(),
             _noReallocations(),
-            0,
             0,
             address(0),
             block.timestamp
@@ -1528,7 +1478,6 @@ contract BlueBundlesTest is Test {
             _noAuthSig(),
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -1549,7 +1498,6 @@ contract BlueBundlesTest is Test {
             WAD,
             _noAuthSig(),
             _noReallocations(),
-            0,
             0,
             address(0),
             block.timestamp
@@ -1586,7 +1534,6 @@ contract BlueBundlesTest is Test {
             WAD,
             _noAuthSig(),
             _noReallocations(),
-            0,
             referralFeePct,
             referrer,
             block.timestamp
@@ -1623,7 +1570,6 @@ contract BlueBundlesTest is Test {
             _noAuthSig(),
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -1656,7 +1602,6 @@ contract BlueBundlesTest is Test {
             WAD,
             _noAuthSig(),
             _noReallocations(),
-            0,
             0,
             address(0),
             block.timestamp
@@ -1701,7 +1646,6 @@ contract BlueBundlesTest is Test {
             _noAuthSig(),
             _noReallocations(),
             0,
-            0,
             address(0),
             block.timestamp
         );
@@ -1742,17 +1686,7 @@ contract BlueBundlesTest is Test {
         vm.prank(user);
         vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            1,
-            0,
-            WAD,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            0,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, 1, 0, WAD, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
         );
     }
 
@@ -1770,7 +1704,6 @@ contract BlueBundlesTest is Test {
             WAD,
             _noAuthSig(),
             _noReallocations(),
-            0,
             0,
             address(0),
             block.timestamp

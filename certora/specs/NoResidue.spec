@@ -133,26 +133,26 @@ rule supplyPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint
     assert nativeSentByBundler - nativeSentBefore - (unwrappedNative - nativeReceivedBefore) == e.msg.value;
 }
 
-rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 withdrawAssets, uint256 withdrawShares, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 maxPenaltyAssets, uint256 feePct, address recipient, address token, uint256 deadline) {
+rule withdrawPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 withdrawAssets, uint256 withdrawShares, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 feePct, address recipient, address token, uint256 deadline) {
     require e.msg.sender != currentContract, "external caller";
     require recipient != currentContract, "no fee residue";
 
     mathint before = bundlerBalance[token];
     mathint nativeSentBefore = nativeSentByBundler;
     mathint nativeReceivedBefore = unwrappedNative;
-    blueBundlesV1Withdraw(e, marketParams, withdrawAssets, withdrawShares, signedAuthorization, reallocations, maxPenaltyAssets, feePct, recipient, deadline);
+    blueBundlesV1Withdraw(e, marketParams, withdrawAssets, withdrawShares, signedAuthorization, reallocations, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
     assert nativeSentByBundler - nativeSentBefore - (unwrappedNative - nativeReceivedBefore) == e.msg.value;
 }
 
-rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAmount, uint256 borrowAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit permit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 maxPenaltyAssets, uint256 feePct, address recipient, address token, uint256 deadline) {
+rule supplyCollateralAndBorrowPreservesBalance(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAmount, uint256 borrowAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit permit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 feePct, address recipient, address token, uint256 deadline) {
     require e.msg.sender != currentContract, "external caller";
     require recipient != currentContract, "no fee residue";
 
     mathint before = bundlerBalance[token];
     mathint nativeSentBefore = nativeSentByBundler;
     mathint nativeReceivedBefore = unwrappedNative;
-    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAmount, borrowAssets, minSharePriceE27, maxLtv, permit, signedAuthorization, reallocations, maxPenaltyAssets, feePct, recipient, deadline);
+    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAmount, borrowAssets, minSharePriceE27, maxLtv, permit, signedAuthorization, reallocations, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
     assert nativeSentByBundler - nativeSentBefore - (unwrappedNative - nativeReceivedBefore) == e.msg.value;
 }
@@ -169,14 +169,14 @@ rule repayAndWithdrawCollateralPreservesBalance(env e, BlueBundlesV1.MarketParam
     assert nativeSentByBundler - nativeSentBefore - (unwrappedNative - nativeReceivedBefore) == e.msg.value;
 }
 
-rule migrateBorrowPositionPreservesBalance(env e, BlueBundlesV1.MarketParams sourceMarketParams, BlueBundlesV1.MarketParams destMarketParams, uint256 sourceMaxSharePriceE27, uint256 destMinSharePriceE27, uint256 maxLtv, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 maxPenaltyAssets, uint256 feePct, address recipient, address token, uint256 deadline) {
+rule migrateBorrowPositionPreservesBalance(env e, BlueBundlesV1.MarketParams sourceMarketParams, BlueBundlesV1.MarketParams destMarketParams, uint256 sourceMaxSharePriceE27, uint256 destMinSharePriceE27, uint256 maxLtv, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 feePct, address recipient, address token, uint256 deadline) {
     require e.msg.sender != currentContract, "external caller";
     require recipient != currentContract, "no fee residue";
 
     mathint before = bundlerBalance[token];
     mathint nativeSentBefore = nativeSentByBundler;
     mathint nativeReceivedBefore = unwrappedNative;
-    blueBundlesV1MigrateBorrowPosition(e, sourceMarketParams, destMarketParams, sourceMaxSharePriceE27, destMinSharePriceE27, maxLtv, signedAuthorization, reallocations, maxPenaltyAssets, feePct, recipient, deadline);
+    blueBundlesV1MigrateBorrowPosition(e, sourceMarketParams, destMarketParams, sourceMaxSharePriceE27, destMinSharePriceE27, maxLtv, signedAuthorization, reallocations, feePct, recipient, deadline);
     assert bundlerBalance[token] == before;
     assert nativeSentByBundler - nativeSentBefore - (unwrappedNative - nativeReceivedBefore) == e.msg.value;
 }
