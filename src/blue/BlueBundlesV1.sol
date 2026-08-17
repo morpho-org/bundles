@@ -54,7 +54,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Pulls collateralAssets as an ERC20 (optionally via ERC-2612 or Permit2), supplies it on Blue, then borrows borrowAssets on behalf of msg.sender.
     /// @dev When native tokens are sent, collateralPermit.kind must be PermitKind.None and collateralAssets must equal msg.value; the native tokens are wrapped into marketParams.collateralToken (which must be the wrapped-native token) instead of being pulled.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
-    /// @dev The public allocator penalties are deducted from the borrowed assets (the flash-loan repayment enforces penalties <= borrowAssets) and the referral fee is charged on the remaining balance; the rest is sent to msg.sender. Fee = (borrowAssets - penalties) * referralFeePct / WAD; net = borrowAssets - penalties - fee.
+    /// @dev The public allocator penalties are deducted from the borrowed assets (the flash-loan repayment enforces penalties <= borrowAssets) and the referral fee is charged on the remainder; the rest is sent to msg.sender. Fee = (borrowAssets - penalties) * referralFeePct / WAD; net = borrowAssets - penalties - fee.
     /// @dev maxLtv caps msg.sender's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
     /// @dev maxPenaltyAssets is flash loaned to pay the public allocator penalties upfront and upper-bounds their aggregate amount.
@@ -82,6 +82,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
             IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
         }
 
+        uint256 balanceBefore = IERC20(marketParams.loanToken).balanceOf(address(this));
         if (maxPenaltyAssets == 0) {
             executeBorrow(marketParams, borrowAssets, minSharePriceE27, reallocations, msg.sender);
         } else {
@@ -95,12 +96,12 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         }
         requireMaxLtv(marketParams, msg.sender, maxLtv);
 
-        uint256 balance = IERC20(marketParams.loanToken).balanceOf(address(this));
-        uint256 referralFeeAssets = balance.mulDivDown(referralFeePct, WAD);
+        uint256 receivedAssets = IERC20(marketParams.loanToken).balanceOf(address(this)) - balanceBefore;
+        uint256 referralFeeAssets = receivedAssets.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, balance - referralFeeAssets);
+        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, receivedAssets - referralFeeAssets);
     }
 
     function executeBorrow(
@@ -202,7 +203,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Withdraws from msg.sender's supply position.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev Exactly one of withdrawAssets and withdrawShares should be non-zero: the position is withdrawn by assets, or by shares. To close the full supply position so no supply shares remain, pass msg.sender's full supply shares as withdrawShares.
-    /// @dev The public allocator penalties are deducted from the withdrawn assets (the flash-loan repayment enforces penalties <= withdrawnAssets) and the referral fee is charged on the remaining balance; the rest is sent to msg.sender. Fee = (withdrawnAssets - penalties) * referralFeePct / WAD; net = withdrawnAssets - penalties - fee.
+    /// @dev The public allocator penalties are deducted from the withdrawn assets (the flash-loan repayment enforces penalties <= withdrawnAssets) and the referral fee is charged on the remainder; the rest is sent to msg.sender. Fee = (withdrawnAssets - penalties) * referralFeePct / WAD; net = withdrawnAssets - penalties - fee.
     /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
     /// @dev maxPenaltyAssets is flash loaned to pay the public allocator penalties upfront and upper-bounds their aggregate amount.
     function blueBundlesV1Withdraw(
@@ -221,6 +222,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
         setAuthorizationWithSig(signedAuthorization);
 
+        uint256 balanceBefore = IERC20(marketParams.loanToken).balanceOf(address(this));
         if (maxPenaltyAssets == 0) {
             executeWithdraw(marketParams, withdrawAssets, withdrawShares, reallocations, msg.sender);
         } else {
@@ -233,12 +235,12 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
                 );
         }
 
-        uint256 balance = IERC20(marketParams.loanToken).balanceOf(address(this));
-        uint256 referralFeeAssets = balance.mulDivDown(referralFeePct, WAD);
+        uint256 receivedAssets = IERC20(marketParams.loanToken).balanceOf(address(this)) - balanceBefore;
+        uint256 referralFeeAssets = receivedAssets.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, balance - referralFeeAssets);
+        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, receivedAssets - referralFeeAssets);
     }
 
     function executeWithdraw(
