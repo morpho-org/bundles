@@ -60,4 +60,33 @@ jobs:
           done > compare/new.tsv
           [ -s compare/new.tsv ] || { echo "new manifest is empty"; exit 1; }
       - name: Compare bytecode
-        run: diff -u compare/old.tsv compare/new.tsv
+        run: |
+          if cmp -s compare/old.tsv compare/new.tsv; then
+            echo "bytecode is identical"
+            exit 0
+          fi
+          cut -f1 compare/old.tsv | LC_ALL=C sort > compare/old.names
+          cut -f1 compare/new.tsv | LC_ALL=C sort > compare/new.names
+          LC_ALL=C comm -23 compare/old.names compare/new.names > compare/only-old
+          LC_ALL=C comm -13 compare/old.names compare/new.names > compare/only-new
+          awk -F'\t' '
+            NR == FNR { bytecode[$1] = $2; deployed[$1] = $3; next }
+            !($1 in bytecode) { next }
+            {
+              which = ""
+              if (bytecode[$1] != $2) which = "bytecode"
+              if (deployed[$1] != $3) which = (which == "" ? "deployedBytecode" : which ", deployedBytecode")
+              if (which != "") print $1 " (" which ")"
+            }
+          ' compare/old.tsv compare/new.tsv > compare/changed
+          report() {
+            count="$(wc -l < "$2")"
+            [ "$count" -eq 0 ] && return 0
+            echo "$1 ($count):"
+            sed 's/^/  /' "$2"
+            echo "::error title=$1 ($count)::$(head -n 20 "$2" | sed 's/$/%0A/' | tr -d '\n')"
+          }
+          report "Artifacts only in the old build" compare/only-old
+          report "Artifacts only in the new build" compare/only-new
+          report "Artifacts whose bytecode changed" compare/changed
+          exit 1
