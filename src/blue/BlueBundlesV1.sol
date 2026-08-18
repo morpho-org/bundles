@@ -415,6 +415,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Each reallocation either allocates the vault's idle assets, or first deallocates assets from its source market.
     /// @dev Each allocation's destination is its own marketParams, whose loan token must be the flash-loaned loanToken, so all penalties are paid in that single token.
     function executePublicAllocations(address loanToken, PublicAllocations[] memory reallocations) internal {
+        if (reallocations.length == 0) return;
+
         TokenLib.forceApproveMax(loanToken, PUBLIC_ALLOCATOR);
 
         for (uint256 i; i < reallocations.length; i++) {
