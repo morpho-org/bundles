@@ -31,6 +31,8 @@ Users should expect tokens left to the bundles as lost.
 - `blueBundlesV1Withdraw` — withdraw supplied loan assets (optionally by shares).
 - `blueBundlesV1MigrateBorrowPosition` — move a full borrow position (collateral and debt) from one market to another.
 
+The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollateralAndBorrow`, `blueBundlesV1Withdraw`, and `blueBundlesV1MigrateBorrowPosition`) support VaultV2's BluePublicAllocator.
+
 ### Vault bundles
 
 [VaultBundlesV1](src/vault/VaultBundlesV1.sol) contains:

@@ -13,6 +13,19 @@ struct SignedAuthorization {
     uint256 deadline;
 }
 
+/// @dev When fromIdle is true, the vault's idle assets are allocated and sourceAdapter and sourceMarketParams are ignored; otherwise assets are first deallocated from sourceAdapter's sourceMarketParams.
+/// @dev penalty is the exact WAD-scaled penalty rate and must equal the vault's configured penalty when the allocation executes.
+struct PublicAllocations {
+    address vault;
+    address adapter;
+    MarketParams marketParams;
+    bool fromIdle;
+    address sourceAdapter;
+    MarketParams sourceMarketParams;
+    uint128 assets;
+    uint64 penalty;
+}
+
 interface IBlueBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
@@ -25,6 +38,7 @@ interface IBlueBundlesV1 {
 
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);
+    function PUBLIC_ALLOCATOR() external view returns (address);
 
     /// FUNCTIONS ///
     function blueBundlesV1SupplyCollateralAndBorrow(
@@ -35,6 +49,7 @@ interface IBlueBundlesV1 {
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
         SignedAuthorization memory signedAuthorization,
+        PublicAllocations[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -67,9 +82,10 @@ interface IBlueBundlesV1 {
 
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
-        uint256 assets,
-        uint256 shares,
+        uint256 withdrawAssets,
+        uint256 withdrawShares,
         SignedAuthorization memory signedAuthorization,
+        PublicAllocations[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
@@ -82,6 +98,7 @@ interface IBlueBundlesV1 {
         uint256 destMinSharePriceE27,
         uint256 maxLtv,
         SignedAuthorization memory signedAuthorization,
+        PublicAllocations[] memory reallocations,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline

@@ -15,7 +15,7 @@ import {IERC4626} from "../lib/vault-v2/src/interfaces/IERC4626.sol";
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IVaultV2Factory} from "../lib/vault-v2/src/interfaces/IVaultV2Factory.sol";
 import {ErrorsLib} from "../lib/vault-v2/src/libraries/ErrorsLib.sol";
-import {IWhitelistSendAssetsGate} from "../lib/vault-v2/src/periphery/interfaces/IWhitelistSendAssetsGate.sol";
+import {IWhitelistSendAssetsGate} from "../lib/vault-v2/src/periphery/gates/interfaces/IWhitelistSendAssetsGate.sol";
 
 // Vault V1 (MetaMorpho) is set up over its own (nested) morpho-blue, so Morpho, MetaMorpho and this test share a
 // single market type.
@@ -740,7 +740,7 @@ contract VaultBundlesTest is Test {
             deployCode("WhitelistSendAssetsGate.sol:WhitelistSendAssetsGate", abi.encode(roleSetter))
         );
         vm.prank(roleSetter);
-        gate.setWhitelister(whitelister);
+        gate.setIsWhitelister(whitelister, true);
 
         vm.startPrank(whitelister);
         gate.setIsIntermediary(address(bundles), true);
