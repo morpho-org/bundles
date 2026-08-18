@@ -14,7 +14,6 @@ struct SignedAuthorization {
 }
 
 /// @dev When fromIdle is true, the vault's idle assets are allocated and sourceAdapter and sourceMarketParams are ignored; otherwise assets are first deallocated from sourceAdapter's sourceMarketParams.
-/// @dev marketParams.loanToken must be the loan token of the market the bundle acts on: penalties are all paid in that token.
 /// @dev penalty is the exact WAD-scaled penalty rate and must equal the vault's configured penalty when the allocation executes.
 struct PublicAllocations {
     address vault;
