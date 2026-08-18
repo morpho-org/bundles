@@ -646,7 +646,7 @@ contract BluePublicAllocatorTest is Test {
     }
 
     /// @dev An allocator cutting the destination's absolute cap to zero blocks the public inflow.
-    function testWithdrawAbsoluteCapExceededBubbles() public {
+    function testWithdrawZeroAbsoluteCapBubbles() public {
         uint256 assets = 10e18;
         _fundVault(VAULT_ASSETS);
         _supplyThenDrain(marketParams, assets);
@@ -655,7 +655,7 @@ contract BluePublicAllocatorTest is Test {
         publicAllocator.setAbsoluteCap(address(vault), address(adapter), marketParams, 0);
 
         vm.prank(user);
-        vm.expectRevert(IBluePublicAllocator.AbsoluteCapExceeded.selector);
+        vm.expectRevert(IBluePublicAllocator.ZeroAbsoluteCap.selector);
         blueBundles.blueBundlesV1Withdraw(
             marketParams,
             assets,
