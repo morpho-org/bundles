@@ -86,6 +86,16 @@ jobs:
           chmod +x solc-static-linux
           sudo mv solc-static-linux /usr/local/bin/solc-0.8.34
 
+      - name: Install solc (0.8.28)
+        env:
+          EXPECTED_SOLC_SHA256: 9a0fb7e0db2c0641dbae1c5cc645dc686820c83af516226abb1c0a2f76636f25
+        run: |
+          wget https://github.com/ethereum/solidity/releases/download/v0.8.28/solc-static-linux
+          actual="$(sha256sum solc-static-linux | awk '{print $1}')"
+          [ "$actual" = "$EXPECTED_SOLC_SHA256" ] || { echo "solc hash mismatch"; exit 1; }
+          chmod +x solc-static-linux
+          sudo mv solc-static-linux /usr/local/bin/solc-0.8.28
+
       - name: Verify ${{ matrix.conf }}
         run: certoraRun certora/confs/${{ matrix.conf }}.conf
         env:
