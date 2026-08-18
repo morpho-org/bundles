@@ -38,11 +38,25 @@ jobs:
           "$HOME/.svm/0.8.34/solc-0.8.34" --version
       - name: Build with Foundry (old)
         run: forge build --force
-      - name: Export bytecode manifest (old)
+      - name: Collect version-pinned sources
         run: |
           mkdir -p compare
+          # Only sources that pin an exact solc version are comparable across forge
+          # versions. A range pragma resolves to whatever solc each forge knows about,
+          # and a contract compiled under several compiler profiles has its artifact
+          # path disambiguated differently from one forge version to the next, so
+          # range-pragma artifacts report spurious mismatches. Everything that is
+          # actually deployed pins its version, so scope the manifests to those.
+          grep -rlE --include='*.sol' 'pragma solidity[[:space:]]+[=0-9]' src lib \
+            | sed 's|.*/||' | LC_ALL=C sort -u > compare/pinned.txt
+          [ -s compare/pinned.txt ] || { echo "no version-pinned sources found"; exit 1; }
+          echo "version-pinned sources: $(wc -l < compare/pinned.txt)"
+      - name: Export bytecode manifest (old)
+        run: |
           find out -name '*.json' -not -path '*/build-info/*' -print0 | sort -z | while IFS= read -r -d '' file; do
             rel="${file#out/}"
+            source="${rel%/*}"
+            grep -qxF "${source##*/}" compare/pinned.txt || continue
             jq -r --arg rel "$rel" '[$rel, (.bytecode.object // ""), (.deployedBytecode.object // "")] | @tsv' "$file"
           done > compare/old.tsv
           [ -s compare/old.tsv ] || { echo "old manifest is empty"; exit 1; }
@@ -56,6 +70,8 @@ jobs:
         run: |
           find out-new -name '*.json' -not -path '*/build-info/*' -print0 | sort -z | while IFS= read -r -d '' file; do
             rel="${file#out-new/}"
+            source="${rel%/*}"
+            grep -qxF "${source##*/}" compare/pinned.txt || continue
             jq -r --arg rel "$rel" '[$rel, (.bytecode.object // ""), (.deployedBytecode.object // "")] | @tsv' "$file"
           done > compare/new.tsv
           [ -s compare/new.tsv ] || { echo "new manifest is empty"; exit 1; }
