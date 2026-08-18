@@ -51,7 +51,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Receives the native tokens unwrapped from the wrapped-native token when reimbursing a native repay.
     receive() external payable {}
 
-    /// EXTERNAL ///
+    /// ENTRYPOINT FLOWS ///
 
     /// @dev Pulls collateralAssets as an ERC20 (optionally via ERC-2612 or Permit2), supplies it on Blue, then borrows borrowAssets on behalf of msg.sender.
     /// @dev When native tokens are sent, collateralPermit.kind must be PermitKind.None and collateralAssets must equal msg.value; the native tokens are wrapped into marketParams.collateralToken (which must be the wrapped-native token) instead of being pulled.
@@ -416,7 +416,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Each reallocation either allocates the vault's idle assets, or first deallocates assets from its source market.
     /// @dev Each allocation's destination is its own marketParams, whose loan token must be the flash-loaned loanToken, so all penalties are paid in that single token.
     function executePublicAllocations(address loanToken, PublicAllocations[] memory reallocations) internal {
-
         TokenLib.forceApproveMax(loanToken, PUBLIC_ALLOCATOR);
 
         for (uint256 i; i < reallocations.length; i++) {
