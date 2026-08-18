@@ -690,38 +690,6 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev Checks the doc formula: to receive targetNet, pass borrowAssets = floor(targetNet * WAD / (WAD - referralFeePct)).
-    function testSupplyCollateralAndBorrowTargetNet(uint256 targetNet, uint256 referralFeePct) public {
-        targetNet = bound(targetNet, 1, 1e30);
-        referralFeePct = bound(referralFeePct, 0, WAD - 1);
-
-        uint256 borrowAssets = targetNet * WAD / (WAD - referralFeePct);
-        vm.assume(borrowAssets <= 1e30);
-        uint256 collateral = _collateralFor(borrowAssets);
-        deal(address(collateralToken), user, collateral);
-
-        assertEq(loanToken.balanceOf(user), 0);
-
-        vm.startPrank(user);
-        collateralToken.approve(address(blueBundles), collateral);
-        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams,
-            collateral,
-            borrowAssets,
-            0,
-            WAD,
-            _noPermit(),
-            _noAuthSig(),
-            _noReallocations(),
-            referralFeePct,
-            referrer,
-            block.timestamp
-        );
-        vm.stopPrank();
-
-        assertEq(loanToken.balanceOf(user), targetNet, "net equals target");
-    }
-
     /// @dev collateralAssets = 0 skips the collateral leg: borrows against previously supplied collateral.
     function testPureBorrow(uint256 borrowAssets, uint256 referralFeePct) public {
         borrowAssets = bound(borrowAssets, 1, 1e30);

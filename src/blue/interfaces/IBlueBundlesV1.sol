@@ -13,11 +13,9 @@ struct SignedAuthorization {
     uint256 deadline;
 }
 
-/// @dev A single allocation of liquidity to marketParams, through the public allocator.
-/// @dev adapter holds the destination market marketParams, sourceAdapter the market assets are deallocated from; both must be active on the public allocator.
 /// @dev When fromIdle is true, the vault's idle assets are allocated and sourceAdapter and sourceMarketParams are ignored; otherwise assets are first deallocated from sourceAdapter's sourceMarketParams.
 /// @dev marketParams.loanToken must be the loan token of the market the bundle acts on: penalties are all paid in that token.
-/// @dev maxPenalty is the maximum WAD-scaled public allocator penalty accepted for this allocation.
+/// @dev penalty is the exact WAD-scaled penalty rate and must equal the vault's configured penalty when the allocation executes.
 struct PublicAllocations {
     address vault;
     address adapter;
@@ -26,7 +24,7 @@ struct PublicAllocations {
     address sourceAdapter;
     MarketParams sourceMarketParams;
     uint128 assets;
-    uint64 maxPenalty;
+    uint64 penalty;
 }
 
 interface IBlueBundlesV1 {
@@ -85,8 +83,8 @@ interface IBlueBundlesV1 {
 
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
-        uint256 assets,
-        uint256 shares,
+        uint256 withdrawAssets,
+        uint256 withdrawShares,
         SignedAuthorization memory signedAuthorization,
         PublicAllocations[] memory reallocations,
         uint256 referralFeePct,
