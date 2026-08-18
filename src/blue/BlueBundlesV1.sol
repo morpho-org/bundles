@@ -40,7 +40,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     address public immutable BLUE;
     address public immutable PUBLIC_ALLOCATOR;
 
-    /// @dev Carries the withdrawn assets from the flash-loan callback back to the entrypoint, where the payout happens.
     uint256 internal transient withdrawnAssetsTransient;
 
     constructor(address _blue, address _publicAllocator) {
@@ -56,7 +55,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Pulls collateralAssets as an ERC20 (optionally via ERC-2612 or Permit2), supplies it on Blue, then borrows borrowAssets on behalf of msg.sender.
     /// @dev When native tokens are sent, collateralPermit.kind must be PermitKind.None and collateralAssets must equal msg.value; the native tokens are wrapped into marketParams.collateralToken (which must be the wrapped-native token) instead of being pulled.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
-    /// @dev The public allocator penalties are deducted from the borrowed assets (the flash-loan repayment enforces penalties <= borrowAssets) and the referral fee is charged on the remainder; the rest is sent to msg.sender. Fee = (borrowAssets - penalties) * referralFeePct / WAD; net = borrowAssets - penalties - fee.
+    /// @dev The public allocator penalties are deducted from the borrowed assets and the referral fee is charged on the remainder; the rest is sent to msg.sender. Fee = (borrowAssets - penalties) * referralFeePct / WAD; net = borrowAssets - penalties - fee.
     /// @dev maxLtv caps msg.sender's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
@@ -122,7 +121,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Reimbursing native tokens requires msg.sender to be able to receive native tokens, or else it will revert.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization, if some collateral is withdrawn.
     /// @dev Exactly one of repayAssets and repayShares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as repayShares.
-    /// @dev The fee is repaidAmount * referralFeePct / (WAD - referralFeePct).
+    /// @dev The fee is repaidAssets * referralFeePct / (WAD - referralFeePct), where repaidAssets is the actual assets repaid.
     /// @dev maxLtv caps msg.sender's resulting LTV after a withdrawal; skipped on a pure repay.
     /// @dev maxSharePriceE27 upper-bounds the realized repay share price (repaid assets per share, scaled by 1e27).
     function blueBundlesV1RepayAndWithdrawCollateral(
@@ -204,7 +203,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Withdraws from msg.sender's supply position.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev Exactly one of withdrawAssets and withdrawShares should be non-zero: the position is withdrawn by assets, or by shares. To close the full supply position so no supply shares remain, pass msg.sender's full supply shares as withdrawShares.
-    /// @dev The public allocator penalties are deducted from the withdrawn assets (the flash-loan repayment enforces penalties <= withdrawnAssets) and the referral fee is charged on the remainder; the rest is sent to msg.sender. Fee = (withdrawnAssets - penalties) * referralFeePct / WAD; net = withdrawnAssets - penalties - fee.
+    /// @dev The public allocator penalties are deducted from the withdrawn assets and the referral fee is charged on the remainder; the rest is sent to msg.sender. Fee = (withdrawnAssets - penalties) * referralFeePct / WAD; net = withdrawnAssets - penalties - fee.
     /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
     function blueBundlesV1Withdraw(
