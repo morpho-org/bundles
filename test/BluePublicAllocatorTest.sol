@@ -66,6 +66,7 @@ contract BluePublicAllocatorTest is Test {
     address internal depositor = makeAddr("depositor");
     address internal borrower = makeAddr("borrower");
     address internal user = makeAddr("user");
+    address internal referrer = makeAddr("referrer");
 
     function setUp() public {
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
@@ -421,6 +422,45 @@ contract BluePublicAllocatorTest is Test {
         );
     }
 
+    /// @dev Checks the doc formula: to receive targetNet when withdrawing by assets, pass
+    /// withdrawAssets = P + floor(targetNet * WAD / (WAD - referralFeePct)), where P is the aggregate penalty of the
+    /// reallocations. The penalty is deducted before the fee, so it cancels out of the net exactly.
+    function testWithdrawTargetNetWithPenalty(uint256 targetNet, uint256 referralFeePct) public {
+        referralFeePct = bound(referralFeePct, 1, WAD - 1);
+        // Caps the gross-up so that the reallocation, sized at twice the gross-up, stays well within the vault's
+        // deposit: it is deallocated from the liquid market while the penalty is flash loaned out of Blue.
+        uint256 maxGrossAssets = VAULT_ASSETS / 4;
+        targetNet = bound(targetNet, 1, maxGrossAssets * (WAD - referralFeePct) / WAD);
+
+        uint256 grossAssets = targetNet * WAD / (WAD - referralFeePct);
+        // The reallocation amount is chosen independently of the withdrawal. PENALTY is far below WAD / 2, so the
+        // penalty is at most the gross-up and the reallocated liquidity always covers penalty plus gross-up.
+        uint256 reallocationAssets = 2 * grossAssets;
+        uint256 penaltyAssets = _penaltyAssets(reallocationAssets);
+        uint256 withdrawAssets = penaltyAssets + grossAssets;
+
+        _fundVault(VAULT_ASSETS);
+        _supplyThenDrain(marketParams, withdrawAssets);
+
+        deal(address(loanToken), user, 0);
+
+        vm.prank(user);
+        blueBundles.blueBundlesV1Withdraw(
+            marketParams,
+            withdrawAssets,
+            0,
+            _noAuthSig(),
+            _reallocation(liquidMarketParams, reallocationAssets),
+            referralFeePct,
+            referrer,
+            block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(user), targetNet, "net equals target");
+        assertEq(loanToken.balanceOf(referrer), grossAssets - targetNet, "referrer fee");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
     /// SUPPLY COLLATERAL AND BORROW ///
 
     /// @dev An empty market can be borrowed from once the vault has been pushed into it.
@@ -481,6 +521,51 @@ contract BluePublicAllocatorTest is Test {
         assertEq(user.balance, 0, "user native residual");
         assertEq(address(blueBundles).balance, 0, "bundler native residual");
         assertEq(weth.balanceOf(address(blueBundles)), 0, "bundler wrapped residual");
+    }
+
+    /// @dev Checks the doc formula: to receive targetNet, pass
+    /// borrowAssets = P + floor(targetNet * WAD / (WAD - referralFeePct)), where P is the aggregate penalty of the
+    /// reallocations. The penalty is deducted before the fee, so it cancels out of the net exactly.
+    function testSupplyCollateralAndBorrowTargetNetWithPenalty(uint256 targetNet, uint256 referralFeePct) public {
+        referralFeePct = bound(referralFeePct, 1, WAD - 1);
+        // Caps the gross-up so that the reallocation, sized at twice the gross-up, stays well within the vault's
+        // deposit: it is deallocated from the liquid market while the penalty is flash loaned out of Blue.
+        uint256 maxGrossAssets = VAULT_ASSETS / 4;
+        targetNet = bound(targetNet, 1, maxGrossAssets * (WAD - referralFeePct) / WAD);
+
+        uint256 grossAssets = targetNet * WAD / (WAD - referralFeePct);
+        // The reallocation amount is chosen independently of the borrow. PENALTY is far below WAD / 2, so the penalty
+        // is at most the gross-up and the reallocated liquidity always covers penalty plus gross-up.
+        uint256 reallocationAssets = 2 * grossAssets;
+        uint256 penaltyAssets = _penaltyAssets(reallocationAssets);
+        uint256 borrowAssets = penaltyAssets + grossAssets;
+        uint256 collateral = 2 * borrowAssets;
+
+        _fundVault(VAULT_ASSETS);
+        _fundWeth(user, collateral);
+
+        assertEq(loanToken.balanceOf(user), 0, "user starts with no loan token");
+
+        vm.startPrank(user);
+        weth.approve(address(blueBundles), type(uint256).max);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams,
+            collateral,
+            borrowAssets,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            _reallocation(liquidMarketParams, reallocationAssets),
+            referralFeePct,
+            referrer,
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(loanToken.balanceOf(user), targetNet, "net equals target");
+        assertEq(loanToken.balanceOf(referrer), grossAssets - targetNet, "referrer fee");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
     /// MIGRATE BORROW POSITION ///
