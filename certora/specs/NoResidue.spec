@@ -13,7 +13,7 @@ methods {
 
     // Morpho transfers.
     function _.supply(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(marketParams.loanToken, assets, shares) expect(uint256, uint256);
-    function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(marketParams.loanToken, data) expect(uint256, uint256);
+    function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(marketParams.loanToken) expect(uint256, uint256);
     function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(marketParams.collateralToken, assets) expect void;
     function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryBorrow(marketParams.loanToken, assets, shares, receiver) expect(uint256, uint256);
     function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryWithdraw(marketParams.loanToken, receiver) expect(uint256, uint256);
@@ -27,6 +27,7 @@ methods {
     function _.withdraw(uint256 amount) external => summaryUnwrapNative(calledContract, amount) expect void;
 
     // Balance-neutral calls.
+    function _.accrueInterest(BlueBundlesV1.MarketParams marketParams) external => NONDET;
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => NONDET;
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
 
@@ -89,13 +90,9 @@ function summarySupply(address token, uint256 assets, uint256 shares) returns (u
     return (assets, returnedShares);
 }
 
-function summaryRepay(address token, bytes data) returns (uint256, uint256) {
+function summaryRepay(address token) returns (uint256, uint256) {
     uint256 assets;
     uint256 shares;
-    if (data.length > 0) {
-        env callbackEnv;
-        onMorphoRepay(callbackEnv, assets, data);
-    }
     bundlerBalance[token] = bundlerBalance[token] - assets;
     return (assets, shares);
 }

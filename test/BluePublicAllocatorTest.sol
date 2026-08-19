@@ -7,6 +7,7 @@ import {IMorpho, MarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.s
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {MorphoLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
 import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
+import {EventsLib} from "../lib/morpho-blue/src/libraries/EventsLib.sol";
 import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {ErrorsLib as BlueErrorsLib} from "../lib/morpho-blue/src/libraries/ErrorsLib.sol";
@@ -574,7 +575,8 @@ contract BluePublicAllocatorTest is Test {
     function testMigrateBorrowPositionIlliquidDestWithReallocation() public {
         uint256 borrowAssets = 10e18;
         uint256 reallocationAssets = _grossUpForPenalty(borrowAssets);
-        _fundVault(VAULT_ASSETS);
+        uint256 penaltyAssets = _penaltyAssets(reallocationAssets);
+        _fundVault(reallocationAssets);
 
         // The source market is liquid so the user could borrow from it; the destination is empty.
         deal(address(loanToken), depositor, borrowAssets);
@@ -586,9 +588,14 @@ contract BluePublicAllocatorTest is Test {
         _openBorrow(marketParams, user, borrowAssets);
         uint256 collateral = morpho.position(marketParams.id(), user).collateral;
 
+        deal(address(loanToken), address(morpho), reallocationAssets + penaltyAssets);
+        assertEq(loanToken.balanceOf(address(morpho)), reallocationAssets + penaltyAssets, "reallocation plus penalty");
+
         PublicAllocations[] memory reallocations = _reallocation(liquidMarketParams, reallocationAssets);
         reallocations[0].marketParams = destMarketParams;
 
+        vm.expectEmit(true, true, false, true, address(morpho));
+        emit EventsLib.FlashLoan(address(blueBundles), address(loanToken), borrowAssets + penaltyAssets);
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
             marketParams,

@@ -16,10 +16,7 @@ import {
     Authorization,
     Signature
 } from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
-import {
-    IMorphoRepayCallback,
-    IMorphoFlashLoanCallback
-} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
+import {IMorphoFlashLoanCallback} from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
 import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
@@ -32,7 +29,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
-contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoanCallback {
+contract BlueBundlesV1 is IBlueBundlesV1, IMorphoFlashLoanCallback {
     using UtilsLib for uint256;
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
@@ -264,7 +261,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Use destination LLTV to disable.
     /// @dev sourceMaxSharePriceE27 upper-bounds the realized source repay share price; destMinSharePriceE27 lower-bounds the realized destination borrow share price (both assets per share, scaled by 1e27).
     /// @dev Migrating a position without debt reverts on Blue.
-    /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
+    /// @dev The full source repayment and the aggregate public allocator penalty are flash loaned.
     function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
@@ -287,43 +284,33 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
             InconsistentTokens()
         );
 
+        IMorpho(BLUE).accrueInterest(sourceMarketParams);
         Position memory position = IMorpho(BLUE).position(sourceMarketParams.id(), msg.sender);
+        Market memory sourceMarket = IMorpho(BLUE).market(sourceMarketParams.id());
+        uint256 repayAssets =
+            uint256(position.borrowShares).toAssetsUp(sourceMarket.totalBorrowAssets, sourceMarket.totalBorrowShares);
         bytes memory migrationData = abi.encode(
-            sourceMarketParams,
-            destMarketParams,
-            uint256(position.collateral),
-            msg.sender,
-            referralFeePct,
-            referralFeeRecipient,
-            destMinSharePriceE27
+            destMarketParams, uint256(position.collateral), referralFeePct, referralFeeRecipient, destMinSharePriceE27
         );
         uint256 penaltyAssets = totalPenaltyAssets(reallocations);
-        if (penaltyAssets == 0) {
-            executeMigrateBorrowPosition(
-                sourceMarketParams,
-                position.borrowShares,
-                sourceMaxSharePriceE27,
-                reallocations,
-                migrationData,
-                0,
-                msg.sender
+        bytes memory operationData = abi.encode(
+            sourceMarketParams,
+            uint256(position.borrowShares),
+            sourceMaxSharePriceE27,
+            reallocations,
+            migrationData,
+            penaltyAssets
+        );
+        TokenLib.forceApproveMax(destMarketParams.loanToken, BLUE);
+        IMorpho(BLUE)
+            .flashLoan(
+                destMarketParams.loanToken,
+                repayAssets + penaltyAssets,
+                abi.encode(msg.sender, this.blueBundlesV1MigrateBorrowPosition.selector, operationData)
             );
-        } else {
-            bytes memory operationData = abi.encode(
-                sourceMarketParams, uint256(position.borrowShares), sourceMaxSharePriceE27, reallocations, migrationData
-            );
-            TokenLib.forceApproveMax(destMarketParams.loanToken, BLUE);
-            IMorpho(BLUE)
-                .flashLoan(
-                    destMarketParams.loanToken,
-                    penaltyAssets,
-                    abi.encode(msg.sender, this.blueBundlesV1MigrateBorrowPosition.selector, operationData)
-                );
-        }
         requireMaxLtv(destMarketParams, msg.sender, maxLtv);
     }
 
-    /// @dev migrationData is the onMorphoRepay callback data, passed through opaquely; the flash-loaned penaltyAssets is appended to it.
     function executeMigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         uint256 borrowShares,
@@ -333,28 +320,20 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         uint256 penaltyAssets,
         address sender
     ) internal {
+        (uint256 repaidAssets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, borrowShares, sender, "");
+        require(repaidAssets.mulDivUp(1e27, borrowShares) <= sourceMaxSharePriceE27, SlippageExceeded());
         executePublicAllocations(sourceMarketParams.loanToken, reallocations);
 
-        bytes memory data = abi.encode(migrationData, penaltyAssets);
-        (uint256 assets,) = IMorpho(BLUE).repay(sourceMarketParams, 0, borrowShares, sender, data);
-        require(assets.mulDivUp(1e27, borrowShares) <= sourceMaxSharePriceE27, SlippageExceeded());
-    }
-
-    function onMorphoRepay(uint256 assets, bytes calldata data) external {
-        require(msg.sender == BLUE, UnauthorizedCallback());
-        (bytes memory migrationData, uint256 penaltyAssets) = abi.decode(data, (bytes, uint256));
         (
-            MarketParams memory sourceMarketParams,
             MarketParams memory destMarketParams,
             uint256 collateral,
-            address sender,
             uint256 referralFeePct,
             address referralFeeRecipient,
             uint256 destMinSharePriceE27
-        ) = abi.decode(migrationData, (MarketParams, MarketParams, uint256, address, uint256, address, uint256));
+        ) = abi.decode(migrationData, (MarketParams, uint256, uint256, address, uint256));
 
-        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD - referralFeePct);
-        uint256 borrowAssets = assets + referralFeeAssets + penaltyAssets;
+        uint256 referralFeeAssets = repaidAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
+        uint256 borrowAssets = repaidAssets + referralFeeAssets + penaltyAssets;
 
         IMorpho(BLUE).withdrawCollateral(sourceMarketParams, collateral, sender, address(this));
 
@@ -366,11 +345,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(destMarketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
-
-        TokenLib.forceApproveMax(sourceMarketParams.loanToken, BLUE);
     }
 
-    function onMorphoFlashLoan(uint256 penaltyAssets, bytes calldata data) external {
+    function onMorphoFlashLoan(uint256, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
         (address sender, bytes4 selector, bytes memory operationData) = abi.decode(data, (address, bytes4, bytes));
 
@@ -396,8 +373,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
                 uint256 borrowShares,
                 uint256 sourceMaxSharePriceE27,
                 PublicAllocations[] memory reallocations,
-                bytes memory migrationData
-            ) = abi.decode(operationData, (MarketParams, uint256, uint256, PublicAllocations[], bytes));
+                bytes memory migrationData,
+                uint256 penaltyAssets
+            ) = abi.decode(operationData, (MarketParams, uint256, uint256, PublicAllocations[], bytes, uint256));
             executeMigrateBorrowPosition(
                 sourceMarketParams,
                 borrowShares,

@@ -3,13 +3,22 @@
 pragma solidity ^0.8.0;
 
 import {Test} from "../lib/forge-std/src/Test.sol";
-import {IMorpho, MarketParams, Id, Authorization, Signature} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {
+    IMorpho,
+    IMorphoBase,
+    MarketParams,
+    Id,
+    Authorization,
+    Signature
+} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IOracle} from "../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {MorphoLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
 import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
+import {EventsLib} from "../lib/morpho-blue/src/libraries/EventsLib.sol";
 import {ORACLE_PRICE_SCALE, AUTHORIZATION_TYPEHASH} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
+import {IrmMock} from "../lib/morpho-blue/src/mocks/IrmMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
@@ -1355,9 +1364,9 @@ contract BlueBundlesTest is Test {
 
     /// MIGRATE BORROW POSITION ///
 
-    function testMigrateBorrowPositionCallbackNotBlue() public {
+    function testFlashLoanCallbackNotBlue() public {
         vm.expectRevert(IBlueBundlesV1.UnauthorizedCallback.selector);
-        blueBundles.onMorphoRepay(0, "");
+        blueBundles.onMorphoFlashLoan(0, "");
     }
 
     function testMigrateBorrowPositionInconsistentTokens() public {
@@ -1521,6 +1530,8 @@ contract BlueBundlesTest is Test {
         _openBorrow(user, borrowAssets);
         uint256 collateral = morpho.collateral(id, user);
 
+        vm.expectEmit(true, true, false, true, address(morpho));
+        emit EventsLib.FlashLoan(address(blueBundles), address(loanToken), borrowAssets);
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
             marketParams,
@@ -1543,6 +1554,46 @@ contract BlueBundlesTest is Test {
         assertEq(collateralToken.balanceOf(address(blueBundles)), 0, "bundler collateral residual");
         // Capital-free: the user's loan token balance (the original borrow proceeds) is untouched.
         assertEq(loanToken.balanceOf(user), borrowAssets, "user loan tokens untouched");
+    }
+
+    function testMigrateBorrowPositionWithAccruedInterest() public {
+        IrmMock irm = new IrmMock();
+        vm.prank(owner);
+        morpho.enableIrm(address(irm));
+
+        MarketParams memory interestSourceMarketParams = marketParams;
+        interestSourceMarketParams.irm = address(irm);
+        morpho.createMarket(interestSourceMarketParams);
+
+        uint256 supplyAssets = 1000e18;
+        uint256 borrowAssets = 100e18;
+        deal(address(loanToken), supplier, supplyAssets);
+        vm.startPrank(supplier);
+        loanToken.approve(address(morpho), supplyAssets);
+        morpho.supply(interestSourceMarketParams, supplyAssets, 0, supplier, "");
+        vm.stopPrank();
+
+        _openBorrow(interestSourceMarketParams, user, borrowAssets);
+        vm.warp(block.timestamp + 365 days);
+        uint256 expectedRepaidAssets = morpho.expectedBorrowAssets(interestSourceMarketParams, user);
+
+        vm.expectCall(address(morpho), abi.encodeCall(IMorphoBase.accrueInterest, (interestSourceMarketParams)));
+        vm.prank(user);
+        blueBundles.blueBundlesV1MigrateBorrowPosition(
+            interestSourceMarketParams,
+            destMarketParams,
+            type(uint256).max,
+            0,
+            WAD,
+            _noAuthSig(),
+            _noReallocations(),
+            0,
+            address(0),
+            block.timestamp
+        );
+
+        assertEq(morpho.borrowShares(interestSourceMarketParams.id(), user), 0, "source debt");
+        assertEq(morpho.expectedBorrowAssets(destMarketParams, user), expectedRepaidAssets, "dest debt");
     }
 
     /// @dev The fee is borrowed on the destination on top of the repaid assets, so the move stays capital-free for
