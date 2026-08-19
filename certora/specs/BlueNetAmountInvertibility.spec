@@ -2,6 +2,7 @@
 
 // Net amount inversion for the two Blue entrypoints. P is the aggregate
 // public-allocator penalty, deducted before the referral fee.
+
 methods {
     function _.transferFrom(address from, address to, uint256 amount) external => cvlTransferFrom(calledContract, from, to, amount) expect(bool);
     function _.transfer(address to, uint256 amount) external with(env e) => cvlTransferFrom(calledContract, e.msg.sender, to, amount) expect(bool);
@@ -91,9 +92,9 @@ rule blueBundlesV1WithdrawReturnsTargetNet(
     reallocationsAssumptions(reallocations);
 
     uint256 penaltyAssets;
-    for (uint256 i = 0; i < reallocations.length; i++) {
-        penaltyAssets += uint256(reallocations[i].assets).mulDivUp(uint256(reallocations[i].penalty), WAD());
-    }
+    if (reallocations.length > 0) penaltyAssets += uint256(reallocations[0].assets).mulDivUp(uint256(reallocations[0].penalty), WAD());
+    if (reallocations.length > 1) penaltyAssets += uint256(reallocations[1].assets).mulDivUp(uint256(reallocations[1].penalty), WAD());
+    if (reallocations.length > 2) penaltyAssets += uint256(reallocations[2].assets).mulDivUp(uint256(reallocations[2].penalty), WAD());
     uint256 grossAssets = summaryMulDivDown(targetNet, WAD(), assert_uint256(WAD() - referralFeePct));
     mathint before = bundlerBalance[marketParams.loanToken];
     mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
@@ -124,9 +125,9 @@ rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(
     reallocationsAssumptions(reallocations);
 
     uint256 penaltyAssets;
-    for (uint256 i = 0; i < reallocations.length; i++) {
-        penaltyAssets += uint256(reallocations[i].assets).mulDivUp(uint256(reallocations[i].penalty), WAD());
-    }
+    if (reallocations.length > 0) penaltyAssets += uint256(reallocations[0].assets).mulDivUp(uint256(reallocations[0].penalty), WAD());
+    if (reallocations.length > 1) penaltyAssets += uint256(reallocations[1].assets).mulDivUp(uint256(reallocations[1].penalty), WAD());
+    if (reallocations.length > 2) penaltyAssets += uint256(reallocations[2].assets).mulDivUp(uint256(reallocations[2].penalty), WAD());
     uint256 grossAssets = summaryMulDivDown(targetNet, WAD(), assert_uint256(WAD() - referralFeePct));
     mathint before = bundlerBalance[marketParams.loanToken];
     mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
