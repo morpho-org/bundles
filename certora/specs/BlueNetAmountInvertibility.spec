@@ -17,13 +17,15 @@ methods {
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
 
     // Both implementations use this same rounding-up penalty calculation.
-    function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns uint256 => mulDivUpG(x, y, d);
-    function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns uint256 => mulDivUpG(x, y, d);
-    function UtilsLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns uint256 => summaryMulDivDown(x, y, d);
+    function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
+    function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
+    function UtilsLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => summaryMulDivDown(x, y, d);
 }
 
 persistent ghost mulDivUpG(uint256, uint256, uint256) returns uint256;
+
 persistent ghost mapping(address => mathint) bundlerBalance;
+
 persistent ghost mapping(address => mapping(address => mathint)) recipientBalance;
 
 definition WAD() returns uint256 = 10 ^ 18;
@@ -87,16 +89,7 @@ function reallocationsAssumptions(BlueBundlesV1.PublicAllocations[] reallocation
     require reallocations.length > 2 => reallocations[2].vault != currentContract, "bundler is not a vault";
 }
 
-rule blueBundlesV1WithdrawReturnsTargetNet(
-    env e,
-    BlueBundlesV1.MarketParams marketParams,
-    BlueBundlesV1.SignedAuthorization signedAuthorization,
-    BlueBundlesV1.PublicAllocations[] reallocations,
-    uint256 referralFeePct,
-    address referralFeeRecipient,
-    uint256 deadline,
-    uint256 targetNet
-) {
+rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
     require e.msg.sender != currentContract;
     require referralFeeRecipient != currentContract;
     require referralFeeRecipient != e.msg.sender;
@@ -117,20 +110,7 @@ rule blueBundlesV1WithdrawReturnsTargetNet(
     assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
 }
 
-rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(
-    env e,
-    BlueBundlesV1.MarketParams marketParams,
-    uint256 collateralAssets,
-    uint256 minSharePriceE27,
-    uint256 maxLtv,
-    TokenLib.TokenPermit collateralPermit,
-    BlueBundlesV1.SignedAuthorization signedAuthorization,
-    BlueBundlesV1.PublicAllocations[] reallocations,
-    uint256 referralFeePct,
-    address referralFeeRecipient,
-    uint256 deadline,
-    uint256 targetNet
-) {
+rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit collateralPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
     require e.msg.sender != currentContract;
     require referralFeeRecipient != currentContract;
     require referralFeeRecipient != e.msg.sender;
