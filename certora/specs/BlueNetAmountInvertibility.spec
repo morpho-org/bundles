@@ -11,6 +11,8 @@ methods {
     function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryWithdraw(marketParams.loanToken, assets, shares, receiver) expect(uint256, uint256);
     function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(marketParams.collateralToken, assets) expect void;
     function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(token, assets, data) expect void;
+    function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
+    function SafeERC20Lib.safeTransferFrom(address token, address from, address to, uint256 value) internal => cvlSafeTransferFrom(token, from, to, value);
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => NONDET;
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
 
@@ -27,9 +29,10 @@ persistent ghost mapping(address => mapping(address => mathint)) recipientBalanc
 definition WAD() returns uint256 = 10 ^ 18;
 
 function summaryMulDivDown(uint256 a, uint256 b, uint256 d) returns uint256 {
-    if (d == 0 || a * b > max_uint256) revert();
-    mathint result = a * b / d;
-    assert result >= 0 && result <= 2 ^ 256;
+    if (d == 0) revert();
+    mathint numerator = a * b;
+    mathint result = numerator / d;
+    assert result >= 0 && result <= max_uint256;
     return require_uint256(result);
 }
 
@@ -40,12 +43,20 @@ function cvlTransferFrom(address token, address from, address to, uint256 amount
     return true;
 }
 
+function cvlSafeTransferFrom(address token, address from, address to, uint256 value) {
+    cvlTransferFrom(token, from, to, value);
+}
+
 function summaryPermit2Transfer(address token, address from, address to, uint256 amount) {
     cvlTransferFrom(token, from, to, amount);
 }
 
 function summarySupplyCollateral(address token, uint256 amount) {
     bundlerBalance[token] = bundlerBalance[token] - amount;
+}
+
+function summaryWrapNative(address token, uint256 value) {
+    bundlerBalance[token] = bundlerBalance[token] + value;
 }
 
 function summaryBorrow(address token, uint256 assets, uint256 shares, address receiver) returns (uint256, uint256) {
@@ -88,6 +99,7 @@ rule blueBundlesV1WithdrawReturnsTargetNet(
 ) {
     require e.msg.sender != currentContract;
     require referralFeeRecipient != currentContract;
+    require referralFeeRecipient != e.msg.sender;
     require referralFeePct < WAD();
     reallocationsAssumptions(reallocations);
 
@@ -121,6 +133,7 @@ rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(
 ) {
     require e.msg.sender != currentContract;
     require referralFeeRecipient != currentContract;
+    require referralFeeRecipient != e.msg.sender;
     require referralFeePct < WAD();
     reallocationsAssumptions(reallocations);
 
