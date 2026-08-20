@@ -94,21 +94,15 @@ function summaryFlashLoan(address token, uint256 assets, bytes data) {
 }
 
 function reallocationsAssumptions(BlueBundlesV1.PublicAllocations[] reallocations, address recipient) {
-    require reallocations.length <= 3, "loop bound";
+    require reallocations.length <= 2, "loop bound";
     require reallocations.length > 0 => reallocations[0].vault != currentContract, "bundler is not a vault";
     require reallocations.length > 1 => reallocations[1].vault != currentContract, "bundler is not a vault";
-    require reallocations.length > 2 => reallocations[2].vault != currentContract, "bundler is not a vault";
     require reallocations.length > 0 => reallocations[0].vault != recipient, "recipient is not a vault";
     require reallocations.length > 1 => reallocations[1].vault != recipient, "recipient is not a vault";
-    require reallocations.length > 2 => reallocations[2].vault != recipient, "recipient is not a vault";
 }
 
 function sumPenaltyAssets(BlueBundlesV1.PublicAllocations[] reallocations) returns mathint {
-    if (reallocations.length > 2) {
-        return mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD())
-            + mulDivUpG(reallocations[1].assets, reallocations[1].penalty, WAD())
-            + mulDivUpG(reallocations[2].assets, reallocations[2].penalty, WAD());
-    } else if (reallocations.length > 1) {
+    if (reallocations.length > 1) {
         return mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD())
             + mulDivUpG(reallocations[1].assets, reallocations[1].penalty, WAD());
     } else if (reallocations.length > 0) {
@@ -116,6 +110,20 @@ function sumPenaltyAssets(BlueBundlesV1.PublicAllocations[] reallocations) retur
     } else {
         return 0;
     }
+}
+
+// The inverse formula documented on both entrypoints: the gross amount floor(t * WAD / (WAD - pct))
+// nets exactly t once the fee is taken. Proven on its own, with no contract call in the query, so
+// that the entrypoint rules below can take the relation as a hypothesis and discharge their assert
+// by congruence instead of re-deriving this nonlinear identity inside a far larger query. Those
+// rules quantify over every gross amount satisfying the relation, so the two together give the
+// original statement.
+rule referralFeeInversion(uint256 targetNet, uint256 referralFeePct) {
+    require referralFeePct < WAD();
+
+    uint256 grossAssets = summaryMulDivDown(targetNet, WAD(), assert_uint256(WAD() - referralFeePct));
+
+    assert grossAssets - summaryMulDivDown(grossAssets, referralFeePct, WAD()) == targetNet;
 }
 
 rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
@@ -126,11 +134,34 @@ rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams mar
     reallocationsAssumptions(reallocations, e.msg.sender);
 
     mathint penaltyAssets = sumPenaltyAssets(reallocations);
-    uint256 grossAssets = summaryMulDivDown(targetNet, WAD(), assert_uint256(WAD() - referralFeePct));
+    uint256 grossAssets;
+    require grossAssets - summaryMulDivDown(grossAssets, referralFeePct, WAD()) == targetNet, "referralFeeInversion";
     mathint before = bundlerBalance[marketParams.loanToken];
     mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
 
     blueBundlesV1Withdraw(e, marketParams, require_uint256(penaltyAssets + grossAssets), 0, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
+
+    assert bundlerBalance[marketParams.loanToken] == before;
+    assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
+}
+
+// The same property on the no-penalty path, where the bundle carries no reallocation: Blue is
+// withdrawn from directly, without the flash loan that funds the penalties upfront. A case of the
+// rule above, kept separate because it skips the callback and its bundle re-encoding entirely, so
+// it gives fast feedback on the token flow on its own. Same for the borrow entrypoint below.
+rule blueBundlesV1WithdrawReturnsTargetNetWithoutReallocations(env e, BlueBundlesV1.MarketParams marketParams, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
+    require e.msg.sender != currentContract;
+    require referralFeeRecipient != currentContract;
+    require referralFeeRecipient != e.msg.sender;
+    require referralFeePct < WAD();
+    require reallocations.length == 0, "no penalty to flash loan";
+
+    uint256 grossAssets;
+    require grossAssets - summaryMulDivDown(grossAssets, referralFeePct, WAD()) == targetNet, "referralFeeInversion";
+    mathint before = bundlerBalance[marketParams.loanToken];
+    mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
+
+    blueBundlesV1Withdraw(e, marketParams, grossAssets, 0, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     assert bundlerBalance[marketParams.loanToken] == before;
     assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
@@ -144,11 +175,32 @@ rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1
     reallocationsAssumptions(reallocations, e.msg.sender);
 
     mathint penaltyAssets = sumPenaltyAssets(reallocations);
-    uint256 grossAssets = summaryMulDivDown(targetNet, WAD(), assert_uint256(WAD() - referralFeePct));
+    uint256 grossAssets;
+    require grossAssets - summaryMulDivDown(grossAssets, referralFeePct, WAD()) == targetNet, "referralFeeInversion";
     mathint before = bundlerBalance[marketParams.loanToken];
     mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
 
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, require_uint256(penaltyAssets + grossAssets), minSharePriceE27, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
+
+    assert bundlerBalance[marketParams.loanToken] == before;
+    assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
+}
+
+// The same property on the no-penalty path, where the bundle carries no reallocation: Blue is
+// borrowed from directly, without the flash loan that funds the penalties upfront.
+rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNetWithoutReallocations(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit collateralPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
+    require e.msg.sender != currentContract;
+    require referralFeeRecipient != currentContract;
+    require referralFeeRecipient != e.msg.sender;
+    require referralFeePct < WAD();
+    require reallocations.length == 0, "no penalty to flash loan";
+
+    uint256 grossAssets;
+    require grossAssets - summaryMulDivDown(grossAssets, referralFeePct, WAD()) == targetNet, "referralFeeInversion";
+    mathint before = bundlerBalance[marketParams.loanToken];
+    mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
+
+    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, grossAssets, minSharePriceE27, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     assert bundlerBalance[marketParams.loanToken] == before;
     assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
