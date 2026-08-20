@@ -12,16 +12,27 @@ methods {
     function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(marketParams.collateralToken, assets) expect void;
     function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(token, assets, data) expect void;
     function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
-    function SafeERC20Lib.safeTransferFrom(address token, address from, address to, uint256 value) internal => cvlSafeTransferFrom(token, from, to, value);
+    // The public allocator charges the caller mulDivUp(assets, penalty, WAD) of the destination
+    // loan token and sends it to the vault, and moves no other token of the caller. Proven of the
+    // implementation by BluePublicAllocatorPenalty.spec. Its revert conditions are dropped, which
+    // only widens the set of verified executions.
+    function _.reallocate(address vault, address deallocateAdapter, BlueBundlesV1.MarketParams deallocateMarketParams, address allocateAdapter, BlueBundlesV1.MarketParams allocateMarketParams, uint128 assets, uint64 penalty) external => summaryPublicAllocation(allocateMarketParams.loanToken, vault, assets, penalty) expect void;
+    function _.allocateFromIdle(address vault, address adapter, BlueBundlesV1.MarketParams marketParams, uint128 assets, uint64 penalty) external => summaryPublicAllocation(marketParams.loanToken, vault, assets, penalty) expect void;
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => NONDET;
+    function _.nonce(address authorizer) external => NONDET;
+
+    // Only reverts, and reads no state that the property depends on: skipping it verifies a
+    // superset of the executions (over-approximation), and drops the market id hashing, the
+    // oracle price call and two symbolic-divisor divisions.
+    function BlueBundlesV1.requireMaxLtv(BlueBundlesV1.MarketParams memory marketParams, address sender, uint256 maxLtv) internal => NONDET;
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
 
-    // Both implementations use this same rounding-up penalty calculation.
     function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
-    function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
     function UtilsLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => summaryMulDivDown(x, y, d);
 }
 
+// The bundler and the public allocator compute the penalty with the same rounding-up division, so
+// both sides of the summary above use this one uninterpreted function.
 persistent ghost mulDivUpG(uint256, uint256, uint256) returns uint256;
 
 persistent ghost mapping(address => mathint) bundlerBalance;
@@ -31,11 +42,11 @@ persistent ghost mapping(address => mapping(address => mathint)) recipientBalanc
 definition WAD() returns uint256 = 10 ^ 18;
 
 function summaryMulDivDown(uint256 a, uint256 b, uint256 d) returns uint256 {
-    if (d == 0) revert();
-    mathint numerator = a * b;
-    mathint result = numerator / d;
-    assert result >= 0 && result <= max_uint256;
-    return require_uint256(result);
+    if (d == 0 || a * b > max_uint256) {
+        revert();
+    }
+    // a * b <= max_uint256 and d >= 1 above, so the result fits.
+    return require_uint256(a * b / d);
 }
 
 function cvlTransferFrom(address token, address from, address to, uint256 amount) returns bool {
@@ -45,8 +56,8 @@ function cvlTransferFrom(address token, address from, address to, uint256 amount
     return true;
 }
 
-function cvlSafeTransferFrom(address token, address from, address to, uint256 value) {
-    cvlTransferFrom(token, from, to, value);
+function summaryPublicAllocation(address token, address vault, uint128 assets, uint64 penalty) {
+    cvlTransferFrom(token, currentContract, vault, mulDivUpG(assets, penalty, WAD()));
 }
 
 function summaryPermit2Transfer(address token, address from, address to, uint256 amount) {
@@ -82,11 +93,29 @@ function summaryFlashLoan(address token, uint256 assets, bytes data) {
     bundlerBalance[token] = bundlerBalance[token] - assets;
 }
 
-function reallocationsAssumptions(BlueBundlesV1.PublicAllocations[] reallocations) {
+function reallocationsAssumptions(BlueBundlesV1.PublicAllocations[] reallocations, address recipient) {
     require reallocations.length <= 3, "loop bound";
     require reallocations.length > 0 => reallocations[0].vault != currentContract, "bundler is not a vault";
     require reallocations.length > 1 => reallocations[1].vault != currentContract, "bundler is not a vault";
     require reallocations.length > 2 => reallocations[2].vault != currentContract, "bundler is not a vault";
+    require reallocations.length > 0 => reallocations[0].vault != recipient, "recipient is not a vault";
+    require reallocations.length > 1 => reallocations[1].vault != recipient, "recipient is not a vault";
+    require reallocations.length > 2 => reallocations[2].vault != recipient, "recipient is not a vault";
+}
+
+function sumPenaltyAssets(BlueBundlesV1.PublicAllocations[] reallocations) returns mathint {
+    if (reallocations.length > 2) {
+        return mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD())
+            + mulDivUpG(reallocations[1].assets, reallocations[1].penalty, WAD())
+            + mulDivUpG(reallocations[2].assets, reallocations[2].penalty, WAD());
+    } else if (reallocations.length > 1) {
+        return mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD())
+            + mulDivUpG(reallocations[1].assets, reallocations[1].penalty, WAD());
+    } else if (reallocations.length > 0) {
+        return mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD());
+    } else {
+        return 0;
+    }
 }
 
 rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
@@ -94,17 +123,14 @@ rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams mar
     require referralFeeRecipient != currentContract;
     require referralFeeRecipient != e.msg.sender;
     require referralFeePct < WAD();
-    reallocationsAssumptions(reallocations);
+    reallocationsAssumptions(reallocations, e.msg.sender);
 
-    uint256 penaltyAssets;
-    if (reallocations.length > 0) penaltyAssets = penaltyAssets + uint256(reallocations[0].assets).mulDivUp(uint256(reallocations[0].penalty), WAD());
-    if (reallocations.length > 1) penaltyAssets = penaltyAssets + uint256(reallocations[1].assets).mulDivUp(uint256(reallocations[1].penalty), WAD());
-    if (reallocations.length > 2) penaltyAssets = penaltyAssets + uint256(reallocations[2].assets).mulDivUp(uint256(reallocations[2].penalty), WAD());
+    mathint penaltyAssets = sumPenaltyAssets(reallocations);
     uint256 grossAssets = summaryMulDivDown(targetNet, WAD(), assert_uint256(WAD() - referralFeePct));
     mathint before = bundlerBalance[marketParams.loanToken];
     mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
 
-    blueBundlesV1Withdraw(e, marketParams, penaltyAssets + grossAssets, 0, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
+    blueBundlesV1Withdraw(e, marketParams, require_uint256(penaltyAssets + grossAssets), 0, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     assert bundlerBalance[marketParams.loanToken] == before;
     assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
@@ -115,17 +141,14 @@ rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1
     require referralFeeRecipient != currentContract;
     require referralFeeRecipient != e.msg.sender;
     require referralFeePct < WAD();
-    reallocationsAssumptions(reallocations);
+    reallocationsAssumptions(reallocations, e.msg.sender);
 
-    uint256 penaltyAssets;
-    if (reallocations.length > 0) penaltyAssets = penaltyAssets + uint256(reallocations[0].assets).mulDivUp(uint256(reallocations[0].penalty), WAD());
-    if (reallocations.length > 1) penaltyAssets = penaltyAssets + uint256(reallocations[1].assets).mulDivUp(uint256(reallocations[1].penalty), WAD());
-    if (reallocations.length > 2) penaltyAssets = penaltyAssets + uint256(reallocations[2].assets).mulDivUp(uint256(reallocations[2].penalty), WAD());
+    mathint penaltyAssets = sumPenaltyAssets(reallocations);
     uint256 grossAssets = summaryMulDivDown(targetNet, WAD(), assert_uint256(WAD() - referralFeePct));
     mathint before = bundlerBalance[marketParams.loanToken];
     mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
 
-    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, penaltyAssets + grossAssets, minSharePriceE27, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
+    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, require_uint256(penaltyAssets + grossAssets), minSharePriceE27, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     assert bundlerBalance[marketParams.loanToken] == before;
     assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
