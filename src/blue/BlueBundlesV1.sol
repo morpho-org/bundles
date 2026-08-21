@@ -76,12 +76,13 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
-        setAuthorizationWithSig(signedAuthorization);
+        if (borrowAssets > 0) setAuthorizationWithSig(signedAuthorization);
         TokenLib.pullOrWrapNative(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
         if (collateralAssets > 0) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
         }
+        if (borrowAssets == 0) return;
 
         uint256 penaltyAssets = totalPenaltyAssets(reallocations);
         if (penaltyAssets == 0) {
@@ -145,10 +146,12 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
         setAuthorizationWithSig(signedAuthorization);
         TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
-        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
-        (repayAssets, repayShares) = IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, msg.sender, "");
-        require(repayAssets.mulDivUp(1e27, repayShares) <= maxSharePriceE27, SlippageExceeded());
+        if (repayAssets > 0 || repayShares > 0) {
+            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+            (repayAssets, repayShares) = IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, msg.sender, "");
+            require(repayAssets.mulDivUp(1e27, repayShares) <= maxSharePriceE27, SlippageExceeded());
+        }
 
         if (collateralAssets > 0) {
             IMorpho(BLUE).withdrawCollateral(marketParams, collateralAssets, msg.sender, msg.sender);

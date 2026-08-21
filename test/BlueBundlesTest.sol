@@ -756,6 +756,38 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
+    function testPureSupplyCollateralDoesNotSetAuthorization(uint256 collateral) public {
+        collateral = bound(collateral, 1, 1e30);
+        (address sigUser, uint256 sigUserKey) = makeAddrAndKey("pureSupplyUser");
+        deal(address(collateralToken), sigUser, collateral);
+
+        SignedAuthorization memory authSig = _signAuthorization(sigUserKey, sigUser, block.timestamp);
+        uint256 nonceBefore = morpho.nonce(sigUser);
+
+        vm.startPrank(sigUser);
+        collateralToken.approve(address(blueBundles), collateral);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams,
+            collateral,
+            0,
+            0,
+            WAD,
+            _noPermit(),
+            authSig,
+            _noReallocations(),
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.collateral(id, sigUser), collateral, "collateral");
+        assertEq(morpho.borrowShares(id, sigUser), 0, "debt");
+        assertEq(morpho.nonce(sigUser), nonceBefore, "authorization nonce");
+        assertFalse(morpho.isAuthorized(sigUser, address(blueBundles)), "authorization");
+        assertEq(collateralToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
     /// @dev maxLtv caps the resulting LTV (1:1 price): at the exact-fit ltv the borrow lands on the cap, one wei
     /// less reverts. fitLtv is below the LLTV, so the bundler cap binds before Blue's health check.
     function testSupplyCollateralAndBorrowLtvExceeded() public {
@@ -802,6 +834,28 @@ contract BlueBundlesTest is Test {
     }
 
     /// REPAY AND WITHDRAW COLLATERAL ///
+
+    function testPureWithdrawCollateralWithAuthorizationSig(uint256 collateral) public {
+        collateral = bound(collateral, 1, 1e30);
+        (address sigUser, uint256 sigUserKey) = makeAddrAndKey("pureWithdrawUser");
+        deal(address(collateralToken), sigUser, collateral);
+
+        vm.startPrank(sigUser);
+        collateralToken.approve(address(morpho), collateral);
+        morpho.supplyCollateral(marketParams, collateral, sigUser, "");
+        vm.stopPrank();
+
+        SignedAuthorization memory authSig = _signAuthorization(sigUserKey, sigUser, block.timestamp);
+        vm.prank(sigUser);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams, 0, 0, 0, 0, collateral, 0, _noPermit(), authSig, 0, address(0), block.timestamp
+        );
+
+        assertEq(morpho.collateral(id, sigUser), 0, "collateral");
+        assertEq(morpho.borrowShares(id, sigUser), 0, "debt");
+        assertEq(collateralToken.balanceOf(sigUser), collateral, "withdrawn collateral");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
 
     function testRepayAndWithdrawCollateral() public {
         uint256 borrowAssets = 100e18;
