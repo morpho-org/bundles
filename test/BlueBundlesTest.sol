@@ -813,6 +813,35 @@ contract BlueBundlesTest is Test {
         assertEq(collateralToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
+    /// @dev On a pure collateral supply (no borrow) the maxLtv cap is skipped: a tight maxLtv below the resulting LTV
+    /// does not revert, since supplying collateral can only lower the LTV.
+    function testSupplyCollateralWithoutBorrowIgnoresMaxLtv() public {
+        _openBorrow(user, 100e18);
+
+        // Resulting LTV after supplying 20e18 more collateral is 100e18 / 220e18 = 0.45, above the 0.3 maxLtv — but
+        // no borrow, so the check never runs.
+        deal(address(collateralToken), user, 20e18);
+        vm.startPrank(user);
+        collateralToken.approve(address(blueBundles), 20e18);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams,
+            20e18,
+            0,
+            0,
+            0.3e18,
+            _noPermit(),
+            _noAuthSig(),
+            _noReallocations(),
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.collateral(id, user), 220e18, "collateral");
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), 100e18, "debt unchanged");
+    }
+
     /// @dev maxLtv caps the resulting LTV (1:1 price): at the exact-fit ltv the borrow lands on the cap, one wei
     /// less reverts. fitLtv is below the LLTV, so the bundler cap binds before Blue's health check.
     function testSupplyCollateralAndBorrowLtvExceeded() public {
