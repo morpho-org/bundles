@@ -13,6 +13,7 @@ import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
+import {IPermit2} from "../lib/permit2/src/interfaces/IPermit2.sol";
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
 import {IBlueBundlesV1, SignedAuthorization, PublicAllocations} from "../src/blue/interfaces/IBlueBundlesV1.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
@@ -25,6 +26,7 @@ contract BlueBundlesTest is Test {
     uint256 internal constant LLTV = 0.8e18;
     uint256 internal constant LLTV_DEST = 0.9e18;
     uint256 internal constant LIQUIDITY = 1e32;
+    address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     IMorpho internal morpho;
     BlueBundlesV1 internal blueBundles;
@@ -134,6 +136,29 @@ contract BlueBundlesTest is Test {
         return SignedAuthorization({
             signature: Signature({v: v, r: r, s: s}), nonce: authorization.nonce, deadline: authorization.deadline
         });
+    }
+
+    function _permit2(address token, uint256 holderKey, uint256 amount, uint256 nonce, uint256 deadline)
+        internal
+        view
+        returns (TokenPermit memory)
+    {
+        bytes32 tokenPermissionsHash =
+            keccak256(abi.encode(keccak256("TokenPermissions(address token,uint256 amount)"), token, amount));
+        bytes32 permitHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "PermitTransferFrom(TokenPermissions permitted,address spender,uint256 nonce,uint256 deadline)TokenPermissions(address token,uint256 amount)"
+                ),
+                tokenPermissionsHash,
+                address(blueBundles),
+                nonce,
+                deadline
+            )
+        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", IPermit2(PERMIT2).DOMAIN_SEPARATOR(), permitHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(holderKey, digest);
+        return TokenPermit({kind: PermitKind.Permit2, data: abi.encode(nonce, deadline, abi.encodePacked(r, s, v))});
     }
 
     function _collateralFor(uint256 borrowAssets) internal pure returns (uint256) {
@@ -756,7 +781,7 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    function testPureSupplyCollateralDoesNotSetAuthorization(uint256 collateral) public {
+    function testPureSupplyCollateralConsumesAuthorization(uint256 collateral) public {
         collateral = bound(collateral, 1, 1e30);
         (address sigUser, uint256 sigUserKey) = makeAddrAndKey("pureSupplyUser");
         deal(address(collateralToken), sigUser, collateral);
@@ -783,8 +808,8 @@ contract BlueBundlesTest is Test {
 
         assertEq(morpho.collateral(id, sigUser), collateral, "collateral");
         assertEq(morpho.borrowShares(id, sigUser), 0, "debt");
-        assertEq(morpho.nonce(sigUser), nonceBefore, "authorization nonce");
-        assertFalse(morpho.isAuthorized(sigUser, address(blueBundles)), "authorization");
+        assertEq(morpho.nonce(sigUser), nonceBefore + 1, "authorization nonce");
+        assertTrue(morpho.isAuthorized(sigUser, address(blueBundles)), "authorization");
         assertEq(collateralToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
@@ -854,6 +879,30 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.collateral(id, sigUser), 0, "collateral");
         assertEq(morpho.borrowShares(id, sigUser), 0, "debt");
         assertEq(collateralToken.balanceOf(sigUser), collateral, "withdrawn collateral");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    function testPureWithdrawCollateralConsumesPermit2() public {
+        uint256 collateral = 1e18;
+        (address permitUser, uint256 permitUserKey) = makeAddrAndKey("permitUser");
+        deployCodeTo("Permit2", PERMIT2);
+        deal(address(collateralToken), permitUser, collateral);
+
+        vm.startPrank(permitUser);
+        collateralToken.approve(address(morpho), collateral);
+        morpho.supplyCollateral(marketParams, collateral, permitUser, "");
+        morpho.setAuthorization(address(blueBundles), true);
+        vm.stopPrank();
+
+        TokenPermit memory permit = _permit2(address(loanToken), permitUserKey, 0, 0, block.timestamp);
+        vm.prank(permitUser);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams, 0, 0, 0, 0, collateral, 0, permit, _noAuthSig(), 0, address(0), block.timestamp
+        );
+
+        assertEq(IPermit2(PERMIT2).nonceBitmap(permitUser, 0), 1, "permit nonce");
+        assertEq(morpho.collateral(id, permitUser), 0, "collateral");
+        assertEq(collateralToken.balanceOf(permitUser), collateral, "withdrawn collateral");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
