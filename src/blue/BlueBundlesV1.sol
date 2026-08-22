@@ -82,29 +82,29 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
         }
-        if (borrowAssets == 0) return;
+        if (borrowAssets > 0) {
+            uint256 penaltyAssets = totalPenaltyAssets(reallocations);
+            if (penaltyAssets == 0) {
+                executeBorrow(marketParams, borrowAssets, minSharePriceE27, reallocations, msg.sender);
+            } else {
+                bytes memory operationData = abi.encode(marketParams, borrowAssets, minSharePriceE27, reallocations);
+                TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+                IMorpho(BLUE)
+                    .flashLoan(
+                        marketParams.loanToken,
+                        penaltyAssets,
+                        abi.encode(msg.sender, this.blueBundlesV1SupplyCollateralAndBorrow.selector, operationData)
+                    );
+            }
+            requireMaxLtv(marketParams, msg.sender, maxLtv);
 
-        uint256 penaltyAssets = totalPenaltyAssets(reallocations);
-        if (penaltyAssets == 0) {
-            executeBorrow(marketParams, borrowAssets, minSharePriceE27, reallocations, msg.sender);
-        } else {
-            bytes memory operationData = abi.encode(marketParams, borrowAssets, minSharePriceE27, reallocations);
-            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
-            IMorpho(BLUE)
-                .flashLoan(
-                    marketParams.loanToken,
-                    penaltyAssets,
-                    abi.encode(msg.sender, this.blueBundlesV1SupplyCollateralAndBorrow.selector, operationData)
-                );
+            uint256 receivedAssets = borrowAssets - penaltyAssets;
+            uint256 referralFeeAssets = receivedAssets.mulDivDown(referralFeePct, WAD);
+            if (referralFeeAssets > 0) {
+                SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
+            }
+            SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, receivedAssets - referralFeeAssets);
         }
-        requireMaxLtv(marketParams, msg.sender, maxLtv);
-
-        uint256 receivedAssets = borrowAssets - penaltyAssets;
-        uint256 referralFeeAssets = receivedAssets.mulDivDown(referralFeePct, WAD);
-        if (referralFeeAssets > 0) {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
-        }
-        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, receivedAssets - referralFeeAssets);
     }
 
     function executeBorrow(
