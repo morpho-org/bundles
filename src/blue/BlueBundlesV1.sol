@@ -476,7 +476,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         }
     }
 
-    /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check.
+    /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).
     /// @dev Accrues market interest when needed, then mirrors Blue's own health check against maxLtv.
     function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal {
         if (maxLtv != type(uint256).max) {
