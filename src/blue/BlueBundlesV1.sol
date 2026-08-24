@@ -146,8 +146,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
 
         if (repayShares == type(uint256).max) {
-            uint256 currentBorrowShares = IMorpho(BLUE).position(marketParams.id(), msg.sender).borrowShares;
-            repayShares = UtilsLib.min(repayShares, currentBorrowShares);
+            repayShares = UtilsLib.min(repayShares, IMorpho(BLUE).position(marketParams.id(), msg.sender).borrowShares);
         }
 
         if (repayAssets > 0 || repayShares > 0) {
