@@ -144,11 +144,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
-        bool repayRequested = repayAssets > 0 || repayShares > 0;
         setAuthorizationWithSig(signedAuthorization);
         TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
 
-        if (repayRequested) {
+        if (repayAssets > 0 || repayShares > 0) {
             TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
             (repayAssets, repayShares) = IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, msg.sender, "");
             require(repayAssets.mulDivUp(1e27, repayShares) <= maxSharePriceE27, SlippageExceeded());
