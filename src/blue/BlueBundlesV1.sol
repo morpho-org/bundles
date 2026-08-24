@@ -61,6 +61,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     /// @dev reallocations must be empty when borrowAssets is zero.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
+    /// @dev All public reallocations execute unconditionally.
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAssets,
@@ -209,6 +210,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev The aggregate public allocator penalties P are deducted from withdrawnAssets before the referral fee is charged. The resulting net withdrawal proceeds are sent to msg.sender. Fee = floor((withdrawnAssets - P) * referralFeePct / WAD).
     /// @dev To receive an amount W when withdrawing by assets, pass withdrawAssets = P + floor(W * WAD / (WAD - referralFeePct)) and withdrawShares = 0.
     /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
+    /// @dev All public reallocations execute unconditionally; their aggregate penalty is not bounded relative to withdrawAssets.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
@@ -265,6 +267,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Pass type(uint256).max to disable.
     /// @dev Migrating a position without debt reverts on Blue.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
+    /// @dev All public reallocations execute unconditionally.
     function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
