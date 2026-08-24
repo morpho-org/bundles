@@ -194,7 +194,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             authSig,
@@ -254,7 +253,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             authSig,
@@ -285,7 +283,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             authSig,
@@ -317,7 +314,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             authSig,
@@ -346,7 +342,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             authSig,
@@ -386,7 +381,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             authSig,
@@ -421,18 +415,7 @@ contract BlueBundlesTest is Test {
         vm.startPrank(sigUser);
         loanToken.approve(address(blueBundles), borrowAssets);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams,
-            borrowAssets,
-            0,
-            borrowAssets,
-            type(uint256).max,
-            0,
-            WAD,
-            _noPermit(),
-            authSig,
-            0,
-            address(0),
-            block.timestamp
+            marketParams, borrowAssets, 0, borrowAssets, 0, WAD, _noPermit(), authSig, 0, address(0), block.timestamp
         );
         vm.stopPrank();
 
@@ -457,7 +440,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             authSig,
@@ -487,7 +469,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             authSig,
@@ -509,43 +490,21 @@ contract BlueBundlesTest is Test {
 
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams, 1, 1, 0, WAD, _noPermit(), _noAuthSig(), _noReallocations(), WAD, address(0), block.timestamp
+            marketParams, 1, 1, WAD, _noPermit(), _noAuthSig(), _noReallocations(), WAD, address(0), block.timestamp
         );
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams,
-            1,
-            0,
-            0,
-            type(uint256).max,
-            0,
-            WAD,
-            _noPermit(),
-            _noAuthSig(),
-            WAD,
-            address(0),
-            block.timestamp
+            marketParams, 1, 0, 0, 0, WAD, _noPermit(), _noAuthSig(), WAD, address(0), block.timestamp
         );
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
-        blueBundles.blueBundlesV1Supply(
-            marketParams, 1, type(uint256).max, _noPermit(), WAD, address(0), block.timestamp
-        );
+        blueBundles.blueBundlesV1Supply(marketParams, 1, _noPermit(), WAD, address(0), block.timestamp);
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1Withdraw(
             marketParams, 1, 0, _noAuthSig(), _noReallocations(), WAD, address(0), block.timestamp
         );
         vm.expectRevert(IBlueBundlesV1.PctExceeded.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            WAD,
-            _noAuthSig(),
-            _noReallocations(),
-            WAD,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, WAD, _noAuthSig(), _noReallocations(), WAD, address(0), block.timestamp
         );
         vm.stopPrank();
     }
@@ -557,28 +516,19 @@ contract BlueBundlesTest is Test {
         vm.startPrank(user);
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams, 1, 1, 0, WAD, _noPermit(), _noAuthSig(), _noReallocations(), 0, address(0), past
+            marketParams, 1, 1, WAD, _noPermit(), _noAuthSig(), _noReallocations(), 0, address(0), past
         );
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams, 1, 0, 0, type(uint256).max, 0, WAD, _noPermit(), _noAuthSig(), 0, address(0), past
+            marketParams, 1, 0, 0, 0, WAD, _noPermit(), _noAuthSig(), 0, address(0), past
         );
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
-        blueBundles.blueBundlesV1Supply(marketParams, 1, type(uint256).max, _noPermit(), 0, address(0), past);
+        blueBundles.blueBundlesV1Supply(marketParams, 1, _noPermit(), 0, address(0), past);
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.blueBundlesV1Withdraw(marketParams, 1, 0, _noAuthSig(), _noReallocations(), 0, address(0), past);
         vm.expectRevert(IBlueBundlesV1.DeadlinePassed.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            WAD,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            past
+            marketParams, destMarketParams, WAD, _noAuthSig(), _noReallocations(), 0, address(0), past
         );
         vm.stopPrank();
     }
@@ -596,7 +546,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
@@ -640,7 +589,6 @@ contract BlueBundlesTest is Test {
             wethMarketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
@@ -673,7 +621,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
@@ -708,7 +655,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
@@ -738,7 +684,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             0,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
@@ -773,7 +718,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             fitLtv - 1,
             _noPermit(),
             _noAuthSig(),
@@ -787,7 +731,6 @@ contract BlueBundlesTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             fitLtv,
             _noPermit(),
             _noAuthSig(),
@@ -820,7 +763,6 @@ contract BlueBundlesTest is Test {
             repayAssets,
             0,
             repayAssets,
-            type(uint256).max,
             withdrawCollateral,
             WAD,
             _noPermit(),
@@ -864,7 +806,6 @@ contract BlueBundlesTest is Test {
             repayAssets,
             0,
             maxRepayAssets,
-            type(uint256).max,
             withdrawCollateral,
             WAD,
             _noPermit(),
@@ -901,7 +842,6 @@ contract BlueBundlesTest is Test {
             repayAssets,
             0,
             maxRepayAssets,
-            type(uint256).max,
             0,
             WAD,
             _noPermit(),
@@ -932,7 +872,6 @@ contract BlueBundlesTest is Test {
             repayAssets,
             0,
             maxRepayAssets,
-            type(uint256).max,
             0,
             WAD,
             _noPermit(),
@@ -954,33 +893,11 @@ contract BlueBundlesTest is Test {
 
         vm.expectRevert(IBlueBundlesV1.LtvExceeded.selector);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams,
-            30e18,
-            0,
-            30e18,
-            type(uint256).max,
-            100e18,
-            0.6e18,
-            _noPermit(),
-            _noAuthSig(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, 30e18, 0, 30e18, 100e18, 0.6e18, _noPermit(), _noAuthSig(), 0, address(0), block.timestamp
         );
 
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams,
-            30e18,
-            0,
-            30e18,
-            type(uint256).max,
-            100e18,
-            0.7e18,
-            _noPermit(),
-            _noAuthSig(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, 30e18, 0, 30e18, 100e18, 0.7e18, _noPermit(), _noAuthSig(), 0, address(0), block.timestamp
         );
         vm.stopPrank();
 
@@ -999,18 +916,7 @@ contract BlueBundlesTest is Test {
         vm.startPrank(user);
         loanToken.approve(address(blueBundles), 30e18);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams,
-            30e18,
-            0,
-            30e18,
-            type(uint256).max,
-            0,
-            0.3e18,
-            _noPermit(),
-            _noAuthSig(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, 30e18, 0, 30e18, 0, 0.3e18, _noPermit(), _noAuthSig(), 0, address(0), block.timestamp
         );
         vm.stopPrank();
 
@@ -1036,7 +942,6 @@ contract BlueBundlesTest is Test {
             0,
             morpho.borrowShares(id, user),
             borrowAssets,
-            type(uint256).max,
             collateral,
             0.5e18, // binding maxLtv (< LLTV): the check runs and must not read the oracle
             _noPermit(),
@@ -1062,18 +967,7 @@ contract BlueBundlesTest is Test {
         loanToken.approve(address(blueBundles), 30e18);
         vm.expectCall(address(oracle), abi.encodeWithSelector(IOracle.price.selector), 1);
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams,
-            30e18,
-            0,
-            30e18,
-            type(uint256).max,
-            10e18,
-            WAD,
-            _noPermit(),
-            _noAuthSig(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, 30e18, 0, 30e18, 10e18, WAD, _noPermit(), _noAuthSig(), 0, address(0), block.timestamp
         );
         vm.stopPrank();
 
@@ -1099,7 +993,6 @@ contract BlueBundlesTest is Test {
             repayAssets,
             0,
             maxRepayAssets,
-            type(uint256).max,
             0,
             WAD,
             _noPermit(),
@@ -1138,7 +1031,6 @@ contract BlueBundlesTest is Test {
             0,
             morpho.borrowShares(id, user),
             maxRepayAssets,
-            type(uint256).max,
             collateral,
             WAD,
             _noPermit(),
@@ -1178,7 +1070,6 @@ contract BlueBundlesTest is Test {
             0,
             borrowShares,
             maxRepayAssets,
-            type(uint256).max,
             collateral,
             WAD,
             _noPermit(),
@@ -1198,9 +1089,7 @@ contract BlueBundlesTest is Test {
 
         vm.startPrank(user);
         loanToken.approve(address(blueBundles), assets);
-        blueBundles.blueBundlesV1Supply(
-            marketParams, assets, type(uint256).max, _noPermit(), 0, address(0), block.timestamp
-        );
+        blueBundles.blueBundlesV1Supply(marketParams, assets, _noPermit(), 0, address(0), block.timestamp);
         vm.stopPrank();
 
         assertEq(morpho.expectedSupplyAssets(marketParams, user), assets, "supply position");
@@ -1218,9 +1107,7 @@ contract BlueBundlesTest is Test {
 
         vm.startPrank(user);
         loanToken.approve(address(blueBundles), assets);
-        blueBundles.blueBundlesV1Supply(
-            marketParams, assets, type(uint256).max, _noPermit(), referralFeePct, referrer, block.timestamp
-        );
+        blueBundles.blueBundlesV1Supply(marketParams, assets, _noPermit(), referralFeePct, referrer, block.timestamp);
         vm.stopPrank();
 
         assertEq(morpho.expectedSupplyAssets(marketParams, user), supplied, "supply net");
@@ -1247,7 +1134,7 @@ contract BlueBundlesTest is Test {
         // When native tokens are sent, assets must equal msg.value and no loanTokenPermit may be set.
         vm.prank(user);
         blueBundles.blueBundlesV1Supply{value: assets}(
-            wethMarketParams, assets, type(uint256).max, _noPermit(), 0, address(0), block.timestamp
+            wethMarketParams, assets, _noPermit(), 0, address(0), block.timestamp
         );
 
         assertEq(morpho.expectedSupplyAssets(wethMarketParams, user), assets, "supply position");
@@ -1367,16 +1254,7 @@ contract BlueBundlesTest is Test {
         vm.prank(user);
         vm.expectRevert(IBlueBundlesV1.InconsistentTokens.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            wrongDest,
-            type(uint256).max,
-            0,
-            WAD,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, wrongDest, WAD, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
         );
     }
 
@@ -1392,30 +1270,12 @@ contract BlueBundlesTest is Test {
         vm.prank(user);
         vm.expectRevert(IBlueBundlesV1.LtvExceeded.selector);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            fitLtv - 1,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, fitLtv - 1, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
         );
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            fitLtv,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, fitLtv, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
         );
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
     }
@@ -1435,8 +1295,6 @@ contract BlueBundlesTest is Test {
         blueBundles.blueBundlesV1MigrateBorrowPosition(
             marketParams,
             destMarketParams,
-            type(uint256).max,
-            0,
             maxLtv,
             _noAuthSig(),
             _noReallocations(),
@@ -1447,16 +1305,7 @@ contract BlueBundlesTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            maxLtv,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, maxLtv, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
         );
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
     }
@@ -1474,16 +1323,7 @@ contract BlueBundlesTest is Test {
         morpho.supplyCollateral(marketParams, collateral, user, "");
         morpho.borrow(marketParams, 90e18, 0, user, user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            LLTV_DEST,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, LLTV_DEST, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
         );
         vm.stopPrank();
 
@@ -1502,16 +1342,7 @@ contract BlueBundlesTest is Test {
         // maxLtv == destLltv makes the bundler cap a no-op, so the over-limit borrow reverts on Blue's own check.
         vm.expectRevert(bytes("insufficient collateral"));
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            LLTV_DEST,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, LLTV_DEST, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
         );
         vm.stopPrank();
     }
@@ -1523,16 +1354,7 @@ contract BlueBundlesTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            WAD,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, WAD, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
         );
 
         assertEq(morpho.collateral(id, user), 0, "source collateral");
@@ -1561,8 +1383,6 @@ contract BlueBundlesTest is Test {
         blueBundles.blueBundlesV1MigrateBorrowPosition(
             marketParams,
             destMarketParams,
-            type(uint256).max,
-            0,
             WAD,
             _noAuthSig(),
             _noReallocations(),
@@ -1594,16 +1414,7 @@ contract BlueBundlesTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            WAD,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, WAD, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
         );
 
         assertEq(morpho.borrowShares(id, user), 0, "source debt");
@@ -1627,119 +1438,13 @@ contract BlueBundlesTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            WAD,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, WAD, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
         );
 
         assertEq(morpho.borrowShares(id, user), 0, "source debt");
         assertEq(morpho.collateral(id, user), 0, "source collateral");
         assertEq(morpho.collateral(destId, user), collateral, "dest collateral");
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets - 1, "dest debt");
-    }
-
-    /// SHARE PRICE ///
-
-    /// @dev A maxSharePriceE27 below the realized supply share price reverts.
-    function testSupplySlippageExceeded() public {
-        uint256 assets = 100e18;
-        deal(address(loanToken), user, assets);
-
-        vm.startPrank(user);
-        loanToken.approve(address(blueBundles), assets);
-        vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
-        blueBundles.blueBundlesV1Supply(marketParams, assets, 1, _noPermit(), 0, address(0), block.timestamp);
-        vm.stopPrank();
-    }
-
-    /// @dev A minSharePriceE27 above the realized borrow share price reverts.
-    function testSupplyCollateralAndBorrowSlippageExceeded() public {
-        uint256 borrowAssets = 100e18;
-        uint256 collateral = _collateralFor(borrowAssets);
-        deal(address(collateralToken), user, collateral);
-
-        vm.startPrank(user);
-        collateralToken.approve(address(blueBundles), collateral);
-        vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
-        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams,
-            collateral,
-            borrowAssets,
-            type(uint256).max,
-            WAD,
-            _noPermit(),
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
-        );
-        vm.stopPrank();
-    }
-
-    /// @dev A maxSharePriceE27 below the realized repay share price reverts.
-    function testRepaySlippageExceeded() public {
-        uint256 borrowAssets = 100e18;
-        _openBorrow(user, borrowAssets);
-
-        uint256 repayAssets = 40e18;
-        deal(address(loanToken), user, repayAssets);
-        vm.startPrank(user);
-        loanToken.approve(address(blueBundles), repayAssets);
-        vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
-        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams,
-            repayAssets,
-            0,
-            repayAssets,
-            1,
-            0,
-            WAD,
-            _noPermit(),
-            _noAuthSig(),
-            0,
-            address(0),
-            block.timestamp
-        );
-        vm.stopPrank();
-    }
-
-    /// @dev migrateBorrowPosition bounds both legs: a maxSharePriceE27 below the source repay price reverts.
-    function testMigrateBorrowPositionSourceRepaySlippageExceeded() public {
-        _openBorrow(user, 100e18);
-
-        vm.prank(user);
-        vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
-        blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams, destMarketParams, 1, 0, WAD, _noAuthSig(), _noReallocations(), 0, address(0), block.timestamp
-        );
-    }
-
-    /// @dev migrateBorrowPosition bounds both legs: a minSharePriceE27 above the destination borrow price reverts.
-    function testMigrateBorrowPositionDestBorrowSlippageExceeded() public {
-        _openBorrow(user, 100e18);
-
-        vm.prank(user);
-        vm.expectRevert(IBlueBundlesV1.SlippageExceeded.selector);
-        blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            type(uint256).max,
-            WAD,
-            _noAuthSig(),
-            _noReallocations(),
-            0,
-            address(0),
-            block.timestamp
-        );
     }
 }
 
