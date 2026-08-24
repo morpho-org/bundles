@@ -122,8 +122,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev When native tokens are sent, loanTokenPermit.kind must be PermitKind.None and maxRepayAssets must equal msg.value; the native tokens are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of being pulled, and the reimbursed remainder is unwrapped back to native.
     /// @dev Reimbursing native tokens requires msg.sender to be able to receive native tokens, or else it will revert.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization, if some collateral is withdrawn.
-    /// @dev At least one of repayAssets and repayShares must be zero; set both to zero for a pure collateral withdrawal.
-    /// @dev repayShares is capped at msg.sender's borrow shares at execution, preventing a permissionless repayment from making the call revert. Pass type(uint256).max to close any debt remaining at execution.
+    /// @dev At least one of repayAssets and repayShares must be zero to repay; set both to zero for a pure collateral withdrawal.
+    /// @dev repayShares is capped at msg.sender's borrow shares at execution. Pass type(uint256).max to close any debt remaining at execution.
     /// @dev The fee is repaidAssets * referralFeePct / (WAD - referralFeePct), where repaidAssets is the actual assets repaid.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function blueBundlesV1RepayAndWithdrawCollateral(
