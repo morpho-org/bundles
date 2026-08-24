@@ -1184,9 +1184,36 @@ contract BlueBundlesTest is Test {
         assertEq(collateralToken.balanceOf(user), collateral, "collateral to user");
     }
 
-    /// @dev With maxLtv at WAD the bundler's maxLtv check short-circuits before its oracle call: the only price
-    /// read is Blue's health check in withdrawCollateral.
-    function testRepayAndWithdrawCollateralMaxLtvWadSkipsOracle() public {
+    /// @dev WAD remains an enforced maxLtv, so both Blue and the bundler read the oracle.
+    function testRepayAndWithdrawCollateralMaxLtvWadChecksOracle() public {
+        _openBorrow(user, 100e18);
+
+        deal(address(loanToken), user, 30e18);
+        vm.startPrank(user);
+        loanToken.approve(address(blueBundles), 30e18);
+        vm.expectCall(address(oracle), abi.encodeWithSelector(IOracle.price.selector), 2);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams,
+            30e18,
+            0,
+            30e18,
+            type(uint256).max,
+            10e18,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.expectedBorrowAssets(marketParams, user), 70e18, "remaining debt");
+        assertEq(morpho.collateral(id, user), 190e18, "remaining collateral");
+    }
+
+    /// @dev type(uint256).max disables the bundler's maxLtv check, leaving only Blue's oracle read.
+    function testRepayAndWithdrawCollateralMaxLtvMaxSkipsOracle() public {
         _openBorrow(user, 100e18);
 
         deal(address(loanToken), user, 30e18);
@@ -1200,7 +1227,7 @@ contract BlueBundlesTest is Test {
             30e18,
             type(uint256).max,
             10e18,
-            WAD,
+            type(uint256).max,
             _noPermit(),
             _noAuthSig(),
             0,
@@ -1593,8 +1620,7 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.expectedBorrowAssets(destMarketParams, user), borrowAssets, "dest debt");
     }
 
-    /// @dev With maxLtv == destLltv the bundler cap is a no-op (it short-circuits at/above the LLTV), so Blue's own
-    /// health check bounds the borrow: a position landing precisely at the destination LLTV limit passes.
+    /// @dev With maxLtv == destLltv, both Blue and the bundler permit a position landing precisely at the limit.
     function testMigrateBorrowPositionLtvBoundAtDestLltvExactLimit() public {
         // Dest collateral value is half the source's: 200e18 collateral => 100e18 value => 90e18 limit at 0.9 LLTV.
         destOracle.setPrice(ORACLE_PRICE_SCALE / 2);
@@ -1631,7 +1657,7 @@ contract BlueBundlesTest is Test {
         collateralToken.approve(address(morpho), type(uint256).max);
         morpho.supplyCollateral(marketParams, collateral, user, "");
         morpho.borrow(marketParams, 90e18 + 1, 0, user, user);
-        // maxLtv == destLltv makes the bundler cap a no-op, so the over-limit borrow reverts on Blue's own check.
+        // The over-limit borrow reverts on Blue's own check before the bundler can enforce the same limit.
         vm.expectRevert(bytes("insufficient collateral"));
         blueBundles.blueBundlesV1MigrateBorrowPosition(
             marketParams,

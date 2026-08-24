@@ -57,7 +57,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev The aggregate public allocator penalties P are deducted from borrowAssets before the referral fee is charged. The resulting net borrow proceeds are sent to msg.sender. Fee = floor((borrowAssets - P) * referralFeePct / WAD).
     /// @dev To receive an amount W, pass borrowAssets = P + floor(W * WAD / (WAD - referralFeePct)).
-    /// @dev maxLtv caps msg.sender's resulting LTV after a borrow; skipped on a pure collateral supply; at or above the market LLTV it is a no-op (WAD disables it).
+    /// @dev maxLtv caps msg.sender's resulting LTV after a borrow; skipped on a pure collateral supply; type(uint256).max disables it.
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
     function blueBundlesV1SupplyCollateralAndBorrow(
@@ -125,7 +125,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization, if some collateral is withdrawn.
     /// @dev Exactly one of repayAssets and repayShares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as repayShares.
     /// @dev The fee is repaidAssets * referralFeePct / (WAD - referralFeePct), where repaidAssets is the actual assets repaid.
-    /// @dev maxLtv caps msg.sender's resulting LTV after a withdrawal; skipped on a pure repay.
+    /// @dev maxLtv caps msg.sender's resulting LTV after a withdrawal; skipped on a pure repay; type(uint256).max disables it.
     /// @dev maxSharePriceE27 upper-bounds the realized repay share price (repaid assets per share, scaled by 1e27).
     function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
@@ -264,7 +264,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Moves the full position of msg.sender (collateral and borrow shares, read from Blue) from the source market to the destination market.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev The referral fee and public allocator penalties are borrowed on the destination on top of the repaid assets, adding to the debt. Fee = repaidAssets * referralFeePct / (WAD - referralFeePct); total borrowed = repaidAssets + fee + penalties.
-    /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Use destination LLTV to disable.
+    /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Pass type(uint256).max to disable.
     /// @dev sourceMaxSharePriceE27 upper-bounds the realized source repay share price; destMinSharePriceE27 lower-bounds the realized destination borrow share price (both assets per share, scaled by 1e27).
     /// @dev Migrating a position without debt reverts on Blue.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
@@ -475,7 +475,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         }
     }
 
-    /// @dev Reverts unless sender's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.
+    /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check.
     /// @dev Must be called only after the market's interest has been accrued, so the stored totals are current; mirrors Blue's own health check but against maxLtv.
     function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal view {
         if (maxLtv == type(uint256).max) return;
