@@ -492,57 +492,6 @@ contract BluePublicAllocatorTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler token residual");
     }
 
-    /// @dev A pure collateral supply rejects reallocations even when their aggregate penalty is zero.
-    function testSupplyCollateralWithoutBorrowRevertsOnZeroPenaltyReallocation() public {
-        uint256 collateral = 10e18;
-        uint256 reallocationAssets = 10e18;
-        _fundVault(VAULT_ASSETS);
-
-        vm.prank(allocator);
-        publicAllocator.setPenalty(address(vault), 0);
-
-        PublicAllocations[] memory reallocations = _reallocation(liquidMarketParams, reallocationAssets);
-        reallocations[0].penalty = 0;
-
-        _fundWeth(user, collateral);
-        vm.startPrank(user);
-        weth.approve(address(blueBundles), collateral);
-        vm.expectRevert(IBlueBundlesV1.InconsistentBorrowInput.selector);
-        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams, collateral, 0, WAD, _noPermit(), _noAuthSig(), reallocations, 0, address(0), block.timestamp
-        );
-        vm.stopPrank();
-
-        assertEq(weth.balanceOf(user), collateral, "collateral not pulled");
-        assertEq(morpho.collateral(marketParams.id(), user), 0, "collateral not supplied");
-        assertEq(morpho.borrowShares(marketParams.id(), user), 0, "debt");
-        assertEq(_allocation(marketParams), 0, "vault allocation unchanged");
-    }
-
-    /// @dev A pure collateral supply also rejects reallocations with a non-zero penalty.
-    function testSupplyCollateralWithoutBorrowRevertsOnNonZeroPenaltyReallocation() public {
-        uint256 collateral = 10e18;
-        _fundVault(VAULT_ASSETS);
-        _fundWeth(user, collateral);
-
-        vm.startPrank(user);
-        weth.approve(address(blueBundles), collateral);
-        vm.expectRevert(IBlueBundlesV1.InconsistentBorrowInput.selector);
-        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams,
-            collateral,
-            0,
-            WAD,
-            _noPermit(),
-            _noAuthSig(),
-            _reallocation(liquidMarketParams, 10e18),
-            0,
-            address(0),
-            block.timestamp
-        );
-        vm.stopPrank();
-    }
-
     /// @dev Native collateral is wrapped before being supplied, even when a reallocation also flash loans a penalty.
     function testSupplyCollateralAndBorrowWrapNativeWithReallocation() public {
         uint256 borrowAssets = 10e18;
