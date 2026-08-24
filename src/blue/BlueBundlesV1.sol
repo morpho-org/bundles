@@ -478,7 +478,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Reverts unless sender's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.
     /// @dev Must be called only after the market's interest has been accrued, so the stored totals are current; mirrors Blue's own health check but against maxLtv.
     function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal view {
-        if (maxLtv >= marketParams.lltv) return;
+        if (maxLtv == type(uint256).max) return;
         Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
         if (position.borrowShares == 0) return;
         Market memory market = IMorpho(BLUE).market(marketParams.id());
