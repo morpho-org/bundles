@@ -3,7 +3,6 @@
 pragma solidity ^0.8.0;
 
 import {Test} from "../lib/forge-std/src/Test.sol";
-import {stdError} from "../lib/forge-std/src/StdError.sol";
 import {IMorpho, MarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {MorphoLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
@@ -477,7 +476,6 @@ contract BluePublicAllocatorTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
@@ -494,8 +492,8 @@ contract BluePublicAllocatorTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler token residual");
     }
 
-    /// @dev A pure collateral supply still executes penalty-free public allocations without creating debt.
-    function testSupplyCollateralWithoutBorrowExecutesZeroPenaltyReallocation() public {
+    /// @dev A pure collateral supply rejects reallocations even when their aggregate penalty is zero.
+    function testSupplyCollateralWithoutBorrowRevertsOnZeroPenaltyReallocation() public {
         uint256 collateral = 10e18;
         uint256 reallocationAssets = 10e18;
         _fundVault(VAULT_ASSETS);
@@ -509,39 +507,30 @@ contract BluePublicAllocatorTest is Test {
         _fundWeth(user, collateral);
         vm.startPrank(user);
         weth.approve(address(blueBundles), collateral);
+        vm.expectRevert(IBlueBundlesV1.InconsistentBorrowInput.selector);
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
-            marketParams,
-            collateral,
-            0,
-            0,
-            WAD,
-            _noPermit(),
-            _noAuthSig(),
-            reallocations,
-            0,
-            address(0),
-            block.timestamp
+            marketParams, collateral, 0, WAD, _noPermit(), _noAuthSig(), reallocations, 0, address(0), block.timestamp
         );
         vm.stopPrank();
 
-        assertEq(morpho.collateral(marketParams.id(), user), collateral, "collateral");
+        assertEq(weth.balanceOf(user), collateral, "collateral not pulled");
+        assertEq(morpho.collateral(marketParams.id(), user), 0, "collateral not supplied");
         assertEq(morpho.borrowShares(marketParams.id(), user), 0, "debt");
-        assertEq(_allocation(marketParams), reallocationAssets, "vault allocation");
+        assertEq(_allocation(marketParams), 0, "vault allocation unchanged");
     }
 
-    /// @dev A pure collateral supply cannot fund a non-zero public allocator penalty.
-    function testSupplyCollateralWithoutBorrowRevertsOnPenalty() public {
+    /// @dev A pure collateral supply also rejects reallocations with a non-zero penalty.
+    function testSupplyCollateralWithoutBorrowRevertsOnNonZeroPenaltyReallocation() public {
         uint256 collateral = 10e18;
         _fundVault(VAULT_ASSETS);
         _fundWeth(user, collateral);
 
         vm.startPrank(user);
         weth.approve(address(blueBundles), collateral);
-        vm.expectRevert(stdError.arithmeticError);
+        vm.expectRevert(IBlueBundlesV1.InconsistentBorrowInput.selector);
         blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
             marketParams,
             collateral,
-            0,
             0,
             WAD,
             _noPermit(),
@@ -566,7 +555,6 @@ contract BluePublicAllocatorTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
@@ -613,7 +601,6 @@ contract BluePublicAllocatorTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
@@ -652,16 +639,7 @@ contract BluePublicAllocatorTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            LLTV_DEST,
-            _noAuthSig(),
-            reallocations,
-            0,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, LLTV_DEST, _noAuthSig(), reallocations, 0, address(0), block.timestamp
         );
 
         assertEq(morpho.position(marketParams.id(), user).borrowShares, 0, "source debt closed");
@@ -847,7 +825,6 @@ contract BluePublicAllocatorTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),

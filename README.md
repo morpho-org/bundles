@@ -26,12 +26,15 @@ Users should expect tokens left to the bundles as lost.
 [BlueBundlesV1](src/blue/BlueBundlesV1.sol) contains:
 
 - `blueBundlesV1SupplyCollateralAndBorrow` — supply collateral and borrow.
-- `blueBundlesV1RepayAndWithdrawCollateral` — repay debt (optionally by shares) and optionally withdraw collateral.
+- `blueBundlesV1RepayAndWithdrawCollateral` — repay debt (optionally by shares) and withdraw collateral.
 - `blueBundlesV1Supply` — supply loan assets to a market.
 - `blueBundlesV1Withdraw` — withdraw supplied loan assets (optionally by shares).
 - `blueBundlesV1MigrateBorrowPosition` — move a full borrow position (collateral and debt) from one market to another.
 
 The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollateralAndBorrow`, `blueBundlesV1Withdraw`, and `blueBundlesV1MigrateBorrowPosition`) support VaultV2's BluePublicAllocator.
+
+`blueBundlesV1SupplyCollateralAndBorrow` allows supplying collateral without borrowing and borrowing without supplying collateral.
+`blueBundlesV1RepayAndWithdrawCollateral` allows withdrawing collateral without repaying and repaying without withdrawing collateral.
 
 ### Vault bundles
 
