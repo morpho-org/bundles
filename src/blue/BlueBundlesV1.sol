@@ -53,12 +53,13 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
     /// ENTRYPOINT ///
 
-    /// @dev Pulls collateralAssets from msg.sender (optionally via ERC-2612 or Permit2), supplies it on Blue, then borrows borrowAssets on behalf of msg.sender.
+    /// @dev Pulls collateralAssets from msg.sender (optionally via ERC-2612 or Permit2), supplies it on Blue, then borrows borrowAssets (if non-zero) on behalf of msg.sender.
     /// @dev When native tokens are sent, collateralPermit.kind must be PermitKind.None and collateralAssets must equal msg.value; the native tokens are wrapped into marketParams.collateralToken (which must be the wrapped-native token) instead of being pulled.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev The aggregate public allocator penalties P are deducted from borrowAssets before the referral fee is charged. The resulting net borrow proceeds are sent to msg.sender. Fee = floor((borrowAssets - P) * referralFeePct / WAD).
     /// @dev To receive an amount W, pass borrowAssets = P + floor(W * WAD / (WAD - referralFeePct)).
-    /// @dev maxLtv caps msg.sender's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
+    /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
+    /// @dev reallocations must be empty when borrowAssets is zero.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
@@ -74,6 +75,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
+        require(borrowAssets > 0 || reallocations.length == 0, InconsistentBorrowInput());
 
         setAuthorizationWithSig(signedAuthorization);
         TokenLib.pullOrWrapNative(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
@@ -81,11 +83,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
         }
-
         uint256 penaltyAssets = totalPenaltyAssets(reallocations);
-        if (penaltyAssets == 0) {
-            executeBorrow(marketParams, borrowAssets, reallocations, msg.sender);
-        } else {
+        if (penaltyAssets > 0) {
             bytes memory operationData = abi.encode(marketParams, borrowAssets, reallocations);
             TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
             IMorpho(BLUE)
@@ -94,8 +93,9 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
                     penaltyAssets,
                     abi.encode(msg.sender, this.blueBundlesV1SupplyCollateralAndBorrow.selector, operationData)
                 );
+        } else {
+            executeBorrow(marketParams, borrowAssets, reallocations, msg.sender);
         }
-        requireMaxLtv(marketParams, msg.sender, maxLtv);
 
         uint256 receivedAssets = borrowAssets - penaltyAssets;
         uint256 referralFeeAssets = receivedAssets.mulDivDown(referralFeePct, WAD);
@@ -103,6 +103,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
         SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, receivedAssets - referralFeeAssets);
+        requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
     function executeBorrow(
@@ -112,16 +113,18 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         address sender
     ) internal {
         executePublicAllocations(marketParams.loanToken, reallocations);
-        IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
+        if (borrowAssets > 0) {
+            IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
+        }
     }
 
-    /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt, reimburses the unused remainder (if any) at the end of the call, and withdraws collateral if collateralAssets > 0.
+    /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt (if repayAssets or repayShares are non-zero), reimburses the unused remainder (if any) at the end of the call, and withdraws collateral if collateralAssets > 0.
     /// @dev When native tokens are sent, loanTokenPermit.kind must be PermitKind.None and maxRepayAssets must equal msg.value; the native tokens are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of being pulled, and the reimbursed remainder is unwrapped back to native.
     /// @dev Reimbursing native tokens requires msg.sender to be able to receive native tokens, or else it will revert.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization, if some collateral is withdrawn.
     /// @dev Exactly one of repayAssets and repayShares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as repayShares.
     /// @dev The fee is repaidAssets * referralFeePct / (WAD - referralFeePct), where repaidAssets is the actual assets repaid.
-    /// @dev maxLtv caps msg.sender's resulting LTV after a withdrawal; skipped on a pure repay.
+    /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
         uint256 repayAssets,
@@ -140,13 +143,14 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
         setAuthorizationWithSig(signedAuthorization);
         TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
-        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
-        (repayAssets,) = IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, msg.sender, "");
+        if (repayAssets > 0 || repayShares > 0) {
+            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+            (repayAssets,) = IMorpho(BLUE).repay(marketParams, repayAssets, repayShares, msg.sender, "");
+        }
 
         if (collateralAssets > 0) {
             IMorpho(BLUE).withdrawCollateral(marketParams, collateralAssets, msg.sender, msg.sender);
-            requireMaxLtv(marketParams, msg.sender, maxLtv);
         }
 
         uint256 referralFeeAssets = repayAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
@@ -163,6 +167,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
                 SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, remainder);
             }
         }
+        requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
     /// @dev Pulls assets from msg.sender (optionally via ERC-2612 or Permit2) and supplies them to the market for msg.sender.
@@ -252,7 +257,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Moves the full position of msg.sender (collateral and borrow shares, read from Blue) from the source market to the destination market.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
     /// @dev The referral fee and public allocator penalties are borrowed on the destination on top of the repaid assets, adding to the debt. Fee = repaidAssets * referralFeePct / (WAD - referralFeePct); total borrowed = repaidAssets + fee + penalties.
-    /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Use destination LLTV to disable.
+    /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Pass type(uint256).max to disable.
     /// @dev Migrating a position without debt reverts on Blue.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
     function blueBundlesV1MigrateBorrowPosition(
@@ -437,16 +442,24 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         }
     }
 
-    /// @dev Reverts unless sender's LTV is at or below maxLtv; at or above the market LLTV it is a no-op.
-    /// @dev Must be called only after the market's interest has been accrued, so the stored totals are current; mirrors Blue's own health check but against maxLtv.
-    function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal view {
-        if (maxLtv >= marketParams.lltv) return;
-        Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
-        if (position.borrowShares == 0) return;
-        Market memory market = IMorpho(BLUE).market(marketParams.id());
-        uint256 borrowed = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
-        uint256 price = IOracle(marketParams.oracle).price();
-        uint256 maxBorrow = uint256(position.collateral).mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
-        require(borrowed <= maxBorrow, LtvExceeded());
+    /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).
+    /// @dev Accrues market interest when needed, then mirrors Blue's own health check against maxLtv.
+    function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal {
+        if (maxLtv != type(uint256).max) {
+            Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
+            if (position.borrowShares != 0) {
+                Market memory market = IMorpho(BLUE).market(marketParams.id());
+                if (market.lastUpdate != block.timestamp) {
+                    IMorpho(BLUE).accrueInterest(marketParams);
+                    market = IMorpho(BLUE).market(marketParams.id());
+                }
+                uint256 borrowed =
+                    uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+                uint256 price = IOracle(marketParams.oracle).price();
+                uint256 maxBorrow =
+                    uint256(position.collateral).mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
+                require(borrowed <= maxBorrow, LtvExceeded());
+            }
+        }
     }
 }
