@@ -478,13 +478,17 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check.
     /// @dev Must be called only after the market's interest has been accrued, so the stored totals are current; mirrors Blue's own health check but against maxLtv.
     function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal view {
-        if (maxLtv == type(uint256).max) return;
-        Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
-        if (position.borrowShares == 0) return;
-        Market memory market = IMorpho(BLUE).market(marketParams.id());
-        uint256 borrowed = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
-        uint256 price = IOracle(marketParams.oracle).price();
-        uint256 maxBorrow = uint256(position.collateral).mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
-        require(borrowed <= maxBorrow, LtvExceeded());
+        if (maxLtv != type(uint256).max) {
+            Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
+            if (position.borrowShares != 0) {
+                Market memory market = IMorpho(BLUE).market(marketParams.id());
+                uint256 borrowed =
+                    uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+                uint256 price = IOracle(marketParams.oracle).price();
+                uint256 maxBorrow =
+                    uint256(position.collateral).mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
+                require(borrowed <= maxBorrow, LtvExceeded());
+            }
+        }
     }
 }
