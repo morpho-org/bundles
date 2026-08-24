@@ -84,29 +84,26 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
         }
-        uint256 penaltyAssets;
-        if (borrowAssets > 0) {
-            penaltyAssets = totalPenaltyAssets(reallocations);
-            if (penaltyAssets == 0) {
-                executeBorrow(marketParams, borrowAssets, minSharePriceE27, reallocations, msg.sender);
-            } else {
-                bytes memory operationData = abi.encode(marketParams, borrowAssets, minSharePriceE27, reallocations);
-                TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
-                IMorpho(BLUE)
-                    .flashLoan(
-                        marketParams.loanToken,
-                        penaltyAssets,
-                        abi.encode(msg.sender, this.blueBundlesV1SupplyCollateralAndBorrow.selector, operationData)
-                    );
-            }
-
-            uint256 receivedAssets = borrowAssets - penaltyAssets;
-            uint256 referralFeeAssets = receivedAssets.mulDivDown(referralFeePct, WAD);
-            if (referralFeeAssets > 0) {
-                SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
-            }
-            SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, receivedAssets - referralFeeAssets);
+        uint256 penaltyAssets = totalPenaltyAssets(reallocations);
+        if (penaltyAssets > 0) {
+            bytes memory operationData = abi.encode(marketParams, borrowAssets, minSharePriceE27, reallocations);
+            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+            IMorpho(BLUE)
+                .flashLoan(
+                    marketParams.loanToken,
+                    penaltyAssets,
+                    abi.encode(msg.sender, this.blueBundlesV1SupplyCollateralAndBorrow.selector, operationData)
+                );
+        } else {
+            executeBorrow(marketParams, borrowAssets, minSharePriceE27, reallocations, msg.sender);
         }
+
+        uint256 receivedAssets = borrowAssets - penaltyAssets;
+        uint256 referralFeeAssets = receivedAssets.mulDivDown(referralFeePct, WAD);
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
+        }
+        SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, receivedAssets - referralFeeAssets);
         requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
@@ -118,8 +115,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         address sender
     ) internal {
         executePublicAllocations(marketParams.loanToken, reallocations);
-        (, uint256 borrowShares) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
-        require(borrowAssets.mulDivDown(1e27, borrowShares) >= minSharePriceE27, SlippageExceeded());
+        if (borrowAssets > 0) {
+            (, uint256 borrowShares) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
+            require(borrowAssets.mulDivDown(1e27, borrowShares) >= minSharePriceE27, SlippageExceeded());
+        }
     }
 
     /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt (if repayAssets or repayShares are non-zero), reimburses the unused remainder (if any) at the end of the call, and withdraws collateral if collateralAssets > 0.
