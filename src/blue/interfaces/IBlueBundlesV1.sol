@@ -33,7 +33,6 @@ interface IBlueBundlesV1 {
     error LtvExceeded();
     error NativeTransferFailed();
     error PctExceeded();
-    error SlippageExceeded();
     error UnauthorizedCallback();
 
     /// STORAGE GETTERS ///
@@ -45,7 +44,6 @@ interface IBlueBundlesV1 {
         MarketParams memory marketParams,
         uint256 collateralAssets,
         uint256 borrowAssets,
-        uint256 minSharePriceE27,
         uint256 maxLtv,
         TokenPermit memory collateralPermit,
         SignedAuthorization memory signedAuthorization,
@@ -60,7 +58,6 @@ interface IBlueBundlesV1 {
         uint256 repayAssets,
         uint256 repayShares,
         uint256 maxRepayAssets,
-        uint256 maxSharePriceE27,
         uint256 collateralAssets,
         uint256 maxLtv,
         TokenPermit memory loanTokenPermit,
@@ -73,7 +70,6 @@ interface IBlueBundlesV1 {
     function blueBundlesV1Supply(
         MarketParams memory marketParams,
         uint256 assets,
-        uint256 maxSharePriceE27,
         TokenPermit memory loanTokenPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -94,8 +90,6 @@ interface IBlueBundlesV1 {
     function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
-        uint256 sourceMaxSharePriceE27,
-        uint256 destMinSharePriceE27,
         uint256 maxLtv,
         SignedAuthorization memory signedAuthorization,
         PublicAllocations[] memory reallocations,
