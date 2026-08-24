@@ -476,7 +476,6 @@ contract BluePublicAllocatorTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
@@ -505,7 +504,6 @@ contract BluePublicAllocatorTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
@@ -552,7 +550,6 @@ contract BluePublicAllocatorTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
@@ -591,16 +588,7 @@ contract BluePublicAllocatorTest is Test {
 
         vm.prank(user);
         blueBundles.blueBundlesV1MigrateBorrowPosition(
-            marketParams,
-            destMarketParams,
-            type(uint256).max,
-            0,
-            LLTV_DEST,
-            _noAuthSig(),
-            reallocations,
-            0,
-            address(0),
-            block.timestamp
+            marketParams, destMarketParams, LLTV_DEST, _noAuthSig(), reallocations, 0, address(0), block.timestamp
         );
 
         assertEq(morpho.position(marketParams.id(), user).borrowShares, 0, "source debt closed");
@@ -786,7 +774,6 @@ contract BluePublicAllocatorTest is Test {
             marketParams,
             collateral,
             borrowAssets,
-            0,
             WAD,
             _noPermit(),
             _noAuthSig(),
