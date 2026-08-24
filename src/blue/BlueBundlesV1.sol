@@ -59,6 +59,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev To receive an amount W, pass borrowAssets = P + floor(W * WAD / (WAD - referralFeePct)).
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
+    /// @dev reallocations must be empty when borrowAssets is zero.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
@@ -75,6 +76,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
+        require(borrowAssets > 0 || reallocations.length == 0, InconsistentBorrowInput());
 
         setAuthorizationWithSig(signedAuthorization);
         TokenLib.pullOrWrapNative(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);

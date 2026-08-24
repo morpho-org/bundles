@@ -29,6 +29,7 @@ struct PublicAllocations {
 interface IBlueBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
+    error InconsistentBorrowInput();
     error InconsistentTokens();
     error LtvExceeded();
     error NativeTransferFailed();

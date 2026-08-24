@@ -57,7 +57,7 @@ contract BlueBundlesTest is Test {
         oracle = new OracleMock();
         oracle.setPrice(ORACLE_PRICE_SCALE);
 
-        // No reallocation is used in this file, so the public allocator is never called: see BluePublicAllocatorTest.
+        // No reallocation is executed in this file, so the public allocator is never called: see BluePublicAllocatorTest.
         blueBundles = new BlueBundlesV1(address(morpho), makeAddr("publicAllocator"));
         assertEq(blueBundles.BLUE(), address(morpho));
 
@@ -811,6 +811,33 @@ contract BlueBundlesTest is Test {
         assertEq(morpho.nonce(sigUser), nonceBefore + 1, "authorization nonce");
         assertTrue(morpho.isAuthorized(sigUser, address(blueBundles)), "authorization");
         assertEq(collateralToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    function testSupplyCollateralWithoutBorrowRevertsWithReallocations() public {
+        uint256 collateral = 1e18;
+        PublicAllocations[] memory reallocations = new PublicAllocations[](1);
+        deal(address(collateralToken), user, collateral);
+
+        vm.startPrank(user);
+        collateralToken.approve(address(blueBundles), collateral);
+        vm.expectRevert(IBlueBundlesV1.InconsistentBorrowInput.selector);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams,
+            collateral,
+            0,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            reallocations,
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(collateralToken.balanceOf(user), collateral, "collateral not pulled");
+        assertEq(morpho.collateral(id, user), 0, "collateral not supplied");
     }
 
     /// @dev A pure collateral supply still enforces maxLtv against the resulting position.
