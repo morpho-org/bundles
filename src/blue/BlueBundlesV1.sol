@@ -266,7 +266,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev sourceMaxSharePriceE27 upper-bounds the realized source repay share price; destMinSharePriceE27 lower-bounds the realized destination borrow share price (both assets per share, scaled by 1e27).
     /// @dev Migrating a position without debt reverts on Blue.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
-    /// @dev All public reallocations execute unconditionally; if the source debt decreases before execution, their full penalty is still added to the destination debt.    function blueBundlesV1MigrateBorrowPosition(
+    /// @dev All public reallocations execute unconditionally; if the source debt decreases before execution, their full penalty is still added to the destination debt.
+    function blueBundlesV1MigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         MarketParams memory destMarketParams,
         uint256 sourceMaxSharePriceE27,
