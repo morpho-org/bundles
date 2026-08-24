@@ -1190,8 +1190,8 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev Passing the full borrow shares closes the debt by shares: maxRepayAssets is pulled, debt + fee is spent
-    /// (fee on top, as in migrateBorrowPosition), and the unused remainder is refunded to msg.sender.
+    /// @dev Passing type(uint256).max closes the debt by shares: maxRepayAssets is pulled, debt + fee is spent (fee on
+    /// top, as in migrateBorrowPosition), and the unused remainder is refunded to msg.sender.
     function testRepayMaxClosesDebt(uint256 borrowAssets, uint256 referralFeePct) public {
         borrowAssets = bound(borrowAssets, 1, 1e30);
         referralFeePct = bound(referralFeePct, 0, WAD - 1);
@@ -1210,7 +1210,7 @@ contract BlueBundlesTest is Test {
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
             marketParams,
             0,
-            morpho.borrowShares(id, user),
+            type(uint256).max,
             maxRepayAssets,
             collateral,
             WAD,
@@ -1228,6 +1228,83 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(user), maxRepayAssets - cost, "user refunded the unused remainder");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    /// @dev If the debt was fully repaid before execution, type(uint256).max resolves to zero and repayment becomes a
+    /// no-op while the collateral withdrawal and full refund still execute.
+    function testRepayMaxCappedToZeroAfterThirdPartyFullRepay() public {
+        uint256 borrowAssets = 100e18;
+        _openBorrow(user, borrowAssets);
+        uint256 quotedRepayShares = morpho.borrowShares(id, user);
+        uint256 collateral = morpho.collateral(id, user);
+
+        address thirdParty = makeAddr("thirdParty");
+        deal(address(loanToken), thirdParty, borrowAssets);
+        vm.startPrank(thirdParty);
+        loanToken.approve(address(morpho), borrowAssets);
+        morpho.repay(marketParams, 0, quotedRepayShares, user, "");
+        vm.stopPrank();
+
+        uint256 maxRepayAssets = 1e18;
+        deal(address(loanToken), user, maxRepayAssets);
+        vm.startPrank(user);
+        loanToken.approve(address(blueBundles), maxRepayAssets);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams,
+            0,
+            type(uint256).max,
+            maxRepayAssets,
+            collateral,
+            0,
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.borrowShares(id, user), 0, "borrow shares");
+        assertEq(morpho.collateral(id, user), 0, "collateral");
+        assertEq(collateralToken.balanceOf(user), collateral, "collateral to user");
+        assertEq(loanToken.balanceOf(user), maxRepayAssets, "all assets refunded");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    function testRepaySharesBelowBalanceUnchanged() public {
+        uint256 borrowAssets = 100e18;
+        _openBorrow(user, borrowAssets);
+        uint256 borrowShares = morpho.borrowShares(id, user);
+        uint256 repayShares = borrowShares / 2;
+
+        deal(address(loanToken), user, borrowAssets);
+        vm.startPrank(user);
+        loanToken.approve(address(blueBundles), borrowAssets);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams,
+            0,
+            repayShares,
+            borrowAssets,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.borrowShares(id, user), borrowShares - repayShares, "borrow shares");
+        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
+    }
+
+    function testRepayInconsistentInputBubbles() public {
+        vm.expectRevert("inconsistent input");
+        vm.prank(user);
+        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
+            marketParams, 1, 1, 0, 0, WAD, _noPermit(), _noAuthSig(), 0, address(0), block.timestamp
+        );
     }
 
     /// @dev maxRepayAssets is the user's spend cap on a full close: if it can't cover debt + fee, the repaid debt

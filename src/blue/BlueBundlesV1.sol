@@ -122,7 +122,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev When native tokens are sent, loanTokenPermit.kind must be PermitKind.None and maxRepayAssets must equal msg.value; the native tokens are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of being pulled, and the reimbursed remainder is unwrapped back to native.
     /// @dev Reimbursing native tokens requires msg.sender to be able to receive native tokens, or else it will revert.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization, if some collateral is withdrawn.
-    /// @dev Exactly one of repayAssets and repayShares should be non-zero: the debt is repaid by assets, or by shares. To close the full debt, pass msg.sender's full borrow shares as repayShares.
+    /// @dev At least one of repayAssets and repayShares must be zero to repay; set both to zero for a pure collateral withdrawal.
+    /// @dev When repayShares is type(uint256).max, it is replaced with msg.sender's borrow shares at execution to close any remaining debt.
     /// @dev The fee is repaidAssets * referralFeePct / (WAD - referralFeePct), where repaidAssets is the actual assets repaid.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function blueBundlesV1RepayAndWithdrawCollateral(
@@ -143,6 +144,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
         setAuthorizationWithSig(signedAuthorization);
         TokenLib.pullOrWrapNative(marketParams.loanToken, msg.sender, maxRepayAssets, loanTokenPermit);
+
+        if (repayShares == type(uint256).max) {
+            repayShares = UtilsLib.min(repayShares, IMorpho(BLUE).position(marketParams.id(), msg.sender).borrowShares);
+        }
 
         if (repayAssets > 0 || repayShares > 0) {
             TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
