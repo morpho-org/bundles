@@ -59,6 +59,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev To receive an amount W, pass borrowAssets = P + floor(W * WAD / (WAD - referralFeePct)).
     /// @dev maxLtv caps msg.sender's resulting LTV after a borrow; skipped on a pure collateral supply; at or above the market LLTV it is a no-op (WAD disables it).
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
+    /// @dev Reallocations execute when borrowAssets is zero only if their aggregate penalty is zero.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
@@ -76,29 +77,31 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
 
+        uint256 penaltyAssets = totalPenaltyAssets(reallocations);
+        uint256 receivedAssets = borrowAssets - penaltyAssets;
+
         setAuthorizationWithSig(signedAuthorization);
         TokenLib.pullOrWrapNative(marketParams.collateralToken, msg.sender, collateralAssets, collateralPermit);
         if (collateralAssets > 0) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets, msg.sender, "");
         }
+        if (penaltyAssets == 0) {
+            executeBorrow(marketParams, borrowAssets, minSharePriceE27, reallocations, msg.sender);
+        } else {
+            bytes memory operationData = abi.encode(marketParams, borrowAssets, minSharePriceE27, reallocations);
+            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+            IMorpho(BLUE)
+                .flashLoan(
+                    marketParams.loanToken,
+                    penaltyAssets,
+                    abi.encode(msg.sender, this.blueBundlesV1SupplyCollateralAndBorrow.selector, operationData)
+                );
+        }
+
         if (borrowAssets > 0) {
-            uint256 penaltyAssets = totalPenaltyAssets(reallocations);
-            if (penaltyAssets == 0) {
-                executeBorrow(marketParams, borrowAssets, minSharePriceE27, reallocations, msg.sender);
-            } else {
-                bytes memory operationData = abi.encode(marketParams, borrowAssets, minSharePriceE27, reallocations);
-                TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
-                IMorpho(BLUE)
-                    .flashLoan(
-                        marketParams.loanToken,
-                        penaltyAssets,
-                        abi.encode(msg.sender, this.blueBundlesV1SupplyCollateralAndBorrow.selector, operationData)
-                    );
-            }
             requireMaxLtv(marketParams, msg.sender, maxLtv);
 
-            uint256 receivedAssets = borrowAssets - penaltyAssets;
             uint256 referralFeeAssets = receivedAssets.mulDivDown(referralFeePct, WAD);
             if (referralFeeAssets > 0) {
                 SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
@@ -115,8 +118,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         address sender
     ) internal {
         executePublicAllocations(marketParams.loanToken, reallocations);
-        (, uint256 borrowShares) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
-        require(borrowAssets.mulDivDown(1e27, borrowShares) >= minSharePriceE27, SlippageExceeded());
+        if (borrowAssets > 0) {
+            (, uint256 borrowShares) = IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
+            require(borrowAssets.mulDivDown(1e27, borrowShares) >= minSharePriceE27, SlippageExceeded());
+        }
     }
 
     /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt when either repayAssets or repayShares is non-zero, reimburses the unused remainder (if any), and withdraws collateral if collateralAssets > 0.

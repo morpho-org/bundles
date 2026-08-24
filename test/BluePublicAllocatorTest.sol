@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import {Test} from "../lib/forge-std/src/Test.sol";
+import {stdError} from "../lib/forge-std/src/StdError.sol";
 import {IMorpho, MarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {MorphoLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
@@ -491,6 +492,66 @@ contract BluePublicAllocatorTest is Test {
         assertEq(morpho.expectedBorrowAssets(marketParams, user), borrowAssets, "debt");
         assertEq(_allocation(marketParams), borrowAssets, "vault funded the borrow");
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler token residual");
+    }
+
+    /// @dev A pure collateral supply still executes penalty-free public allocations without creating debt.
+    function testSupplyCollateralWithoutBorrowExecutesZeroPenaltyReallocation() public {
+        uint256 collateral = 10e18;
+        uint256 reallocationAssets = 10e18;
+        _fundVault(VAULT_ASSETS);
+
+        vm.prank(allocator);
+        publicAllocator.setPenalty(address(vault), 0);
+
+        PublicAllocations[] memory reallocations = _reallocation(liquidMarketParams, reallocationAssets);
+        reallocations[0].penalty = 0;
+
+        _fundWeth(user, collateral);
+        vm.startPrank(user);
+        weth.approve(address(blueBundles), collateral);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams,
+            collateral,
+            0,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            reallocations,
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.collateral(marketParams.id(), user), collateral, "collateral");
+        assertEq(morpho.borrowShares(marketParams.id(), user), 0, "debt");
+        assertEq(_allocation(marketParams), reallocationAssets, "vault allocation");
+    }
+
+    /// @dev A pure collateral supply cannot fund a non-zero public allocator penalty.
+    function testSupplyCollateralWithoutBorrowRevertsOnPenalty() public {
+        uint256 collateral = 10e18;
+        _fundVault(VAULT_ASSETS);
+        _fundWeth(user, collateral);
+
+        vm.startPrank(user);
+        weth.approve(address(blueBundles), collateral);
+        vm.expectRevert(stdError.arithmeticError);
+        blueBundles.blueBundlesV1SupplyCollateralAndBorrow(
+            marketParams,
+            collateral,
+            0,
+            0,
+            WAD,
+            _noPermit(),
+            _noAuthSig(),
+            _reallocation(liquidMarketParams, 10e18),
+            0,
+            address(0),
+            block.timestamp
+        );
+        vm.stopPrank();
     }
 
     /// @dev Native collateral is wrapped before being supplied, even when a reallocation also flash loans a penalty.
