@@ -60,7 +60,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev maxLtv caps msg.sender's resulting LTV; at or above the market LLTV it is a no-op (WAD disables it).
     /// @dev minSharePriceE27 lower-bounds the realized borrow share price (borrowed assets per share, scaled by 1e27).
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
-    /// @dev All public reallocations execute when borrowAssets > 0; the ratio of their aggregate penalty to `borrowAssets` has no caller-specified bound.
+    /// @dev All public reallocations execute unconditionally.
     function blueBundlesV1SupplyCollateralAndBorrow(
         MarketParams memory marketParams,
         uint256 collateralAssets,
@@ -209,6 +209,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     /// @dev The aggregate public allocator penalties P are deducted from withdrawnAssets before the referral fee is charged. The resulting net withdrawal proceeds are sent to msg.sender. Fee = floor((withdrawnAssets - P) * referralFeePct / WAD).
     /// @dev To receive an amount W when withdrawing by assets, pass withdrawAssets = P + floor(W * WAD / (WAD - referralFeePct)) and withdrawShares = 0.
     /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
+    /// @dev All public reallocations execute unconditionally; their aggregate penalty is not bounded relative to withdrawAssets.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
