@@ -1230,52 +1230,9 @@ contract BlueBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev A permissionless repayment made after the user quotes their full share balance does not make the bundle
-    /// revert: repayShares is capped at the balance remaining at execution.
-    function testRepaySharesCappedAfterThirdPartyRepay() public {
-        uint256 borrowAssets = 100e18;
-        uint256 thirdPartyRepayAssets = 1e18;
-        _openBorrow(user, borrowAssets);
-        uint256 quotedRepayShares = morpho.borrowShares(id, user);
-        uint256 collateral = morpho.collateral(id, user);
-
-        address thirdParty = makeAddr("thirdParty");
-        deal(address(loanToken), thirdParty, thirdPartyRepayAssets);
-        vm.startPrank(thirdParty);
-        loanToken.approve(address(morpho), thirdPartyRepayAssets);
-        morpho.repay(marketParams, thirdPartyRepayAssets, 0, user, "");
-        vm.stopPrank();
-
-        uint256 remainingBorrowAssets = morpho.expectedBorrowAssets(marketParams, user);
-        uint256 maxRepayAssets = borrowAssets;
-        deal(address(loanToken), user, maxRepayAssets);
-        vm.startPrank(user);
-        loanToken.approve(address(blueBundles), maxRepayAssets);
-        blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
-            marketParams,
-            0,
-            quotedRepayShares,
-            maxRepayAssets,
-            collateral,
-            WAD,
-            _noPermit(),
-            _noAuthSig(),
-            0,
-            address(0),
-            block.timestamp
-        );
-        vm.stopPrank();
-
-        assertEq(morpho.borrowShares(id, user), 0, "borrow shares");
-        assertEq(morpho.collateral(id, user), 0, "collateral");
-        assertEq(collateralToken.balanceOf(user), collateral, "collateral to user");
-        assertEq(loanToken.balanceOf(user), maxRepayAssets - remainingBorrowAssets, "unused assets refunded");
-        assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
-    }
-
-    /// @dev If the debt was fully repaid before execution, the capped repayment becomes a no-op while the collateral
-    /// withdrawal and full refund still execute.
-    function testRepaySharesCappedToZeroAfterThirdPartyFullRepay() public {
+    /// @dev If the debt was fully repaid before execution, type(uint256).max resolves to zero and repayment becomes a
+    /// no-op while the collateral withdrawal and full refund still execute.
+    function testRepayMaxCappedToZeroAfterThirdPartyFullRepay() public {
         uint256 borrowAssets = 100e18;
         _openBorrow(user, borrowAssets);
         uint256 quotedRepayShares = morpho.borrowShares(id, user);
@@ -1295,7 +1252,7 @@ contract BlueBundlesTest is Test {
         blueBundles.blueBundlesV1RepayAndWithdrawCollateral(
             marketParams,
             0,
-            quotedRepayShares,
+            type(uint256).max,
             maxRepayAssets,
             collateral,
             0,
