@@ -32,7 +32,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
-/// @dev Share-price slippage is not checked; integrators must instead ensure address(0xdead) holds at least 1e9 supply shares in each market to prevent share-price inflation.
+/// @dev Share-price slippage is not checked. Users must instead ensure that they use only markets that are protected against supply share price inflation attacks.
 contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoanCallback {
     using UtilsLib for uint256;
     using MarketParamsLib for MarketParams;
