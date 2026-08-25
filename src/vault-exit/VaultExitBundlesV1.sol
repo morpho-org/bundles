@@ -24,11 +24,10 @@ import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/Utils
 /// @dev Meant to be used to exit a vault that allocates assets to Morpho Blue. The user gets Morpho Blue shares (in-kind redemption), assets (withdrawal), or both.
 /// @dev Vaults that are used with this contract must be Vault V1 (MetaMorpho V1 or V1.1) or Vault V2.
 /// @dev Vault V2 that are used with this contract must have only one adapter, and that adapter must be the MorphoMarketV1AdapterV2.
-/// @dev Vault V1 that are used with this contract must not be Morpho Blue's fee recepient, otherwise its expected supply assets are underestimated since the shares internally computed do not include the accrued fee shares.
+/// @dev Vault V1 that are used with this contract must not be Morpho Blue's fee recipient, otherwise its expected supply assets are underestimated since the shares internally computed do not include the accrued fee shares.
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev The receiveAssetsGate of vaults (V2) that are used with this contract must allow this contract, as it receives the withdrawn assets. The gate can query the bundle's initiator thanks to the exposed transient variable.
-/// @dev The sendSharesGate of vaults (V2) that are used with this contract must allow the transaction initiator to spend their shares.
+/// @dev When using a Vault V2 with this contract, the receiveAssetsGate must allow this contract to receive the withdrawn assets. The gate can query the bundle's initiator through to the exposed transient variable.
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
