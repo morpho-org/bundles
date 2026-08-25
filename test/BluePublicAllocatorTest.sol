@@ -25,9 +25,6 @@ import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
 import {IBlueBundlesV1, SignedAuthorization, PublicAllocations} from "../src/blue/interfaces/IBlueBundlesV1.sol";
 import {TokenPermit} from "../src/libraries/TokenLib.sol";
 import {WETHMock} from "./BlueBundlesTest.sol";
-import {
-    IBluePublicAllocator
-} from "../lib/vault-v2/src/periphery/blue-public-allocator/interfaces/IBluePublicAllocator.sol";
 
 /// @dev Covers the public-allocator paths of the three Blue entrypoints that consume market liquidity: borrowing
 /// against fresh collateral, exiting a supply position, and migrating a borrow position.
@@ -46,7 +43,7 @@ contract BluePublicAllocatorTest is Test {
     IMorpho internal morpho;
     IVaultV2 internal vault;
     IMorphoMarketV1AdapterV2 internal adapter;
-    IBluePublicAllocator internal publicAllocator;
+    IBluePublicAllocatorConfig internal publicAllocator;
     BlueBundlesV1 internal blueBundles;
 
     ERC20Mock internal loanToken;
@@ -116,7 +113,7 @@ contract BluePublicAllocatorTest is Test {
         _increaseCaps(abi.encode("this/marketParams", address(adapter), liquidMarketParams));
 
         // Deployed through deployCode so that its own compiler settings do not leak into this file's compilation unit.
-        publicAllocator = IBluePublicAllocator(
+        publicAllocator = IBluePublicAllocatorConfig(
             deployCode("BluePublicAllocator.sol:BluePublicAllocator", abi.encode(address(vaultFactory)))
         );
         _submitAndExec(abi.encodeCall(IVaultV2.setIsAllocator, (address(publicAllocator), true)));
@@ -614,7 +611,7 @@ contract BluePublicAllocatorTest is Test {
         publicAllocator.setPenalty(address(vault), 2 * PENALTY);
 
         vm.prank(user);
-        vm.expectRevert(IBluePublicAllocator.IncorrectPenalty.selector);
+        vm.expectRevert(IBluePublicAllocatorConfig.IncorrectPenalty.selector);
         blueBundles.blueBundlesV1Withdraw(
             marketParams,
             assets,
@@ -637,7 +634,7 @@ contract BluePublicAllocatorTest is Test {
         publicAllocator.setPenalty(address(vault), PENALTY / 2);
 
         vm.prank(user);
-        vm.expectRevert(IBluePublicAllocator.IncorrectPenalty.selector);
+        vm.expectRevert(IBluePublicAllocatorConfig.IncorrectPenalty.selector);
         blueBundles.blueBundlesV1Withdraw(
             marketParams,
             assets,
@@ -682,7 +679,7 @@ contract BluePublicAllocatorTest is Test {
         publicAllocator.setCanPullFromMarket(address(vault), address(adapter), liquidMarketParams, false);
 
         vm.prank(user);
-        vm.expectRevert(IBluePublicAllocator.CannotPullFromMarket.selector);
+        vm.expectRevert(IBluePublicAllocatorConfig.CannotPullFromMarket.selector);
         blueBundles.blueBundlesV1Withdraw(
             marketParams,
             assets,
@@ -705,7 +702,7 @@ contract BluePublicAllocatorTest is Test {
         publicAllocator.setIsActiveAdapter(address(vault), address(adapter), false);
 
         vm.prank(user);
-        vm.expectRevert(IBluePublicAllocator.InactiveAdapter.selector);
+        vm.expectRevert(IBluePublicAllocatorConfig.InactiveAdapter.selector);
         blueBundles.blueBundlesV1Withdraw(
             marketParams,
             assets,
@@ -728,7 +725,7 @@ contract BluePublicAllocatorTest is Test {
         publicAllocator.setAbsoluteCap(address(vault), address(adapter), marketParams, 0);
 
         vm.prank(user);
-        vm.expectRevert(IBluePublicAllocator.ZeroAbsoluteCap.selector);
+        vm.expectRevert(IBluePublicAllocatorConfig.ZeroAbsoluteCap.selector);
         blueBundles.blueBundlesV1Withdraw(
             marketParams,
             assets,
@@ -810,4 +807,24 @@ contract BluePublicAllocatorTest is Test {
             marketParams, assets, 0, _noAuthSig(), reallocations, 0, address(0), block.timestamp
         );
     }
+}
+
+/// @dev The rest of the allocator's surface, used only by this test: the setters it is configured through, and the errors it throws inside a reallocation, which bubble up through the bundler.
+interface IBluePublicAllocatorConfig {
+    error CannotPullFromMarket();
+    error InactiveAdapter();
+    error IncorrectPenalty();
+    error ZeroAbsoluteCap();
+
+    function setIsActiveAdapter(address vault, address adapter, bool newIsActiveAdapter) external;
+    function setAbsoluteCap(address vault, address adapter, MarketParams calldata marketParams, uint256 newAbsoluteCap)
+        external;
+    function setCanPullFromMarket(
+        address vault,
+        address adapter,
+        MarketParams calldata marketParams,
+        bool newCanPullFromMarket
+    ) external;
+    function setCanPullFromIdle(address vault, bool newCanPullFromIdle) external;
+    function setPenalty(address vault, uint64 newPenalty) external;
 }
