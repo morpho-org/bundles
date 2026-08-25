@@ -163,6 +163,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         if (referralFeeAssets > 0) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, referralFeeRecipient, referralFeeAssets);
         }
+        requireMaxLtv(marketParams, msg.sender, maxLtv);
+
         uint256 remainder = maxRepayAssets - repayAssets - referralFeeAssets;
         if (remainder > 0) {
             if (msg.value > 0) {
@@ -173,7 +175,6 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
                 SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, remainder);
             }
         }
-        requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
     /// @dev Pulls assets from msg.sender (optionally via ERC-2612 or Permit2) and supplies them to the market for msg.sender.
