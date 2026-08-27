@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Net amount inversion for the two Blue entrypoints. P is the aggregate
-// public-allocator penalty, deducted before the referral fee.
+// Check that the Blue entrypoints transfer the target net amount.
 
 methods {
     function _.transferFrom(address from, address to, uint256 amount) external => cvlTransferFrom(calledContract, from, to, amount) expect(bool);
@@ -13,18 +12,13 @@ methods {
     function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(token, assets, data) expect void;
     function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
 
-    // The public allocator charges the caller mulDivUp(assets, penalty, WAD) of the destination
-    // loan token and sends it to the vault, and moves no other token of the caller. Proven of the
-    // implementation by BluePublicAllocatorPenalty.spec. Its revert conditions are dropped, which
-    // only widens the set of verified executions.
+    // Assume public allocations only charge their penalty.
     function _.reallocate(address vault, address deallocateAdapter, BlueBundlesV1.MarketParams deallocateMarketParams, address allocateAdapter, BlueBundlesV1.MarketParams allocateMarketParams, uint128 assets, uint64 penalty) external => summaryPublicAllocation(allocateMarketParams.loanToken, vault, assets, penalty) expect void;
     function _.allocateFromIdle(address vault, address adapter, BlueBundlesV1.MarketParams marketParams, uint128 assets, uint64 penalty) external => summaryPublicAllocation(marketParams.loanToken, vault, assets, penalty) expect void;
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => NONDET;
     function _.nonce(address authorizer) external => NONDET;
 
-    // Only reverts, and reads no state that the property depends on: skipping it verifies a
-    // superset of the executions (over-approximation), and drops the market id hashing, the
-    // oracle price call and two symbolic-divisor divisions.
+    // Assume that requireMaxLtv does not revert.
     function BlueBundlesV1.requireMaxLtv(BlueBundlesV1.MarketParams memory marketParams, address sender, uint256 maxLtv) internal => NONDET;
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
 
@@ -32,8 +26,7 @@ methods {
     function UtilsLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => summaryMulDivDown(x, y, d);
 }
 
-// The bundler and the public allocator compute the penalty with the same rounding-up division, so
-// both sides of the summary above use this one uninterpreted function.
+// Assume the bundler and public allocator use the same penalty calculation.
 persistent ghost mulDivUpG(uint256, uint256, uint256) returns uint256;
 
 persistent ghost mapping(address => mathint) bundlerBalance;
@@ -47,7 +40,6 @@ function summaryMulDivDown(uint256 a, uint256 b, uint256 d) returns uint256 {
         revert();
     }
 
-    // a * b <= max_uint256 and d >= 1 above, so the result fits.
     return require_uint256(a * b / d);
 }
 
@@ -113,12 +105,7 @@ function sumPenaltyAssets(BlueBundlesV1.PublicAllocations[] reallocations) retur
     }
 }
 
-// The inverse formula documented on both entrypoints: the gross amount floor(t * WAD / (WAD - pct))
-// nets exactly t once the fee is taken. Proven on its own, with no contract call in the query, so
-// that the entrypoint rules below can take the relation as a hypothesis and discharge their assert
-// by congruence instead of re-deriving this nonlinear identity inside a far larger query. Those
-// rules quantify over every gross amount satisfying the relation, so the two together give the
-// original statement.
+// Check that grossing up the target amount offsets the referral fee.
 rule referralFeeInversion(uint256 targetNet, uint256 referralFeePct) {
     require referralFeePct < WAD();
 
@@ -127,6 +114,7 @@ rule referralFeeInversion(uint256 targetNet, uint256 referralFeePct) {
     assert grossAssets - summaryMulDivDown(grossAssets, referralFeePct, WAD()) == targetNet;
 }
 
+// Check that withdrawing transfers the target amount and leaves no residue.
 rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
     require e.msg.sender != currentContract;
     require referralFeeRecipient != currentContract;
@@ -146,6 +134,7 @@ rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams mar
     assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
 }
 
+// Check that borrowing transfers the target amount and leaves no residue.
 rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAssets, uint256 maxLtv, TokenLib.TokenPermit collateralPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
     require e.msg.sender != currentContract;
     require referralFeeRecipient != currentContract;
