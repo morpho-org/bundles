@@ -12,6 +12,7 @@ methods {
     function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(marketParams.collateralToken, assets) expect void;
     function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(token, assets, data) expect void;
     function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
+
     // The public allocator charges the caller mulDivUp(assets, penalty, WAD) of the destination
     // loan token and sends it to the vault, and moves no other token of the caller. Proven of the
     // implementation by BluePublicAllocatorPenalty.spec. Its revert conditions are dropped, which
@@ -45,6 +46,7 @@ function summaryMulDivDown(uint256 a, uint256 b, uint256 d) returns uint256 {
     if (d == 0 || a * b > max_uint256) {
         revert();
     }
+
     // a * b <= max_uint256 and d >= 1 above, so the result fits.
     return require_uint256(a * b / d);
 }
@@ -103,8 +105,7 @@ function reallocationsAssumptions(BlueBundlesV1.PublicAllocations[] reallocation
 
 function sumPenaltyAssets(BlueBundlesV1.PublicAllocations[] reallocations) returns mathint {
     if (reallocations.length > 1) {
-        return mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD())
-            + mulDivUpG(reallocations[1].assets, reallocations[1].penalty, WAD());
+        return mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD()) + mulDivUpG(reallocations[1].assets, reallocations[1].penalty, WAD());
     } else if (reallocations.length > 0) {
         return mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD());
     } else {
@@ -145,29 +146,7 @@ rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams mar
     assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
 }
 
-// The same property on the no-penalty path, where the bundle carries no reallocation: Blue is
-// withdrawn from directly, without the flash loan that funds the penalties upfront. A case of the
-// rule above, kept separate because it skips the callback and its bundle re-encoding entirely, so
-// it gives fast feedback on the token flow on its own. Same for the borrow entrypoint below.
-rule blueBundlesV1WithdrawReturnsTargetNetWithoutReallocations(env e, BlueBundlesV1.MarketParams marketParams, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
-    require e.msg.sender != currentContract;
-    require referralFeeRecipient != currentContract;
-    require referralFeeRecipient != e.msg.sender;
-    require referralFeePct < WAD();
-    require reallocations.length == 0, "no penalty to flash loan";
-
-    uint256 grossAssets;
-    require grossAssets - summaryMulDivDown(grossAssets, referralFeePct, WAD()) == targetNet, "referralFeeInversion";
-    mathint before = bundlerBalance[marketParams.loanToken];
-    mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
-
-    blueBundlesV1Withdraw(e, marketParams, grossAssets, 0, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
-
-    assert bundlerBalance[marketParams.loanToken] == before;
-    assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
-}
-
-rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit collateralPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
+rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAssets, uint256 maxLtv, TokenLib.TokenPermit collateralPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
     require e.msg.sender != currentContract;
     require referralFeeRecipient != currentContract;
     require referralFeeRecipient != e.msg.sender;
@@ -180,27 +159,7 @@ rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1
     mathint before = bundlerBalance[marketParams.loanToken];
     mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
 
-    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, require_uint256(penaltyAssets + grossAssets), minSharePriceE27, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
-
-    assert bundlerBalance[marketParams.loanToken] == before;
-    assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
-}
-
-// The same property on the no-penalty path, where the bundle carries no reallocation: Blue is
-// borrowed from directly, without the flash loan that funds the penalties upfront.
-rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNetWithoutReallocations(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAssets, uint256 minSharePriceE27, uint256 maxLtv, TokenLib.TokenPermit collateralPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
-    require e.msg.sender != currentContract;
-    require referralFeeRecipient != currentContract;
-    require referralFeeRecipient != e.msg.sender;
-    require referralFeePct < WAD();
-    require reallocations.length == 0, "no penalty to flash loan";
-
-    uint256 grossAssets;
-    require grossAssets - summaryMulDivDown(grossAssets, referralFeePct, WAD()) == targetNet, "referralFeeInversion";
-    mathint before = bundlerBalance[marketParams.loanToken];
-    mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
-
-    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, grossAssets, minSharePriceE27, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
+    blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, require_uint256(penaltyAssets + grossAssets), maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     assert bundlerBalance[marketParams.loanToken] == before;
     assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
