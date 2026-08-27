@@ -45,8 +45,8 @@ function summaryMulDivDown(uint256 a, uint256 b, uint256 d) returns uint256 {
     return assert_uint256(a * b / d);
 }
 
-function referralFeeInversionHolds(uint256 grossAssets, uint256 referralFeePct, uint256 targetNet) returns bool {
-    return grossAssets - summaryMulDivDown(grossAssets, referralFeePct, WAD()) == targetNet;
+function referralFeeInversionHolds(uint256 receivedAssets, uint256 referralFeePct, uint256 targetAssets) returns bool {
+    return receivedAssets - summaryMulDivDown(receivedAssets, referralFeePct, WAD()) == targetAssets;
 }
 
 function cvlTransferFrom(address token, address from, address to, uint256 amount) returns bool {
@@ -112,25 +112,26 @@ function sumPenaltyAssets(BlueBundlesV1.PublicAllocations[] reallocations) retur
 }
 
 // Check that grossing up the target amount offsets the referral fee.
-rule referralFeeInversion(uint256 targetNet, uint256 referralFeePct) {
+rule referralFeeInversion(uint256 targetAssets, uint256 referralFeePct) {
     require referralFeePct < WAD(), "valid fee";
 
-    uint256 grossAssets = summaryMulDivDown(targetNet, WAD(), assert_uint256(WAD() - referralFeePct));
+    uint256 receivedAssets =
+        summaryMulDivDown(targetAssets, WAD(), assert_uint256(WAD() - referralFeePct));
 
-    assert referralFeeInversionHolds(grossAssets, referralFeePct, targetNet);
+    assert referralFeeInversionHolds(receivedAssets, referralFeePct, targetAssets);
 }
 
 // Check that withdrawing transfers the target amount and leaves no residue.
-rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
+rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetAssets) {
     require e.msg.sender != currentContract, "external caller";
     require referralFeeRecipient != currentContract, "no fee residue";
     require referralFeeRecipient != e.msg.sender, "separate fee recipient";
     reallocationsAssumptions(reallocations, e.msg.sender);
 
     mathint penaltyAssets = sumPenaltyAssets(reallocations);
-    uint256 grossAssets;
-    require referralFeeInversionHolds(grossAssets, referralFeePct, targetNet), "see referralFeeInversion";
-    mathint withdrawAssets = penaltyAssets + grossAssets;
+    uint256 receivedAssets;
+    require referralFeeInversionHolds(receivedAssets, referralFeePct, targetAssets), "see referralFeeInversion";
+    mathint withdrawAssets = penaltyAssets + receivedAssets;
     require withdrawAssets <= max_uint256, "valid uint256 input";
     mathint before = bundlerBalance[marketParams.loanToken];
     mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
@@ -138,20 +139,20 @@ rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams mar
     blueBundlesV1Withdraw(e, marketParams, assert_uint256(withdrawAssets), 0, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     assert bundlerBalance[marketParams.loanToken] == before;
-    assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
+    assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetAssets;
 }
 
 // Check that borrowing transfers the target amount and leaves no residue.
-rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAssets, uint256 maxLtv, TokenLib.TokenPermit collateralPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetNet) {
+rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAssets, uint256 maxLtv, TokenLib.TokenPermit collateralPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetAssets) {
     require e.msg.sender != currentContract, "external caller";
     require referralFeeRecipient != currentContract, "no fee residue";
     require referralFeeRecipient != e.msg.sender, "separate fee recipient";
     reallocationsAssumptions(reallocations, e.msg.sender);
 
     mathint penaltyAssets = sumPenaltyAssets(reallocations);
-    uint256 grossAssets;
-    require referralFeeInversionHolds(grossAssets, referralFeePct, targetNet), "see referralFeeInversion";
-    mathint borrowAssets = penaltyAssets + grossAssets;
+    uint256 receivedAssets;
+    require referralFeeInversionHolds(receivedAssets, referralFeePct, targetAssets), "see referralFeeInversion";
+    mathint borrowAssets = penaltyAssets + receivedAssets;
     require borrowAssets <= max_uint256, "valid uint256 input";
     mathint before = bundlerBalance[marketParams.loanToken];
     mathint userBefore = recipientBalance[marketParams.loanToken][e.msg.sender];
@@ -159,5 +160,5 @@ rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, assert_uint256(borrowAssets), maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     assert bundlerBalance[marketParams.loanToken] == before;
-    assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetNet;
+    assert recipientBalance[marketParams.loanToken][e.msg.sender] - userBefore == targetAssets;
 }
