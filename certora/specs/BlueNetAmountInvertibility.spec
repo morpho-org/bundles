@@ -115,8 +115,7 @@ function sumPenaltyAssets(BlueBundlesV1.PublicAllocations[] reallocations) retur
 rule referralFeeInversion(uint256 targetAssets, uint256 referralFeePct) {
     require referralFeePct < WAD(), "valid fee";
 
-    uint256 receivedAssets =
-        summaryMulDivDown(targetAssets, WAD(), assert_uint256(WAD() - referralFeePct));
+    uint256 receivedAssets = summaryMulDivDown(targetAssets, WAD(), assert_uint256(WAD() - referralFeePct));
 
     assert referralFeeInversionHolds(receivedAssets, referralFeePct, targetAssets);
 }
