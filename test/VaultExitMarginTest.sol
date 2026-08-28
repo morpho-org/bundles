@@ -224,6 +224,11 @@ contract VaultExitMarginTest is Test {
             if (illiquid) _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(adapter)));
         }
 
+        // Set after the deposit and the allocations, so that they are not routed through the liquidity adapter.
+        // In the liquid scenario it makes the force withdraw's upfront penalty-free withdrawal non-zero.
+        vm.prank(allocator);
+        IVaultV2(vault).setLiquidityAdapterAndData(adapter, abi.encode(marketList[0]));
+
         // Set the vault share price to SHARE_PRICE, keeping the sole holder's balance equal to the total supply.
         uint256 newShares = IVaultV2(vault).totalAssets() * WAD / SHARE_PRICE;
         stdstore.target(vault).sig("totalSupply()").checked_write(newShares);
