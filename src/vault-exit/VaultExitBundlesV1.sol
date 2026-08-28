@@ -177,7 +177,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// @dev Starts by withdrawing everything the vault can pay without penalty: its idle assets and the liquidity available through the liquidity adapter.
     /// @dev The assetsToDeallocate amount is floor((exitAssets - assetsToWithdraw) * WAD / (WAD + penalty)), where assetsToWithdraw is the amount withdrawn without penalty.
     /// @dev The assetsToDeallocate amount is force deallocated by looping over the adapter's markets, taking from each market as much as its liquidity and the adapter's position allow before moving to the next one.
-    /// @dev The assets are withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error for the users). The sum of the assets passed as argument to the withdraw function can be greater than exitAssets, but no greater that exitAssets+N for each iteration.
+    /// @dev The assets are withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error for the users). The sum of the assets passed as argument to the withdraw function can be greater than exitAssets, but no greater that exitAssets+N.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev minSharePriceE27 lower-bounds the realized exit share price (withdrawn assets per share, scaled by 1e27). The force deallocate penalty is deducted from the withdrawn assets, so it lowers this price.
