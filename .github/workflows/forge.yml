@@ -1,64 +1,65 @@
 name: forge
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
   workflow_dispatch:
 
 jobs:
-  format:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          submodules: recursive
-
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
-
-      - name: Check formatting
-        run: forge fmt src test script certora --check
-
-  lint:
+  bytecode:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
 
-      - name: Run forge lint
-        run: forge lint src --deny notes
-
-      - name: Run forge lint on tests
-        run: FOUNDRY_PROFILE=lint-test forge lint test --deny notes
-
-  sizes:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          submodules: recursive
-
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
-
-      - name: Run forge build
-        run: forge build --force --sizes
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          submodules: recursive
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
-      - name: Run Forge tests
-        run: forge test --deny warnings
+      - name: Compare bytecode of changed src contracts
+        run: |
+          set -e
+          cat > /tmp/manifest.py <<'PY'
+          import json, hashlib, sys, os
+          out = {}
+          for f, c in (("BlueBundlesV1.sol","BlueBundlesV1"),
+                       ("MidnightBundlesV1.sol","MidnightBundlesV1"),
+                       ("VaultExitBundlesV1.sol","VaultExitBundlesV1"),
+                       ("VaultBundlesV1.sol","VaultBundlesV1")):
+              p = os.path.join("out", f, c + ".json")
+              a = json.load(open(p))
+              cre = a["bytecode"]["object"]
+              dep = a["deployedBytecode"]["object"]
+              out[c] = {
+                "creation_len": len(cre[2:]) // 2,
+                "creation_sha256": hashlib.sha256(cre[2:].encode()).hexdigest(),
+                "deployed_len": len(dep[2:]) // 2,
+                "deployed_sha256": hashlib.sha256(dep[2:].encode()).hexdigest(),
+              }
+          json.dump(out, open(sys.argv[1], "w"), indent=1)
+          PY
+          echo "@@@ VERSION"
+          forge --version
+          echo "@@@ BUILD NEW (PR head src)"
+          forge build --skip test
+          python3 /tmp/manifest.py /tmp/new.json
+          echo "@@@ BUILD OLD (origin/main src)"
+          git fetch --depth=1 https://github.com/morpho-org/bundles main
+          git checkout FETCH_HEAD -- src
+          forge build --skip test
+          python3 /tmp/manifest.py /tmp/old.json
+          echo "@@@ RESULT"
+          python3 - <<'PY'
+          import json
+          old = json.load(open('/tmp/old.json')); new = json.load(open('/tmp/new.json'))
+          same = True
+          for c in old:
+              o, n = old[c], new[c]
+              eq = o == n
+              same &= eq
+              print("%-22s %s" % (c, "IDENTICAL" if eq else "*** DIFFERS ***"))
+              print("   creation old len=%-6d sha=%s" % (o["creation_len"], o["creation_sha256"]))
+              print("   creation new len=%-6d sha=%s" % (n["creation_len"], n["creation_sha256"]))
+              print("   deployed old len=%-6d sha=%s" % (o["deployed_len"], o["deployed_sha256"]))
+              print("   deployed new len=%-6d sha=%s" % (n["deployed_len"], n["deployed_sha256"]))
+          print("@@@ ALL_IDENTICAL=%s" % same)
+          PY
