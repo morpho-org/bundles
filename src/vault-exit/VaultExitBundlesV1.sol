@@ -83,7 +83,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
             abi.decode(data, (address, MarketParams[], address));
 
         uint256 assetsToDeallocate = exitAssets;
-        for (uint256 i; assetsToDeallocate > 0; i++) {
+        for (uint256 i = 0; assetsToDeallocate > 0; i++) {
             MarketParams memory marketParams = marketParamsList[i];
             if (!IMetaMorpho(vault).config(marketParams.id()).enabled) continue;
 
@@ -145,7 +145,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
         uint256 assetsToDeallocate = (exitAssets - assetsToWithdrawFromIdle).mulDivDown(WAD, WAD + penalty);
 
-        for (uint256 i; assetsToDeallocate > 0; i++) {
+        for (uint256 i = 0; assetsToDeallocate > 0; i++) {
             bytes32 marketId = Id.unwrap(marketParamsList[i].id());
             uint256 adapterAssets = IMorphoMarketV1AdapterV2(adapter).expectedSupplyAssets(marketId);
             uint256 assets = UtilsLib.min(adapterAssets, assetsToDeallocate);
@@ -219,7 +219,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         // pre-fetching the market list because the deallocate could drop a market from the list.
         uint256 marketIdsLength = IMorphoMarketV1AdapterV2(adapter).marketIdsLength();
         bytes32[] memory marketIds = new bytes32[](marketIdsLength);
-        for (uint256 i; i < marketIdsLength; i++) {
+        for (uint256 i = 0; i < marketIdsLength; i++) {
             marketIds[i] = IMorphoMarketV1AdapterV2(adapter).marketIds(i);
         }
 
@@ -227,7 +227,7 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
         uint256 assetsToDeallocate = (exitAssets - assetsToWithdraw).mulDivDown(WAD, WAD + penalty);
         uint256 remainingAssets = assetsToDeallocate;
 
-        for (uint256 i; remainingAssets > 0; i++) {
+        for (uint256 i = 0; remainingAssets > 0; i++) {
             MarketParams memory marketParams = IMorpho(BLUE).idToMarketParams(Id.wrap(marketIds[i]));
             uint256 adapterShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(marketIds[i]);
             (uint256 totalSupplyAssets, uint256 totalSupplyShares, uint256 totalBorrowAssets,) =

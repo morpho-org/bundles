@@ -3,4 +3,5 @@
 pragma solidity 0.8.17;
 // Force foundry to compile Permit2 without importing it in the tests.
 
+// forge-lint: disable-next-item(unused-import) the import is what forces compilation.
 import {Permit2} from "../../lib/permit2/src/Permit2.sol";
