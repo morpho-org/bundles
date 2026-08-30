@@ -776,14 +776,18 @@ contract VaultBundlesTest is Test {
     }
 
     /// @dev Without a reset, the initiator stays set after the first call, so a second guarded call in the same
-    /// transaction reverts.
+    /// transaction reverts. The initiator is transient, so each pair of calls has to be issued from a single external
+    /// call to this contract: two top-level calls straddle a transaction boundary, which clears it.
     function testDepositAlreadyInitiated() public {
         uint256 assets = 100e18;
         deal(address(loanToken), user, 2 * assets);
 
-        bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp);
-
         vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+        this.depositTwice(assets);
+    }
+
+    function depositTwice(uint256 assets) external {
+        bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp);
         bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp);
     }
 
@@ -791,9 +795,12 @@ contract VaultBundlesTest is Test {
         uint256 assets = 100e18;
         _deposited(vaultV1, 2 * assets);
 
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, noSharesPermit, 0, address(0), block.timestamp);
-
         vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+        this.withdrawTwice(assets);
+    }
+
+    function withdrawTwice(uint256 assets) external {
+        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, noSharesPermit, 0, address(0), block.timestamp);
         bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, noSharesPermit, 0, address(0), block.timestamp);
     }
 
@@ -801,11 +808,14 @@ contract VaultBundlesTest is Test {
         uint256 assets = 100e18;
         _deposited(vaultV1, 2 * assets);
 
+        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+        this.migrateTwice(assets);
+    }
+
+    function migrateTwice(uint256 assets) external {
         bundles.vaultBundlesV1Migrate(
             address(vaultV1), address(vaultV2), assets, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
         );
-
-        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
         bundles.vaultBundlesV1Migrate(
             address(vaultV1), address(vaultV2), assets, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
         );

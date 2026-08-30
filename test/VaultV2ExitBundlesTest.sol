@@ -896,16 +896,20 @@ contract VaultV2ExitBundlesTest is Test {
     /// ALREADY INITIATED ///
 
     /// @dev Without a reset, the initiator stays set after the first call, so a second guarded call in the same
-    /// transaction reverts.
+    /// transaction reverts. The initiator is transient, so each pair of calls has to be issued from a single external
+    /// call to this contract: two top-level calls straddle a transaction boundary, which clears it.
     function testInKindRedemptionAlreadyInitiated() public {
         uint256 assets = 100e18;
         _setUpIlliquid(2 * assets);
 
+        vm.expectRevert(IVaultExitBundlesV1.AlreadyInitiated.selector);
+        this.inKindRedemptionTwice(assets);
+    }
+
+    function inKindRedemptionTwice(uint256 assets) external {
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
             address(vault), address(adapter), _singleton(marketParams), assets, noSharesPermit, block.timestamp
         );
-
-        vm.expectRevert(IVaultExitBundlesV1.AlreadyInitiated.selector);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
             address(vault), address(adapter), _singleton(marketParams), assets, noSharesPermit, block.timestamp
         );
@@ -915,11 +919,14 @@ contract VaultV2ExitBundlesTest is Test {
         uint256 assets = 100e18;
         _setUpLiquid(2 * assets);
 
+        vm.expectRevert(IVaultExitBundlesV1.AlreadyInitiated.selector);
+        this.forceWithdrawTwice(assets);
+    }
+
+    function forceWithdrawTwice(uint256 assets) external {
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
             address(vault), address(adapter), assets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
-
-        vm.expectRevert(IVaultExitBundlesV1.AlreadyInitiated.selector);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
             address(vault), address(adapter), assets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
