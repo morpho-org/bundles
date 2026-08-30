@@ -440,14 +440,14 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         bool emptySignature = signature.v == 0 && signature.r == 0 && signature.s == 0;
 
         if (!emptySignature && IMorpho(BLUE).nonce(msg.sender) <= signedAuthorization.nonce) {
-            IMorpho(BLUE)
-                .setAuthorizationWithSig(
-                    // forge-lint: disable-next-item(named-struct-fields) ack.
-                    Authorization(
-                        msg.sender, address(this), true, signedAuthorization.nonce, signedAuthorization.deadline
-                    ),
-                    signature
-                );
+            Authorization memory authorization = Authorization({
+                authorizer: msg.sender,
+                authorized: address(this),
+                isAuthorized: true,
+                nonce: signedAuthorization.nonce,
+                deadline: signedAuthorization.deadline
+            });
+            IMorpho(BLUE).setAuthorizationWithSig(authorization, signature);
         }
     }
 
