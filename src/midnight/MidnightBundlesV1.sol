@@ -69,9 +69,9 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         TokenLib.pullToken(loanToken, msg.sender, maxBuyerAssets, loanTokenPermit);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
-        uint256 filledUnits = 0;
-        uint256 filledBuyerAssets = 0;
-        for (uint256 i = 0; i < offerFills.length && filledUnits < targetUnits; i++) {
+        uint256 filledUnits;
+        uint256 filledBuyerAssets;
+        for (uint256 i; i < offerFills.length && filledUnits < targetUnits; i++) {
             require(!offerFills[i].offer.buy, InconsistentSide());
             require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
@@ -95,7 +95,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(filledUnits == targetUnits, OutOfOffers());
 
         Market memory market = offerFills[0].offer.market;
-        for (uint256 i = 0; i < collateralWithdrawals.length; i++) {
+        for (uint256 i; i < collateralWithdrawals.length; i++) {
             IMidnight(MIDNIGHT)
                 .withdrawCollateral(
                     market,
@@ -134,7 +134,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(offerFills[0].offer.market);
 
         Market memory market = offerFills[0].offer.market;
-        for (uint256 i = 0; i < collateralSupplies.length; i++) {
+        for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
             TokenLib.pullToken(token, msg.sender, collateralSupplies[i].assets, collateralSupplies[i].permit);
             TokenLib.forceApproveMax(token, MIDNIGHT);
@@ -142,9 +142,9 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
 
-        uint256 filledUnits = 0;
-        uint256 filledSellerAssets = 0;
-        for (uint256 i = 0; i < offerFills.length && filledUnits < targetUnits; i++) {
+        uint256 filledUnits;
+        uint256 filledSellerAssets;
+        for (uint256 i; i < offerFills.length && filledUnits < targetUnits; i++) {
             require(offerFills[i].offer.buy, InconsistentSide());
             require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
@@ -208,9 +208,9 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 referralFeeAssets = targetBuyerAssets.mulDivDown(referralFeePct, WAD);
         uint256 targetFilledBuyerAssets = targetBuyerAssets - referralFeeAssets;
 
-        uint256 filledUnits = 0;
-        uint256 filledBuyerAssets = 0;
-        for (uint256 i = 0; i < offerFills.length && filledBuyerAssets < targetFilledBuyerAssets; i++) {
+        uint256 filledUnits;
+        uint256 filledBuyerAssets;
+        for (uint256 i; i < offerFills.length && filledBuyerAssets < targetFilledBuyerAssets; i++) {
             require(!offerFills[i].offer.buy, InconsistentSide());
             require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
@@ -237,7 +237,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(filledUnits >= minUnits, UnitsTooLow());
 
         Market memory market = offerFills[0].offer.market;
-        for (uint256 i = 0; i < collateralWithdrawals.length; i++) {
+        for (uint256 i; i < collateralWithdrawals.length; i++) {
             IMidnight(MIDNIGHT)
                 .withdrawCollateral(
                     market,
@@ -275,7 +275,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(offerFills[0].offer.market);
 
         Market memory market = offerFills[0].offer.market;
-        for (uint256 i = 0; i < collateralSupplies.length; i++) {
+        for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
             TokenLib.pullToken(token, msg.sender, collateralSupplies[i].assets, collateralSupplies[i].permit);
             TokenLib.forceApproveMax(token, MIDNIGHT);
@@ -286,9 +286,9 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 referralFeeAssets = targetSellerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
         uint256 targetFilledSellerAssets = targetSellerAssets + referralFeeAssets;
 
-        uint256 filledUnits = 0;
-        uint256 filledSellerAssets = 0;
-        for (uint256 i = 0; i < offerFills.length && filledSellerAssets < targetFilledSellerAssets; i++) {
+        uint256 filledUnits;
+        uint256 filledSellerAssets;
+        for (uint256 i; i < offerFills.length && filledSellerAssets < targetFilledSellerAssets; i++) {
             require(offerFills[i].offer.buy, InconsistentSide());
             require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
@@ -349,7 +349,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
 
         IMidnight(MIDNIGHT).repay(market, units, onBehalf, address(0), "");
 
-        for (uint256 i = 0; i < collateralWithdrawals.length; i++) {
+        for (uint256 i; i < collateralWithdrawals.length; i++) {
             IMidnight(MIDNIGHT)
                 .withdrawCollateral(
                     market,

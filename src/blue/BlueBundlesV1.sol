@@ -398,7 +398,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
         TokenLib.forceApproveMax(loanToken, PUBLIC_ALLOCATOR);
 
-        for (uint256 i = 0; i < reallocations.length; i++) {
+        for (uint256 i; i < reallocations.length; i++) {
             PublicAllocations memory reallocation = reallocations[i];
             require(reallocation.marketParams.loanToken == loanToken, InconsistentTokens());
 
@@ -427,8 +427,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
     }
 
     function totalPenaltyAssets(PublicAllocations[] memory reallocations) internal pure returns (uint256) {
-        uint256 penaltyAssets = 0;
-        for (uint256 i = 0; i < reallocations.length; i++) {
+        uint256 penaltyAssets;
+        for (uint256 i; i < reallocations.length; i++) {
             penaltyAssets += uint256(reallocations[i].assets).mulDivUp(reallocations[i].penalty, WAD);
         }
         return penaltyAssets;
