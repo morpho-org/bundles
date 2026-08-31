@@ -440,7 +440,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         bool emptySignature = signature.v == 0 && signature.r == 0 && signature.s == 0;
 
         if (!emptySignature && IMorpho(BLUE).nonce(msg.sender) <= signedAuthorization.nonce) {
-            // forge-lint: disable-next-item(named-struct-fields) named fields would change the compiled bytecode.
+            // forge-lint: disable-next-item(named-struct-fields) ack.
             IMorpho(BLUE)
                 .setAuthorizationWithSig(
                     Authorization(
