@@ -85,10 +85,7 @@ function reallocationsAssumptions(BlueBundlesV1.PublicAllocations[] reallocation
 
 function sumPenaltyAssets(BlueBundlesV1.PublicAllocations[] reallocations) returns uint256 {
     if (reallocations.length > 1) {
-        return require_uint256(
-            mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD())
-                + mulDivUpG(reallocations[1].assets, reallocations[1].penalty, WAD())
-        );
+        return require_uint256(mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD()) + mulDivUpG(reallocations[1].assets, reallocations[1].penalty, WAD()));
     } else if (reallocations.length > 0) {
         return mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD());
     } else {
