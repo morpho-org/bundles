@@ -31,7 +31,6 @@ exclude_lints = [
     "missing-events-access-control",
     "costly-loop",
     "uninitialized-local",
-    "reentrancy-events",
 ]
 
 # Lint profile for test/: the base list in full, plus the rules that only fire in
