@@ -12,7 +12,6 @@ bytecode_hash = "none"
 [lint]
 exclude_lints = [
     "asm-keccak256",
-    "unsafe-cheatcode",
     "incorrect-shift",
     "block-timestamp",
     "internal-function-used-once",
