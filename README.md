@@ -21,6 +21,16 @@ Users should expect tokens left to the bundles as lost.
 - `midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget` — supply collateral, then sell a target loan-asset amount across offers.
 - `midnightBundlesV1RepayAndWithdrawCollateral` — repay debt and withdraw collateral.
 
+[MidnightBundlesV2](src/midnight/MidnightBundlesV2.sol) is a standalone bundle containing:
+
+- `midnightBundlesV2LendLimitWithBlueBuyCallback` — create or reuse the maker's deterministic Midnight `BlueBuyCallback`, park loan assets in its Blue position, activate a new Setter-ratified lend-limit offer root, deactivate selected roots, cancel selected offer groups, and publish the offer payload through Midnight's `Log`, all atomically.
+
+The offer must use the callback derived from the supplied factory salt and encode the Blue market parameters in its callback data. When the offer is taken, Midnight's periphery callback withdraws the required assets from its Blue position. Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
+
+The maker must approve `MidnightBundlesV2` to pull the assets being parked; the PoC does not support token permits.
+
+The publication payload is forwarded verbatim to `Log` and is not checked against the new root.
+
 ### Blue bundles
 
 [BlueBundlesV1](src/blue/BlueBundlesV1.sol) contains:
