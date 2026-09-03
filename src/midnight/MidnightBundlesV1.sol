@@ -13,8 +13,8 @@ import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {IdLib} from "../../lib/midnight/src/libraries/IdLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
-import {TakeAmountsLib} from "../../lib/midnight/src/periphery/TakeAmountsLib.sol";
-import {ConsumableUnitsLib} from "../../lib/midnight/src/periphery/ConsumableUnitsLib.sol";
+import {TakeAmountsLib} from "../../lib/midnight/src/periphery/libraries/TakeAmountsLib.sol";
+import {ConsumableUnitsLib} from "../../lib/midnight/src/periphery/libraries/ConsumableUnitsLib.sol";
 import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev For each offer, the buy/sell functions will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer") units.

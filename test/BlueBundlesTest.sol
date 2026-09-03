@@ -1707,6 +1707,8 @@ contract BlueBundlesTest is Test {
 
 /// @dev Minimal wrapped-native token: deposit() mints 1:1 for the native tokens sent.
 contract WETHMock is ERC20 {
+    uint256 public totalSupply;
+
     constructor() ERC20("Wrapped Ether", "WETH") {}
 
     function deposit() external payable {
