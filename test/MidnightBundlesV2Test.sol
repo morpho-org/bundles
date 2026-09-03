@@ -154,7 +154,7 @@ contract MidnightBundlesV2Test is Test {
     function makeLendLimit(Offer memory offer, uint256 assetsToPark) internal returns (bytes32 root) {
         root = HashLib.hashOffer(offer);
         vm.prank(lender);
-        midnightBundles.midnightBundlesV2MakeLendLimit(
+        midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
             blueMarket,
             assetsToPark,
             CALLBACK_SALT,
@@ -198,7 +198,7 @@ contract MidnightBundlesV2Test is Test {
         vm.expectEmit(address(offerLog));
         emit Log.Data(payload);
         vm.prank(lender);
-        midnightBundles.midnightBundlesV2MakeLendLimit(
+        midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
             blueMarket, PARKED_ASSETS, CALLBACK_SALT, root, noBytes32s(), noBytes32s(), payload, block.timestamp
         );
     }
@@ -215,7 +215,7 @@ contract MidnightBundlesV2Test is Test {
         loanToken.approve(address(revertingBundles), type(uint256).max);
         midnight.setIsAuthorized(address(revertingBundles), true, lender);
         vm.expectRevert(RevertingLog.Reverted.selector);
-        revertingBundles.midnightBundlesV2MakeLendLimit(
+        revertingBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
             blueMarket,
             PARKED_ASSETS,
             CALLBACK_SALT,
@@ -288,7 +288,7 @@ contract MidnightBundlesV2Test is Test {
         rootsToCancel[0] = oldRoot;
 
         vm.prank(lender);
-        midnightBundles.midnightBundlesV2MakeLendLimit(
+        midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
             blueMarket, 0, CALLBACK_SALT, newRoot, rootsToCancel, noBytes32s(), abi.encode(newOffer), block.timestamp
         );
 
@@ -313,7 +313,7 @@ contract MidnightBundlesV2Test is Test {
         Offer memory secondOldOffer = makeOffer(secondGroup, PARKED_ASSETS, MAX_TICK - 4);
         bytes32 secondOldRoot = HashLib.hashOffer(secondOldOffer);
         vm.prank(lender);
-        midnightBundles.midnightBundlesV2MakeLendLimit(
+        midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
             blueMarket,
             0,
             CALLBACK_SALT,
@@ -331,7 +331,7 @@ contract MidnightBundlesV2Test is Test {
         groupsToCancel[1] = secondGroup;
 
         vm.prank(lender);
-        midnightBundles.midnightBundlesV2MakeLendLimit(
+        midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
             blueMarket, 0, CALLBACK_SALT, newRoot, noBytes32s(), groupsToCancel, abi.encode(newOffer), block.timestamp
         );
 
@@ -360,7 +360,7 @@ contract MidnightBundlesV2Test is Test {
 
         vm.prank(lender);
         vm.expectRevert(IMidnightBundlesV2.NewRootCannotBeCancelled.selector);
-        midnightBundles.midnightBundlesV2MakeLendLimit(
+        midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
             blueMarket,
             PARKED_ASSETS,
             CALLBACK_SALT,
@@ -388,7 +388,7 @@ contract MidnightBundlesV2Test is Test {
         vm.startPrank(unauthorizedLender);
         loanToken.approve(address(midnightBundles), type(uint256).max);
         vm.expectRevert(IMidnight.Unauthorized.selector);
-        midnightBundles.midnightBundlesV2MakeLendLimit(
+        midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
             blueMarket,
             PARKED_ASSETS,
             CALLBACK_SALT,
@@ -449,7 +449,7 @@ contract MidnightBundlesV2Test is Test {
 
         vm.prank(lender);
         vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
-        midnightBundles.midnightBundlesV2MakeLendLimit(
+        midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
             blueMarket, PARKED_ASSETS, CALLBACK_SALT, root, noBytes32s(), noBytes32s(), abi.encode(offer), deadline
         );
     }

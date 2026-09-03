@@ -18,7 +18,7 @@ interface IMidnightBundlesV2 {
     function SETTER_RATIFIER() external view returns (address);
 
     /// FUNCTIONS ///
-    function midnightBundlesV2MakeLendLimit(
+    function midnightBundlesV2LendLimitWithBlueBuyCallback(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
         bytes32 callbackSalt,
