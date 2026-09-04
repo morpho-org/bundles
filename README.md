@@ -1,4 +1,4 @@
-# morpho-bundles
+# Morpho Bundles
 
 Opinionated bundles to interact with the Morpho protocols.
 Each entry-point execute a chain of calls, enabling to do multiple interactions in a single transaction.
@@ -10,14 +10,14 @@ Users should expect tokens left to the bundles as lost.
 
 ## Bundles
 
-[MidnightBundlesV1](src/midnight/MidnightBundlesV1.sol) contains:
+### [MidnightBundlesV1](src/midnight/MidnightBundlesV1.sol)
 - `midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral` — buy a target number of units across offers, then withdraw collateral.
 - `midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral` — buy a target loan-asset amount across offers, then withdraw collateral.
 - `midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget` — supply collateral, then sell a target number of units across offers.
 - `midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget` — supply collateral, then sell a target loan-asset amount across offers.
 - `midnightBundlesV1RepayAndWithdrawCollateral` — repay debt and withdraw collateral.
 
-[BlueBundlesV1](src/blue/BlueBundlesV1.sol) contains:
+### [BlueBundlesV1](src/blue/BlueBundlesV1.sol)
 - `blueBundlesV1SupplyCollateralAndBorrow` — supply collateral and borrow.
 - `blueBundlesV1RepayAndWithdrawCollateral` — repay debt (optionally by shares) and withdraw collateral.
 - `blueBundlesV1Supply` — supply loan assets to a market.
@@ -26,12 +26,12 @@ Users should expect tokens left to the bundles as lost.
 
 The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollateralAndBorrow`, `blueBundlesV1Withdraw`, and `blueBundlesV1MigrateBorrowPosition`) support VaultV2's BluePublicAllocator.
 
-[VaultBundlesV1](src/vault/VaultBundlesV1.sol) contains:
+### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 - `vaultBundlesV1Deposit` — deposit assets into a vault.
 - `vaultBundlesV1Withdraw` — withdraw assets from a vault.
 - `vaultBundlesV1Migrate` — migrate assets from one vault to another.
 
-[VaultExitBundlesV1](src/vault-exit/VaultExitBundlesV1.sol) contains:
+### [VaultExitBundlesV1](src/vault-exit/VaultExitBundlesV1.sol)
 - `vaultExitBundlesV1InKindRedemptionVaultV1` — in-kind redeem from an illiquid Vault V1.
 - `vaultExitBundlesV1InKindRedemptionVaultV2` — withdraw idle assets and redeem the remainder in kind from an illiquid Vault V2.
 - `vaultExitBundlesV1ForceWithdrawVaultV2` — force withdraw from a liquid Vault V2.
