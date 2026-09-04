@@ -2,7 +2,13 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity >=0.8.0;
 
+import {Market} from "../../../lib/midnight/src/interfaces/IMidnight.sol";
 import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+
+struct CollateralSupply {
+    uint256 collateralIndex;
+    uint256 assets;
+}
 
 interface IMidnightBundlesV2 {
     /// ERRORS ///
@@ -22,6 +28,24 @@ interface IMidnightBundlesV2 {
         MarketParams memory blueMarket,
         uint256 assetsToPark,
         bytes32 callbackSalt,
+        bytes32 newRoot,
+        bytes32[] memory rootsToCancel,
+        bytes32[] memory groupsToCancel,
+        bytes memory payload,
+        uint256 deadline
+    ) external;
+
+    function midnightBundlesV2BorrowLimit(
+        Market memory market,
+        CollateralSupply[] memory collateralSupplies,
+        bytes32 newRoot,
+        bytes32[] memory rootsToCancel,
+        bytes32[] memory groupsToCancel,
+        bytes memory payload,
+        uint256 deadline
+    ) external;
+
+    function midnightBundlesV2CancelAndMake(
         bytes32 newRoot,
         bytes32[] memory rootsToCancel,
         bytes32[] memory groupsToCancel,
