@@ -2,9 +2,8 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IVaultExitBundlesV1, SharesPermit} from "./interfaces/IVaultExitBundlesV1.sol";
+import {IVaultExitBundlesV1, Permit} from "./interfaces/IVaultExitBundlesV1.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
-import {IERC20Permit} from "../libraries/interfaces/IERC20Permit.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {MathLib} from "../../lib/vault-v2/src/libraries/MathLib.sol";
 import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
@@ -22,12 +21,13 @@ import {MarketParamsLib} from "../../lib/metamorpho/lib/morpho-blue/src/librarie
 import {SharesMathLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/UtilsLib.sol";
 
-/// @dev Meant to be used to exit a vault that allocates assets to Morpho Blue. The user either gets Morpho Blue shares (in-kind redemption) or assets (force withdrawal).
+/// @dev Meant to be used to exit a vault that allocates assets to Morpho Blue. The user gets Morpho Blue shares (in-kind redemption), assets (withdrawal), or both.
 /// @dev Vaults that are used with this contract must be Vault V1 (MetaMorpho V1 or V1.1) or Vault V2.
 /// @dev Vault V2 that are used with this contract must have only one adapter, and that adapter must be the MorphoMarketV1AdapterV2.
+/// @dev Vault V1 that are used with this contract must not be Morpho Blue's fee recipient, otherwise its expected supply assets are underestimated since the shares internally computed do not include the accrued fee shares.
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev Gated vaults (Vault V2) require this contract to be permitted by receiveAssetsGate, as it receives the withdrawn assets.
+/// @dev When using a Vault V2 with this contract, the receiveAssetsGate must allow this contract to receive the withdrawn assets. The gate can query the bundle's initiator through to the exposed transient variable.
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
@@ -37,6 +37,8 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     address public immutable BLUE;
 
+    address public transient initiator;
+
     constructor(address _blue) {
         BLUE = _blue;
     }
@@ -45,21 +47,29 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     /// @dev Exit from a Vault V1 and get Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
+    /// @dev The allowance/permit of shares can also be used to bound the max burned shares.
+    /// @dev The assets withdrawn are exitAssets.
     /// @dev Requires Morpho Blue to have at least exitAssets in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw exitAssets.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
+    /// @dev Passing as marketParamsList a superset of withdrawQueue makes the call immune to vault allocation changes: the full vault allocation is taken into account.
+    /// @dev The withdrawal queue can change before inclusion: additions can be anticipated when timelocked, and markets not in the withdrawal queue are skipped.
+    /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
+    /// @dev The Morpho Blue market share price is not checked: at most a wei per supply is lost to rounding, assuming a reasonable supply share price, which is expected since markets are curated.
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
         require(block.timestamp <= deadline, DeadlinePassed());
         require(address(IMetaMorpho(vault).MORPHO()) == BLUE, MorphoMismatch());
 
-        permitShares(vault, sharesPermit);
+        TokenLib.submitPermit(vault, sharesPermit);
         address loanToken = IMetaMorpho(vault).asset();
         TokenLib.forceApproveMax(loanToken, BLUE);
 
@@ -91,38 +101,55 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     /// IN-KIND REDEMPTION VAULT V2 ///
 
-    /// @dev Exit from a Vault V2 and get Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
-    /// @dev Assumes that adapter is a Morpho Blue adapter.
+    /// @dev Exit from a Vault V2 and get idle assets and/or Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
-    /// @dev The assetsToDeallocate amount is floor(exitAssets * WAD / (WAD + penalty)).
+    /// @dev The allowance/permit of shares can also be used to bound the max burned shares.
+    /// @dev The vault's idle assets are withdrawn first.
+    /// @dev The assetsToDeallocate amount is floor((exitAssets - assetsToWithdrawFromIdle) * WAD / (WAD + penalty)).
+    /// @dev The in-kind portion is withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error against the users). The sum of the assets passed as argument to the withdraw function can be greater than exitAssets, but no greater than exitAssets+N.
     /// @dev Requires Morpho Blue to have at least assetsToDeallocate in loan token balance.
-    /// @dev Requires the sender to have enough shares to withdraw ceil(assets * penalty / WAD) and then assets, for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
+    /// @dev Requires the sender to have enough shares to:
+    /// - first withdraw assetsToWithdrawFromIdle
+    /// - then withdraw ceil(assets * penalty / WAD) and withdraw assets, for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
     /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
     /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
+    /// @dev Passing as marketParamsList a superset of the adapter's market list makes the call immune to vault allocation changes.
+    /// @dev The market list can change before inclusion: additions can be anticipated when timelocked, and market not in the list are skipped.
+    /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
+    /// @dev The Morpho Blue market share price is not checked: at most a wei per supply is lost to rounding, assuming a reasonable supply share price, which is expected since markets are curated.
     function vaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
         address adapter,
         MarketParams[] memory marketParamsList,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        Permit memory sharesPermit,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
         require(block.timestamp <= deadline, DeadlinePassed());
+        require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
 
-        permitShares(vault, sharesPermit);
-        TokenLib.forceApproveMax(IVaultV2(vault).asset(), BLUE);
+        TokenLib.submitPermit(vault, sharesPermit);
+
+        address asset = IVaultV2(vault).asset();
+        uint256 assetsToWithdrawFromIdle = UtilsLib.min(IERC20(asset).balanceOf(vault), exitAssets);
+        if (assetsToWithdrawFromIdle > 0) {
+            IVaultV2(vault).withdraw(assetsToWithdrawFromIdle, address(this), msg.sender);
+            SafeTransferLib.safeTransfer(asset, msg.sender, assetsToWithdrawFromIdle);
+        }
+
+        TokenLib.forceApproveMax(asset, BLUE);
 
         uint256 penalty = IVaultV2(vault).forceDeallocatePenalty(adapter);
-        uint256 assetsToDeallocate = exitAssets.mulDivDown(WAD, WAD + penalty);
+        uint256 assetsToDeallocate = (exitAssets - assetsToWithdrawFromIdle).mulDivDown(WAD, WAD + penalty);
 
         for (uint256 i; assetsToDeallocate > 0; i++) {
-            uint256 adapterShares = IMorphoMarketV1AdapterV2(adapter).supplyShares(Id.unwrap(marketParamsList[i].id()));
-            (uint256 totalSupplyAssets, uint256 totalSupplyShares,,) =
-                MorphoBalancesLib.expectedMarketBalances(IMorpho(BLUE), marketParamsList[i]);
-            uint256 adapterAssets = adapterShares.toAssetsDown(totalSupplyAssets, totalSupplyShares);
+            bytes32 marketId = Id.unwrap(marketParamsList[i].id());
+            uint256 adapterAssets = IMorphoMarketV1AdapterV2(adapter).expectedSupplyAssets(marketId);
             uint256 assets = UtilsLib.min(adapterAssets, assetsToDeallocate);
             assetsToDeallocate -= assets;
 
@@ -144,36 +171,42 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     /// FORCE WITHDRAW VAULT V2 ///
 
-    /// @dev Withdraw from a Vault V2, even if the vault doesn't have enough idle and liquidity adapter assets.
+    /// @dev Withdraw from a Vault V2, even if the vault doesn't have enough idle and liquidity market assets.
     /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and reverts.
-    /// @dev Assumes that adapter is a Morpho Blue adapter.
     /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
-    /// @dev Starts by withdrawing without penalty everything the vault can pay: its idle assets and the liquidity available through the liquidity adapter.
+    /// @dev Starts by withdrawing everything the vault can pay without penalty: its idle assets and the liquidity available through the liquidity adapter.
     /// @dev The assetsToDeallocate amount is floor((exitAssets - assetsToWithdraw) * WAD / (WAD + penalty)), where assetsToWithdraw is the amount withdrawn without penalty.
     /// @dev The assetsToDeallocate amount is force deallocated by looping over the adapter's markets, taking from each market as much as its liquidity and the adapter's position allow before moving to the next one.
+    /// @dev The assets are withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error for the users). The sum of the assets passed as argument to the withdraw function can be greater than exitAssets, but no greater than exitAssets+N.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
+    /// @dev minSharePriceE27 lower-bounds the realized exit share price (withdrawn assets per share, scaled by 1e27). The force deallocate penalty is deducted from the withdrawn assets, so it lowers this price.
+    /// @dev If msg.sender is a vault fee recipient, totalSharesBurnt is underestimated (fee shares accrue to it during the withdrawals), weakening the share price check.
     function vaultExitBundlesV1ForceWithdrawVaultV2(
         address vault,
         address adapter,
         uint256 exitAssets,
-        SharesPermit memory sharesPermit,
+        uint256 minSharePriceE27,
+        Permit memory sharesPermit,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 deadline
     ) external {
+        require(initiator == address(0), AlreadyInitiated());
+        initiator = msg.sender;
         require(block.timestamp <= deadline, DeadlinePassed());
+        require(IVaultV2(vault).adaptersLength() == 1, InvalidAdaptersLength());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMorphoMarketV1AdapterV2(adapter).morpho() == BLUE, MorphoMismatch());
         require(referralFeePct < WAD, PctExceeded());
 
-        permitShares(vault, sharesPermit);
+        TokenLib.submitPermit(vault, sharesPermit);
+        uint256 sharesBefore = IERC20(vault).balanceOf(msg.sender);
 
         address asset = IVaultV2(vault).asset();
         uint256 withdrawableAssets = IERC20(asset).balanceOf(vault);
         address liquidityAdapter = IVaultV2(vault).liquidityAdapter();
         if (liquidityAdapter != address(0)) {
-            require(liquidityAdapter == adapter, LiquidityAdapterMismatch());
             MarketParams memory liquidityMarketParams = abi.decode(IVaultV2(vault).liquidityData(), (MarketParams));
             uint256 liquidityAdapterShares =
                 IMorphoMarketV1AdapterV2(liquidityAdapter).supplyShares(Id.unwrap(liquidityMarketParams.id()));
@@ -206,37 +239,22 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
             uint256 assets = UtilsLib.min(availableToWithdraw, remainingAssets);
             remainingAssets -= assets;
 
-            IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), assets, msg.sender);
+            if (assets > 0) {
+                IVaultV2(vault).forceDeallocate(adapter, abi.encode(marketParams), assets, msg.sender);
+            }
         }
 
         IVaultV2(vault).withdraw(assetsToDeallocate, address(this), msg.sender);
 
         uint256 withdrawn = assetsToWithdraw + assetsToDeallocate;
+        uint256 totalSharesBurnt = sharesBefore - IERC20(vault).balanceOf(msg.sender);
+        require(
+            totalSharesBurnt == 0 || withdrawn.mulDivDown(1e27, totalSharesBurnt) >= minSharePriceE27,
+            SlippageExceeded()
+        );
+
         uint256 referralFeeAssets = withdrawn.mulDivDown(referralFeePct, WAD);
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(asset, referralFeeRecipient, referralFeeAssets);
         SafeTransferLib.safeTransfer(asset, msg.sender, withdrawn - referralFeeAssets);
-    }
-
-    /// INTERNAL ///
-
-    /// @dev The parameters signed by the user should be the same as the inputs of this function.
-    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful when shares are already permitted.
-    /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that case.
-    /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until sharesPermit.deadline, as revoking on the vault does not consume the nonce.
-    function permitShares(address vault, SharesPermit memory sharesPermit) internal {
-        bool emptyPermit = sharesPermit.v == 0 && sharesPermit.r == 0 && sharesPermit.s == 0;
-
-        if (!emptyPermit && IERC20Permit(vault).nonces(msg.sender) <= sharesPermit.nonce) {
-            IERC20Permit(vault)
-                .permit(
-                    msg.sender,
-                    address(this),
-                    sharesPermit.value,
-                    sharesPermit.deadline,
-                    sharesPermit.v,
-                    sharesPermit.r,
-                    sharesPermit.s
-                );
-        }
     }
 }

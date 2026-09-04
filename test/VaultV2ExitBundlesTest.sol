@@ -6,7 +6,7 @@ import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
 import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
-import {IVaultExitBundlesV1, SharesPermit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
+import {IVaultExitBundlesV1, Permit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
 
 // Import from metamorpho/lib/morpho-blue to avoid duplicate types.
 import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -43,6 +43,8 @@ contract VaultV2ExitBundlesTest is Test {
     uint256 internal constant MIN_ASSETS = 2; // assets == 1 ⇒ deallocatedAssets == 0 (see testInKindRedemptionTooSmallNoOp).
     uint256 internal constant MAX_ASSETS = 1e24;
 
+    uint256 internal constant RAY = 1e27;
+
     IMorpho internal morpho;
     IVaultV2 internal vault;
     IMorphoMarketV1AdapterV2 internal adapter;
@@ -64,7 +66,7 @@ contract VaultV2ExitBundlesTest is Test {
     address internal referralFeeRecipient = makeAddr("referralFeeRecipient");
 
     // The empty shares permit (v, r and s all zero) is skipped by the bundler.
-    SharesPermit internal noSharesPermit;
+    Permit internal noSharesPermit;
 
     bytes32 internal constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
@@ -137,6 +139,16 @@ contract VaultV2ExitBundlesTest is Test {
         return assets * WAD / (WAD + PENALTY);
     }
 
+    function _addSecondAdapter() internal {
+        IMorphoMarketV1AdapterV2Factory secondAdapterFactory = IMorphoMarketV1AdapterV2Factory(
+            deployCode(
+                "MorphoMarketV1AdapterV2Factory.sol:MorphoMarketV1AdapterV2Factory", abi.encode(morpho, address(0))
+            )
+        );
+        address secondAdapter = secondAdapterFactory.createMorphoMarketV1AdapterV2(address(vault));
+        _submitAndExec(abi.encodeCall(IVaultV2.addAdapter, (secondAdapter)));
+    }
+
     /// @dev Wraps a single market into the singleton list expected by vaultExitBundlesV1InKindRedemptionVaultV2.
     function _singleton(MarketParams memory marketParams_) internal pure returns (MarketParams[] memory list) {
         list = new MarketParams[](1);
@@ -160,7 +172,7 @@ contract VaultV2ExitBundlesTest is Test {
     function _signSharesPermit(uint256 privateKey, address owner_, uint256 value, uint256 sigDeadline)
         internal
         view
-        returns (SharesPermit memory)
+        returns (Permit memory)
     {
         uint256 nonce = IERC20PermitVault(address(vault)).nonces(owner_);
         bytes32 structHash =
@@ -168,7 +180,7 @@ contract VaultV2ExitBundlesTest is Test {
         bytes32 digest =
             keccak256(abi.encodePacked("\x19\x01", IERC20PermitVault(address(vault)).DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
-        return SharesPermit({value: value, nonce: nonce, deadline: sigDeadline, v: v, r: r, s: s});
+        return Permit({value: value, nonce: nonce, deadline: sigDeadline, v: v, r: r, s: s});
     }
 
     function _setUpIlliquid(uint256 assets) internal {
@@ -360,6 +372,15 @@ contract VaultV2ExitBundlesTest is Test {
         );
     }
 
+    function testInKindRedemptionInvalidAdaptersLength() public {
+        _addSecondAdapter();
+
+        vm.expectRevert(IVaultExitBundlesV1.InvalidAdaptersLength.selector);
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), new MarketParams[](0), 0, noSharesPermit, block.timestamp
+        );
+    }
+
     function testOnMorphoSupplyOnlyBlue() public {
         vm.expectRevert(IVaultExitBundlesV1.UnauthorizedCallback.selector);
         vaultBundles.onMorphoSupply(1, "");
@@ -412,6 +433,51 @@ contract VaultV2ExitBundlesTest is Test {
         assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
     }
 
+    /// @dev If the allocator leaves everything idle, the sender receives assets without needing any market entry.
+    function testInKindRedemptionOnlyIdleAssets(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        deal(address(loanToken), address(this), assets);
+        loanToken.approve(address(vault), type(uint256).max);
+        vault.deposit(assets, address(this));
+        vault.approve(address(vaultBundles), type(uint256).max);
+        deal(address(loanToken), address(this), 0);
+
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), new MarketParams[](0), assets, noSharesPermit, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), assets, "sender loan token balance");
+        assertEq(vault.balanceOf(address(this)), 0, "vault balance");
+    }
+
+    /// @dev Idle assets are withdrawn directly and only the remaining exit amount is redeemed in kind.
+    function testInKindRedemptionIdleAssetsFirst(uint256 marketAssets, uint256 idleAssets) public {
+        marketAssets = bound(marketAssets, MIN_ASSETS, MAX_ASSETS);
+        idleAssets = bound(idleAssets, 1, MAX_ASSETS);
+        _setUpIlliquid(marketAssets);
+
+        deal(address(loanToken), address(this), idleAssets);
+        vault.deposit(idleAssets, address(this));
+        deal(address(loanToken), address(this), 0);
+
+        uint256 exitAssets = marketAssets + idleAssets;
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), _singleton(marketParams), exitAssets, noSharesPermit, block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(vault)), 0, "vault loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), idleAssets, "sender loan token balance");
+        assertEq(
+            morpho.expectedSupplyAssets(marketParams, address(this)),
+            optimalDeallocateAssets(marketAssets),
+            "supply position"
+        );
+        assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
+    }
+
     /// @dev A sender that never approved the bundler can exit in a single transaction via sharesPermit.
     function testInKindRedemptionWithSharesPermit(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
@@ -420,7 +486,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         assertEq(vault.allowance(sigUser, address(vaultBundles)), 0, "no prior allowance");
 
-        SharesPermit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, type(uint256).max, block.timestamp);
+        Permit memory sharesPermit = _signSharesPermit(sigUserKey, sigUser, type(uint256).max, block.timestamp);
         vm.prank(sigUser);
         vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
             address(vault), address(adapter), _singleton(marketParams), assets, sharesPermit, block.timestamp
@@ -562,13 +628,22 @@ contract VaultV2ExitBundlesTest is Test {
 
     /// FORCE WITHDRAWAL ///
 
+    function testForceWithdrawInvalidAdaptersLength() public {
+        _addSecondAdapter();
+
+        vm.expectRevert(IVaultExitBundlesV1.InvalidAdaptersLength.selector);
+        vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), 0, 0, noSharesPermit, 0, address(0), block.timestamp
+        );
+    }
+
     function testForceWithdrawAdapterNotPartOfVault() public {
         uint256 assets = 100e18;
         _setUpLiquid(assets);
 
         vm.expectRevert(IVaultExitBundlesV1.AdapterNotPartOfVault.selector);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), makeAddr("notAdapter"), assets, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), makeAddr("notAdapter"), assets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
     }
 
@@ -579,7 +654,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         vm.expectRevert();
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), 2 * assets, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), 2 * assets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
     }
 
@@ -588,7 +663,7 @@ contract VaultV2ExitBundlesTest is Test {
         _setUpLiquid(assets);
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), assets, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), assets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
@@ -611,6 +686,7 @@ contract VaultV2ExitBundlesTest is Test {
             address(vault),
             address(adapter),
             assets,
+            0,
             noSharesPermit,
             referralFeePct,
             referralFeeRecipient,
@@ -629,7 +705,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         vm.expectRevert(IVaultExitBundlesV1.PctExceeded.selector);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), assets, noSharesPermit, WAD, referralFeeRecipient, block.timestamp
+            address(vault), address(adapter), assets, 0, noSharesPermit, WAD, referralFeeRecipient, block.timestamp
         );
     }
 
@@ -642,7 +718,7 @@ contract VaultV2ExitBundlesTest is Test {
         assertGt(deallocate, 80e18, "precondition: all three markets are needed");
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), amount, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), amount, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(this)), deallocate, "user loan token balance");
@@ -672,12 +748,46 @@ contract VaultV2ExitBundlesTest is Test {
         assertEq(optimalDeallocateAssets(exitAssets), 100e18, "precondition");
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), exitAssets, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), exitAssets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(this)), 100e18, "user loan token balance");
         assertEq(morpho.expectedSupplyAssets(marketParams, address(adapter)), 40e18, "first market position");
         assertEq(morpho.expectedSupplyAssets(otherMarket, address(adapter)), 60e18, "second market position");
+    }
+
+    /// @dev The first market is fully borrowed out, so it contributes nothing: no zero-asset forceDeallocate is
+    /// emitted for it and the whole amount comes from the second market.
+    function testForceWithdrawSkipsDryMarket() public {
+        _setUpLiquidTwoMarkets(100e18, 100e18);
+
+        // Borrow everything out of the first market ⇒ nothing of the adapter's 100 position is withdrawable there.
+        deal(address(collateralToken), borrower, 200e18);
+        vm.startPrank(borrower);
+        collateralToken.approve(address(morpho), type(uint256).max);
+        morpho.supplyCollateral(marketParams, 200e18, borrower, "");
+        morpho.borrow(marketParams, 100e18, 0, borrower, borrower);
+        vm.stopPrank();
+
+        uint256 exitAssets = 50e18;
+        vm.expectCall(
+            address(vault),
+            abi.encodeCall(IVaultV2.forceDeallocate, (address(adapter), abi.encode(marketParams), 0, address(this))),
+            0
+        );
+        vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), exitAssets, 0, noSharesPermit, 0, address(0), block.timestamp
+        );
+
+        assertEq(loanToken.balanceOf(address(vaultBundles)), 0, "bundler loan token balance");
+        assertEq(loanToken.balanceOf(address(this)), optimalDeallocateAssets(exitAssets), "user loan token balance");
+        assertEq(morpho.expectedSupplyAssets(marketParams, address(adapter)), 100e18, "first market position");
+        assertApproxEqAbs(
+            morpho.expectedSupplyAssets(otherMarket, address(adapter)),
+            100e18 - optimalDeallocateAssets(exitAssets),
+            2,
+            "second market position"
+        );
     }
 
     /// @dev The liquidity available through the liquidity adapter is withdrawn first, without penalty; only the
@@ -689,7 +799,7 @@ contract VaultV2ExitBundlesTest is Test {
         vault.setLiquidityAdapterAndData(address(adapter), abi.encode(marketParams));
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), 80e18, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), 80e18, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         // 60 comes penalty-free through the liquidity adapter, the remaining 20 pays the penalty.
@@ -711,7 +821,7 @@ contract VaultV2ExitBundlesTest is Test {
         vault.setLiquidityAdapterAndData(address(adapter), abi.encode(marketParams));
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), 50e18, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), 50e18, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         assertEq(loanToken.balanceOf(address(this)), 50e18, "user loan token balance");
@@ -733,7 +843,7 @@ contract VaultV2ExitBundlesTest is Test {
         deal(address(loanToken), address(this), 0);
 
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), 40e18, noSharesPermit, 0, address(0), block.timestamp
+            address(vault), address(adapter), 40e18, 0, noSharesPermit, 0, address(0), block.timestamp
         );
 
         // 30 comes penalty-free from the idle assets, the remaining 10 pays the penalty.
@@ -747,7 +857,81 @@ contract VaultV2ExitBundlesTest is Test {
 
         vm.expectRevert(IVaultExitBundlesV1.DeadlinePassed.selector);
         vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            address(vault), address(adapter), assets, noSharesPermit, 0, address(0), block.timestamp - 1
+            address(vault), address(adapter), assets, 0, noSharesPermit, 0, address(0), block.timestamp - 1
         );
+    }
+
+    /// @dev The withdrawal reverts when the shares are burned at a price below minSharePriceE27 (e.g. the share
+    /// price dropped after the bound was computed).
+    function testForceWithdrawSlippageExceeded() public {
+        uint256 assets = 100e18;
+        _setUpLiquid(assets);
+
+        uint256 minSharePriceE27 = 2 * (assets * RAY / vault.previewWithdraw(assets));
+        vm.expectRevert(IVaultExitBundlesV1.SlippageExceeded.selector);
+        vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), assets, minSharePriceE27, noSharesPermit, 0, address(0), block.timestamp
+        );
+    }
+
+    /// @dev The net-of-penalty share price quoted before the call is a sufficient minSharePriceE27, up to the
+    /// ceil-rounding dust of the two withdrawals (penalty and assets): the penalty is deducted from the withdrawn
+    /// assets, so it lowers the price.
+    function testForceWithdrawTightPriceBound(uint256 assets) public {
+        assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
+        _setUpLiquid(assets);
+
+        uint256 minSharePriceE27 = optimalDeallocateAssets(assets) * RAY / (vault.previewWithdraw(assets) + 2);
+        vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), assets, minSharePriceE27, noSharesPermit, 0, address(0), block.timestamp
+        );
+
+        assertApproxEqAbs(vault.balanceOf(address(this)), 0, 1, "vault balance");
+    }
+
+    /// ALREADY INITIATED ///
+
+    /// @dev Without a reset, the initiator stays set after the first call, so a second guarded call in the same
+    /// transaction reverts. The initiator is transient, so each pair of calls has to be issued from a single external
+    /// call to this contract: two top-level calls straddle a transaction boundary, which clears it. The first call is
+    /// expected to succeed, so only the second one is inspected.
+    function testInKindRedemptionAlreadyInitiated() public {
+        uint256 assets = 100e18;
+        _setUpIlliquid(2 * assets);
+
+        this.inKindRedemptionTwice(assets);
+    }
+
+    function inKindRedemptionTwice(uint256 assets) external {
+        vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), _singleton(marketParams), assets, noSharesPermit, block.timestamp
+        );
+        try vaultBundles.vaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), _singleton(marketParams), assets, noSharesPermit, block.timestamp
+        ) {
+            revert("second call did not revert");
+        } catch (bytes memory returnData) {
+            assertEq(returnData, abi.encodeWithSelector(IVaultExitBundlesV1.AlreadyInitiated.selector));
+        }
+    }
+
+    function testForceWithdrawAlreadyInitiated() public {
+        uint256 assets = 100e18;
+        _setUpLiquid(2 * assets);
+
+        this.forceWithdrawTwice(assets);
+    }
+
+    function forceWithdrawTwice(uint256 assets) external {
+        vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), assets, 0, noSharesPermit, 0, address(0), block.timestamp
+        );
+        try vaultBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
+            address(vault), address(adapter), assets, 0, noSharesPermit, 0, address(0), block.timestamp
+        ) {
+            revert("second call did not revert");
+        } catch (bytes memory returnData) {
+            assertEq(returnData, abi.encodeWithSelector(IVaultExitBundlesV1.AlreadyInitiated.selector));
+        }
     }
 }
