@@ -6,7 +6,7 @@ import {Test, StdStorage, stdStorage} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
 
 import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
-import {SharesPermit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
+import {Permit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
 
 import {IMetaMorpho} from "../lib/metamorpho/src/interfaces/IMetaMorpho.sol";
 import {IMorpho, MarketParams, Id} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -40,8 +40,7 @@ contract VaultExitMarginTest is Test {
     uint256 internal constant SHARE_PRICE = 1.07e18; // non-round vault share/asset ratio
     // Huge amount to allow for flash-loan and supply callback global liquidity needs.
     uint256 internal constant GLOBAL_LIQUIDITY = 1_000_000e18;
-    SharesPermit internal noSharesPermit =
-        SharesPermit({value: 0, nonce: 0, deadline: 0, v: 0, r: bytes32(0), s: bytes32(0)});
+    Permit internal noSharesPermit = Permit({value: 0, nonce: 0, deadline: 0, v: 0, r: bytes32(0), s: bytes32(0)});
 
     IMorpho internal morpho;
     VaultExitBundlesV1 internal exitBundles;
@@ -307,7 +306,7 @@ contract VaultExitMarginTest is Test {
         if (exitAssets == 0) return;
 
         exitBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
-            vault, adapter, exitAssets, noSharesPermit, 0, address(0), block.timestamp
+            vault, adapter, exitAssets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
     }
 }
