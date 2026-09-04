@@ -50,7 +50,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev SETTER_RATIFIER is authorized on Midnight if it is not already authorized.
     /// @dev The new root is enabled before selected roots and groups are cancelled, then payload is published through LOG.
     /// @dev payload is forwarded verbatim and is not checked against newRoot.
-    /// All changes revert atomically on failure.
     function midnightBundlesV2LendLimitWithBlueBuyCallback(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
