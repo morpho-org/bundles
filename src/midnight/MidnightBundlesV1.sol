@@ -18,10 +18,10 @@ import {ConsumableUnitsLib} from "../../lib/midnight/src/periphery/ConsumableUni
 import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev For each offer, the buy/sell functions will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer") units.
-/// @dev Only touched offers are checked to point to the same market. The collateral is supplied/withdrawn from the market of the first offer.
+/// @dev Only touched offers are checked to point to market.
 /// @dev Buy/sell functions skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
 /// @dev This bundler and the msg.sender (if different from the taker/onBehalf) should be authorized by taker/onBehalf on Midnight.
-/// @dev msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell and withdraw collateral).
+/// @dev msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
 /// @dev The bundler contract must have an allowance to pull enough tokens from msg.sender.
 /// @dev Inherits the token safety requirements of Midnight (see Midnight.sol).
 /// @dev Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing to buy, decreasing to sell).
@@ -43,11 +43,14 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
 
     /// @dev This function pulls maxBuyerAssets from the msg.sender and transfers back the remaining tokens at the end.
     /// @dev The msg.sender will pay at most maxBuyerAssets.
-    /// @dev Total loan assets transferred from msg.sender is filledBuyerAssets + filledBuyerAssets * referralFeePct / (WAD - referralFeePct).
+    /// @dev The taker's debt is additionally repaid by repayUnits after the takes.
+    /// @dev Total loan assets transferred from msg.sender is filledBuyerAssets + repayUnits + (filledBuyerAssets + repayUnits) * referralFeePct / (WAD - referralFeePct).
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
     function midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
+        Market memory market,
         uint256 targetUnits,
         uint256 maxBuyerAssets,
+        uint256 repayUnits,
         address taker,
         bool reduceOnly,
         TokenPermit memory loanTokenPermit,
@@ -63,9 +66,9 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
-        bytes32 id = IMidnight(MIDNIGHT).touchMarket(offerFills[0].offer.market);
+        bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
-        address loanToken = offerFills[0].offer.market.loanToken;
+        address loanToken = market.loanToken;
         TokenLib.pullToken(loanToken, msg.sender, maxBuyerAssets, loanTokenPermit);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
@@ -94,7 +97,8 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
 
         require(filledUnits == targetUnits, OutOfOffers());
 
-        Market memory market = offerFills[0].offer.market;
+        if (repayUnits > 0) IMidnight(MIDNIGHT).repay(market, repayUnits, taker, address(0), "");
+
         for (uint256 i; i < collateralWithdrawals.length; i++) {
             IMidnight(MIDNIGHT)
                 .withdrawCollateral(
@@ -106,17 +110,22 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 );
         }
 
-        uint256 referralFeeAssets = filledBuyerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
+        uint256 referralFeeAssets = (filledBuyerAssets + repayUnits).mulDivDown(referralFeePct, WAD - referralFeePct);
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
-        SafeTransferLib.safeTransfer(loanToken, msg.sender, maxBuyerAssets - filledBuyerAssets - referralFeeAssets);
+        SafeTransferLib.safeTransfer(
+            loanToken, msg.sender, maxBuyerAssets - filledBuyerAssets - repayUnits - referralFeeAssets
+        );
     }
 
     /// @dev The receiver will receive at least minSellerAssets.
-    /// @dev Total loan assets received by the receiver is filledSellerAssets - filledSellerAssets * referralFeePct / WAD.
+    /// @dev The taker's credit is additionally withdrawn by withdrawUnits before the takes.
+    /// @dev Total loan assets received by the receiver is filledSellerAssets + withdrawUnits - (filledSellerAssets + withdrawUnits) * referralFeePct / WAD.
     /// @dev msg.sender will pay collateralSupplies[0].assets of the first token of collateralSupplies, etc.
     function midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
+        Market memory market,
         uint256 targetUnits,
         uint256 minSellerAssets,
+        uint256 withdrawUnits,
         address taker,
         bool reduceOnly,
         address receiver,
@@ -131,9 +140,8 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
-        bytes32 id = IMidnight(MIDNIGHT).touchMarket(offerFills[0].offer.market);
+        bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
-        Market memory market = offerFills[0].offer.market;
         for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
             TokenLib.pullToken(token, msg.sender, collateralSupplies[i].assets, collateralSupplies[i].permit);
@@ -141,6 +149,8 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
             IMidnight(MIDNIGHT)
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
+
+        if (withdrawUnits > 0) IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, taker, address(this));
 
         uint256 filledUnits;
         uint256 filledSellerAssets;
@@ -170,20 +180,23 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
 
         require(filledUnits == targetUnits, OutOfOffers());
 
-        uint256 referralFeeAssets = filledSellerAssets.mulDivDown(referralFeePct, WAD);
-        require(filledSellerAssets - referralFeeAssets >= minSellerAssets, SellerAssetsTooLow());
+        uint256 referralFeeAssets = (filledSellerAssets + withdrawUnits).mulDivDown(referralFeePct, WAD);
+        require(filledSellerAssets + withdrawUnits - referralFeeAssets >= minSellerAssets, SellerAssetsTooLow());
         address loanToken = market.loanToken;
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
-        SafeTransferLib.safeTransfer(loanToken, receiver, filledSellerAssets - referralFeeAssets);
+        SafeTransferLib.safeTransfer(loanToken, receiver, filledSellerAssets + withdrawUnits - referralFeeAssets);
     }
 
     /// @dev Total loan assets transferred from msg.sender is targetBuyerAssets.
-    /// @dev The taker will gain at least minUnits.
+    /// @dev repayUnits loan assets of targetBuyerAssets are used to repay the taker's debt after the takes.
+    /// @dev The taker will gain at least minUnits from the takes.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
     function midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral(
+        Market memory market,
         uint256 targetBuyerAssets,
         uint256 minUnits,
+        uint256 repayUnits,
         address taker,
         bool reduceOnly,
         TokenPermit memory loanTokenPermit,
@@ -199,14 +212,14 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
-        bytes32 id = IMidnight(MIDNIGHT).touchMarket(offerFills[0].offer.market);
+        bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
-        address loanToken = offerFills[0].offer.market.loanToken;
+        address loanToken = market.loanToken;
         TokenLib.pullToken(loanToken, msg.sender, targetBuyerAssets, loanTokenPermit);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
         uint256 referralFeeAssets = targetBuyerAssets.mulDivDown(referralFeePct, WAD);
-        uint256 targetFilledBuyerAssets = targetBuyerAssets - referralFeeAssets;
+        uint256 targetFilledBuyerAssets = targetBuyerAssets - referralFeeAssets - repayUnits;
 
         uint256 filledUnits;
         uint256 filledBuyerAssets;
@@ -236,7 +249,8 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(filledBuyerAssets == targetFilledBuyerAssets, OutOfOffers());
         require(filledUnits >= minUnits, UnitsTooLow());
 
-        Market memory market = offerFills[0].offer.market;
+        if (repayUnits > 0) IMidnight(MIDNIGHT).repay(market, repayUnits, taker, address(0), "");
+
         for (uint256 i; i < collateralWithdrawals.length; i++) {
             IMidnight(MIDNIGHT)
                 .withdrawCollateral(
@@ -252,12 +266,15 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
     }
 
     /// @dev Total loan assets received by the receiver is targetSellerAssets.
-    /// @dev The taker will lose at most maxUnits.
+    /// @dev withdrawUnits of the taker's credit are withdrawn before the takes and count toward targetSellerAssets.
+    /// @dev The taker will lose at most maxUnits from the takes.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev msg.sender will pay collateralSupplies[0].assets of the first token of collateralSupplies, etc.
     function midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget(
+        Market memory market,
         uint256 targetSellerAssets,
         uint256 maxUnits,
+        uint256 withdrawUnits,
         address taker,
         bool reduceOnly,
         address receiver,
@@ -272,9 +289,8 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         require(taker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(taker, msg.sender), Unauthorized());
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
-        bytes32 id = IMidnight(MIDNIGHT).touchMarket(offerFills[0].offer.market);
+        bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
-        Market memory market = offerFills[0].offer.market;
         for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
             TokenLib.pullToken(token, msg.sender, collateralSupplies[i].assets, collateralSupplies[i].permit);
@@ -283,8 +299,10 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
 
+        if (withdrawUnits > 0) IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, taker, address(this));
+
         uint256 referralFeeAssets = targetSellerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
-        uint256 targetFilledSellerAssets = targetSellerAssets + referralFeeAssets;
+        uint256 targetFilledSellerAssets = targetSellerAssets + referralFeeAssets - withdrawUnits;
 
         uint256 filledUnits;
         uint256 filledSellerAssets;
@@ -320,47 +338,6 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         address loanToken = market.loanToken;
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
         SafeTransferLib.safeTransfer(loanToken, receiver, targetSellerAssets);
-    }
-
-    /// @dev The msg.sender must have approved the contract to transfer assets of the market's loan token.
-    /// @dev Fee = assets * pct / WAD; units repaid = assets - fee.
-    /// @dev To fully repay a debt D, pass assets = floor(D * WAD / (WAD - pct)).
-    /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
-    function midnightBundlesV1RepayAndWithdrawCollateral(
-        Market memory market,
-        uint256 assets,
-        address onBehalf,
-        TokenPermit memory loanTokenPermit,
-        CollateralWithdrawal[] memory collateralWithdrawals,
-        address collateralReceiver,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint256 deadline
-    ) external {
-        require(block.timestamp <= deadline, DeadlinePassed());
-        require(onBehalf == msg.sender || IMidnight(MIDNIGHT).isAuthorized(onBehalf, msg.sender), Unauthorized());
-        require(referralFeePct < WAD, PctExceeded());
-
-        uint256 referralFeeAssets = assets.mulDivDown(referralFeePct, WAD);
-        uint256 units = assets - referralFeeAssets;
-        address loanToken = market.loanToken;
-        TokenLib.pullToken(loanToken, msg.sender, assets, loanTokenPermit);
-        TokenLib.forceApproveMax(loanToken, MIDNIGHT);
-
-        IMidnight(MIDNIGHT).repay(market, units, onBehalf, address(0), "");
-
-        for (uint256 i; i < collateralWithdrawals.length; i++) {
-            IMidnight(MIDNIGHT)
-                .withdrawCollateral(
-                    market,
-                    collateralWithdrawals[i].collateralIndex,
-                    collateralWithdrawals[i].assets,
-                    onBehalf,
-                    collateralReceiver
-                );
-        }
-
-        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
     }
 
     /// INTERNAL ///
