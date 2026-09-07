@@ -95,26 +95,15 @@ contract VaultExitMarginTest is Test {
         return MarketParams(address(loanToken), address(collateralToken), address(oracle), address(0), _lltv(i));
     }
 
-    // Per-market allocation, distinct per market to stress rounding.
-    function _amt(uint256 i) internal pure returns (uint256) {
-        return 1e18 + uint256(keccak256(abi.encode(i))) % PER_MARKET;
-    }
-
-    function _total(uint256 numberOfMarkets) internal pure returns (uint256 s) {
-        for (uint256 i = 0; i < numberOfMarkets; i++) {
-            s += _amt(i);
-        }
-    }
-
     /// @dev Simulates accrued yield on a market via a storage cheat so its share/asset ratio is non-round.
     /// @dev The yield is a pseudo-random fraction of the market's assets, distinct per market to stress rounding.
-    function _accrueYield(MarketParams memory marketParams) internal {
+    function _accrueYield(MarketParams memory marketParams, uint256 amount) internal {
         bytes32 slot = MorphoStorageLib.marketTotalSupplyAssetsAndSharesSlot(marketParams.id());
         uint256 packed = uint256(vm.load(address(morpho), slot));
         // forge-lint:disable-next-line(unsafe-typecast) truncating on purpose.
         uint256 totalSupplyAssets = uint128(packed);
         uint256 totalSupplyShares = packed >> 128;
-        uint256 yield = uint256(keccak256(abi.encode(Id.unwrap(marketParams.id())))) % totalSupplyAssets;
+        uint256 yield = amount % totalSupplyAssets;
         if (yield == 0) return;
         vm.store(address(morpho), slot, bytes32((totalSupplyShares << 128) | (totalSupplyAssets + yield)));
         deal(address(loanToken), address(morpho), loanToken.balanceOf(address(morpho)) + yield);
@@ -134,7 +123,7 @@ contract VaultExitMarginTest is Test {
 
     /// SETUPS ///
 
-    function _setupV1(uint256 numberOfMarkets) internal {
+    function _setupV1(uint256[] memory marketAmounts, uint256[] memory yieldAmounts) internal {
         vault = address(
             IMetaMorpho(
                 deployCode(
@@ -144,29 +133,34 @@ contract VaultExitMarginTest is Test {
             )
         );
 
-        Id[] memory queue = new Id[](numberOfMarkets);
+        Id[] memory queue = new Id[](marketAmounts.length);
         vm.startPrank(owner);
-        for (uint256 i = 0; i < numberOfMarkets; i++) {
+        for (uint256 i = 0; i < marketAmounts.length; i++) {
             MarketParams memory m = _market(i);
             morpho.createMarket(m);
             marketList.push(m);
             // forge-lint:disable-next-line(unsafe-typecast)
-            IMetaMorpho(vault).submitCap(m, uint184(_amt(i)));
+            IMetaMorpho(vault).submitCap(m, uint184(marketAmounts[i]));
             queue[i] = m.id();
         }
         vm.warp(block.timestamp + 1 days);
-        for (uint256 i = 0; i < numberOfMarkets; i++) {
+        for (uint256 i = 0; i < marketAmounts.length; i++) {
             IMetaMorpho(vault).acceptCap(marketList[i]);
         }
         IMetaMorpho(vault).setSupplyQueue(queue);
         vm.stopPrank();
 
-        deal(address(loanToken), address(this), _total(numberOfMarkets));
-        loanToken.approve(vault, type(uint256).max);
-        IMetaMorpho(vault).deposit(_total(numberOfMarkets), address(this));
+        uint256 totalAmount = 0;
+        for (uint256 i = 0; i < marketAmounts.length; i++) {
+            totalAmount += marketAmounts[i];
+        }
 
-        for (uint256 i = 0; i < numberOfMarkets; i++) {
-            _accrueYield(marketList[i]);
+        deal(address(loanToken), address(this), totalAmount);
+        loanToken.approve(vault, type(uint256).max);
+        IMetaMorpho(vault).deposit(totalAmount, address(this));
+
+        for (uint256 i = 0; i < marketAmounts.length; i++) {
+            _accrueYield(marketList[i], yieldAmounts[i]);
             _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(vault)));
         }
 
@@ -182,7 +176,7 @@ contract VaultExitMarginTest is Test {
         deal(address(loanToken), address(this), 0);
     }
 
-    function _setupV2(uint256 numberOfMarkets, bool illiquid) internal {
+    function _setupV2(uint256[] memory marketAmounts, uint256[] memory yieldAmounts, bool illiquid) internal {
         IVaultV2Factory vaultFactory = IVaultV2Factory(deployCode("VaultV2Factory.sol:VaultV2Factory"));
         vault = address(IVaultV2(vaultFactory.createVaultV2(owner, address(loanToken), bytes32(0))));
 
@@ -203,7 +197,7 @@ contract VaultExitMarginTest is Test {
 
         _setMaxCaps(abi.encode("this", adapter));
         _setMaxCaps(abi.encode("collateralToken", address(collateralToken)));
-        for (uint256 i = 0; i < numberOfMarkets; i++) {
+        for (uint256 i = 0; i < marketAmounts.length; i++) {
             MarketParams memory m = _market(i);
             morpho.createMarket(m);
             marketList.push(m);
@@ -212,14 +206,19 @@ contract VaultExitMarginTest is Test {
 
         _submitAndExec(abi.encodeCall(IVaultV2.setForceDeallocatePenalty, (adapter, PENALTY)));
 
-        deal(address(loanToken), address(this), _total(numberOfMarkets));
-        loanToken.approve(address(vault), type(uint256).max);
-        IVaultV2(vault).deposit(_total(numberOfMarkets), address(this));
+        uint256 totalAmount = 0;
+        for (uint256 i = 0; i < marketAmounts.length; i++) {
+            totalAmount += marketAmounts[i];
+        }
 
-        for (uint256 i = 0; i < numberOfMarkets; i++) {
+        deal(address(loanToken), address(this), totalAmount);
+        loanToken.approve(address(vault), type(uint256).max);
+        IVaultV2(vault).deposit(totalAmount, address(this));
+
+        for (uint256 i = 0; i < marketAmounts.length; i++) {
             vm.prank(allocator);
-            IVaultV2(vault).allocate(adapter, abi.encode(marketList[i]), _amt(i));
-            _accrueYield(marketList[i]);
+            IVaultV2(vault).allocate(adapter, abi.encode(marketList[i]), marketAmounts[i]);
+            _accrueYield(marketList[i], yieldAmounts[i]);
             if (illiquid) _borrowOut(marketList[i], morpho.expectedSupplyAssets(marketList[i], address(adapter)));
         }
 
@@ -252,14 +251,12 @@ contract VaultExitMarginTest is Test {
         _submitAndExec(abi.encodeCall(IVaultV2.increaseRelativeCap, (idData, WAD)));
     }
 
-    /// THEORETICAL BOUND ///
-
     // Theoretical safe margin (in shares): the exit is split into independent vault withdrawals.
     // Each withdrawal burns previewWithdraw(assets) shares (mulDivUp), so it rounds up by at most one share.
 
-    function testMarginV1(uint256 numberOfMarkets) public {
-        numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
-        _setupV1(numberOfMarkets);
+    function testMarginV1(uint256[] memory rawMarketAmounts, uint256[] memory rawYieldAmounts) public {
+        (uint256[] memory marketAmounts, uint256[] memory yieldAmounts) = _getAmounts(rawMarketAmounts, rawYieldAmounts);
+        _setupV1(marketAmounts, yieldAmounts);
 
         // The V1 path withdraws exitAssets = previewRedeem(balance - margin), so margin = 0.
         uint256 margin = 0;
@@ -273,12 +270,12 @@ contract VaultExitMarginTest is Test {
         );
     }
 
-    function testMarginV2Illiquid(uint256 numberOfMarkets) public {
-        numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
-        _setupV2(numberOfMarkets, true);
+    function testMarginV2Illiquid(uint256[] memory rawMarketAmounts, uint256[] memory rawYieldAmounts) public {
+        (uint256[] memory marketAmounts, uint256[] memory yieldAmounts) = _getAmounts(rawMarketAmounts, rawYieldAmounts);
+        _setupV2(marketAmounts, yieldAmounts, true);
 
         // The illiquid V2 path makes two withdrawals per market (penalty and deallocated assets), hence margin = 2 * numberOfMarkets.
-        uint256 margin = 2 * numberOfMarkets;
+        uint256 margin = 2 * marketAmounts.length;
         uint256 balance = IVaultV2(vault).balanceOf(address(this));
         if (margin >= balance) return;
         uint256 exitAssets = IVaultV2(vault).previewRedeem(balance - margin);
@@ -289,12 +286,12 @@ contract VaultExitMarginTest is Test {
         );
     }
 
-    function testMarginV2Liquid(uint256 numberOfMarkets) public {
-        numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
-        _setupV2(numberOfMarkets, false);
+    function testMarginV2Liquid(uint256[] memory rawMarketAmounts, uint256[] memory rawYieldAmounts) public {
+        (uint256[] memory marketAmounts, uint256[] memory yieldAmounts) = _getAmounts(rawMarketAmounts, rawYieldAmounts);
+        _setupV2(marketAmounts, yieldAmounts, false);
 
         // The liquid V2 path makes one upfront withdrawal, one penalty withdrawal per market, and one final withdrawal, hence margin = numberOfMarkets + 2.
-        uint256 margin = numberOfMarkets + 2;
+        uint256 margin = marketAmounts.length + 2;
         uint256 balance = IVaultV2(vault).balanceOf(address(this));
         if (margin >= balance) return;
         uint256 exitAssets = IVaultV2(vault).previewRedeem(balance - margin);
@@ -303,5 +300,26 @@ contract VaultExitMarginTest is Test {
         exitBundles.vaultExitBundlesV1ForceWithdrawVaultV2(
             vault, adapter, exitAssets, 0, noSharesPermit, 0, address(0), block.timestamp
         );
+    }
+
+    function _getAmounts(uint256[] memory rawMarketAmounts, uint256[] memory rawYieldAmounts)
+        internal
+        pure
+        returns (uint256[] memory, uint256[] memory)
+    {
+        uint256 numberOfMarkets = bound(min(rawMarketAmounts.length, rawYieldAmounts.length), 0, MAX_NUMBER_OF_MARKETS);
+        uint256[] memory marketAmounts = new uint256[](numberOfMarkets);
+        for (uint256 i = 0; i < numberOfMarkets; i++) {
+            marketAmounts[i] = rawMarketAmounts[i] % PER_MARKET;
+        }
+        uint256[] memory yieldAmounts = new uint256[](numberOfMarkets);
+        for (uint256 i = 0; i < numberOfMarkets; i++) {
+            yieldAmounts[i] = rawYieldAmounts[i];
+        }
+        return (marketAmounts, yieldAmounts);
+    }
+
+    function min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
     }
 }
