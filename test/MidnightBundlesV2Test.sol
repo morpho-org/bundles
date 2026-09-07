@@ -4,12 +4,18 @@ pragma solidity ^0.8.0;
 
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {IMidnight, Market, Offer, CollateralParams} from "../lib/midnight/src/interfaces/IMidnight.sol";
+import {EcrecoverRatifier} from "../lib/midnight/src/ratifiers/EcrecoverRatifier.sol";
+import {
+    IEcrecoverRatifier,
+    Signature,
+    EIP712_DOMAIN_TYPEHASH
+} from "../lib/midnight/src/ratifiers/interfaces/IEcrecoverRatifier.sol";
 import {ISetterRatifier} from "../lib/midnight/src/ratifiers/interfaces/ISetterRatifier.sol";
 import {SetterRatifier} from "../lib/midnight/src/ratifiers/SetterRatifier.sol";
 import {HashLib} from "../lib/midnight/src/ratifiers/libraries/HashLib.sol";
 import {IdLib} from "../lib/midnight/src/libraries/IdLib.sol";
 import {MAX_TICK} from "../lib/midnight/src/libraries/TickLib.sol";
-import {ORACLE_PRICE_SCALE} from "../lib/midnight/src/libraries/ConstantsLib.sol";
+import {CALLBACK_SUCCESS, ORACLE_PRICE_SCALE} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {BlueBuyCallback} from "../lib/midnight/src/periphery/blue-buy-callback/BlueBuyCallback.sol";
 import {BlueBuyCallbackFactory} from "../lib/midnight/src/periphery/blue-buy-callback/BlueBuyCallbackFactory.sol";
 import {IBlueBuyCallback} from "../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallback.sol";
@@ -32,6 +38,7 @@ contract MidnightBundlesV2Test is Test {
     IMidnight internal midnight;
     IMorpho internal morpho;
     SetterRatifier internal setterRatifier;
+    EcrecoverRatifier internal ecrecoverRatifier;
     BlueBuyCallbackFactory internal blueBuyCallbackFactory;
     Log internal offerLog;
     MidnightBundlesV2 internal midnightBundles;
@@ -47,19 +54,25 @@ contract MidnightBundlesV2Test is Test {
     address internal owner;
     address internal lender;
     address internal borrower;
+    uint256 internal lenderPrivateKey;
 
     function setUp() public {
         owner = makeAddr("owner");
-        lender = makeAddr("lender");
+        (lender, lenderPrivateKey) = makeAddrAndKey("lender");
         borrower = makeAddr("borrower");
 
         midnight = IMidnight(deployCode("Midnight"));
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
         setterRatifier = new SetterRatifier(address(midnight));
+        ecrecoverRatifier = new EcrecoverRatifier(address(midnight));
         blueBuyCallbackFactory = new BlueBuyCallbackFactory(address(midnight), address(morpho));
         offerLog = new Log();
         midnightBundles = new MidnightBundlesV2(
-            address(midnight), address(blueBuyCallbackFactory), address(offerLog), address(setterRatifier)
+            address(midnight),
+            address(blueBuyCallbackFactory),
+            address(offerLog),
+            address(setterRatifier),
+            address(ecrecoverRatifier)
         );
 
         assertEq(midnightBundles.MIDNIGHT(), address(midnight));
@@ -67,6 +80,7 @@ contract MidnightBundlesV2Test is Test {
         assertEq(midnightBundles.BLUE_BUY_CALLBACK_FACTORY(), address(blueBuyCallbackFactory));
         assertEq(midnightBundles.LOG(), address(offerLog));
         assertEq(midnightBundles.SETTER_RATIFIER(), address(setterRatifier));
+        assertEq(midnightBundles.ECRECOVER_RATIFIER(), address(ecrecoverRatifier));
 
         loanToken = new ERC20Permit("loan", "loan");
         collateralToken = new ERC20Permit("collateral", "collateral");
@@ -219,18 +233,28 @@ contract MidnightBundlesV2Test is Test {
             root,
             noBytes32s(),
             noBytes32s(),
+            noBytes32s(),
             abi.encode(offer),
             block.timestamp
         );
     }
 
-    function ratifierData(bytes32 root) internal pure returns (bytes memory) {
+    function setterRatifierData(bytes32 root) internal pure returns (bytes memory) {
         return abi.encode(root, 0, new bytes32[](0));
+    }
+
+    function ecrecoverRatifierData(bytes32 root) internal view returns (bytes memory) {
+        bytes32 structHash = keccak256(abi.encode(HashLib.offerTreeTypeHash(0), root));
+        bytes32 domainSeparator =
+            keccak256(abi.encode(EIP712_DOMAIN_TYPEHASH, block.chainid, address(ecrecoverRatifier)));
+        bytes32 digest = keccak256(bytes.concat("\x19\x01", domainSeparator, structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(lenderPrivateKey, digest);
+        return abi.encode(Signature({v: v, r: r, s: s}), root, 0, new bytes32[](0));
     }
 
     function take(Offer memory offer, bytes32 root, uint256 units) internal returns (uint256, uint256) {
         vm.prank(borrower);
-        return midnight.take(offer, ratifierData(root), units, borrower, borrower, address(0), "");
+        return midnight.take(offer, setterRatifierData(root), units, borrower, borrower, address(0), "");
     }
 
     function testMakeParksFundsAndRatifiesRoot() public {
@@ -267,14 +291,26 @@ contract MidnightBundlesV2Test is Test {
         emit Log.Data(payload);
         vm.prank(lender);
         midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
-            blueMarket, PARKED_ASSETS, CALLBACK_SALT, root, noBytes32s(), noBytes32s(), payload, block.timestamp
+            blueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            root,
+            noBytes32s(),
+            noBytes32s(),
+            noBytes32s(),
+            payload,
+            block.timestamp
         );
     }
 
     function testMakeIsAtomicWhenLogReverts() public {
         RevertingLog revertingLog = new RevertingLog();
         MidnightBundlesV2 revertingBundles = new MidnightBundlesV2(
-            address(midnight), address(blueBuyCallbackFactory), address(revertingLog), address(setterRatifier)
+            address(midnight),
+            address(blueBuyCallbackFactory),
+            address(revertingLog),
+            address(setterRatifier),
+            address(ecrecoverRatifier)
         );
         Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
         bytes32 root = HashLib.hashOffer(offer);
@@ -288,6 +324,7 @@ contract MidnightBundlesV2Test is Test {
             PARKED_ASSETS,
             CALLBACK_SALT,
             root,
+            noBytes32s(),
             noBytes32s(),
             noBytes32s(),
             abi.encode(offer),
@@ -308,7 +345,24 @@ contract MidnightBundlesV2Test is Test {
 
         vm.expectRevert(IMidnightBundlesV2.InconsistentMidnight.selector);
         new MidnightBundlesV2(
-            address(midnight), address(inconsistentFactory), address(offerLog), address(setterRatifier)
+            address(midnight),
+            address(inconsistentFactory),
+            address(offerLog),
+            address(setterRatifier),
+            address(ecrecoverRatifier)
+        );
+    }
+
+    function testConstructorRevertsWhenEcrecoverRatifierMidnightIsInconsistent() public {
+        EcrecoverRatifier inconsistentEcrecoverRatifier = new EcrecoverRatifier(makeAddr("otherMidnight"));
+
+        vm.expectRevert(IMidnightBundlesV2.InconsistentMidnight.selector);
+        new MidnightBundlesV2(
+            address(midnight),
+            address(blueBuyCallbackFactory),
+            address(offerLog),
+            address(setterRatifier),
+            address(inconsistentEcrecoverRatifier)
         );
     }
 
@@ -363,6 +417,7 @@ contract MidnightBundlesV2Test is Test {
             newRoot,
             rootsToDeactivate,
             noBytes32s(),
+            noBytes32s(),
             abi.encode(newOffer),
             block.timestamp
         );
@@ -374,7 +429,7 @@ contract MidnightBundlesV2Test is Test {
 
         vm.prank(borrower);
         vm.expectRevert(ISetterRatifier.NotRatified.selector);
-        midnight.take(oldOffer, ratifierData(oldRoot), 1e18, borrower, borrower, address(0), "");
+        midnight.take(oldOffer, setterRatifierData(oldRoot), 1e18, borrower, borrower, address(0), "");
 
         take(newOffer, newRoot, 1e18);
     }
@@ -395,6 +450,7 @@ contract MidnightBundlesV2Test is Test {
             secondOldRoot,
             noBytes32s(),
             noBytes32s(),
+            noBytes32s(),
             abi.encode(secondOldOffer),
             block.timestamp
         );
@@ -407,7 +463,15 @@ contract MidnightBundlesV2Test is Test {
 
         vm.prank(lender);
         midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
-            blueMarket, 0, CALLBACK_SALT, newRoot, noBytes32s(), groupsToCancel, abi.encode(newOffer), block.timestamp
+            blueMarket,
+            0,
+            CALLBACK_SALT,
+            newRoot,
+            noBytes32s(),
+            noBytes32s(),
+            groupsToCancel,
+            abi.encode(newOffer),
+            block.timestamp
         );
 
         assertTrue(setterRatifier.isRootRatified(lender, firstOldRoot), "first old root retained");
@@ -418,11 +482,11 @@ contract MidnightBundlesV2Test is Test {
 
         vm.prank(borrower);
         vm.expectRevert(IMidnight.ConsumedAssets.selector);
-        midnight.take(firstOldOffer, ratifierData(firstOldRoot), 1e18, borrower, borrower, address(0), "");
+        midnight.take(firstOldOffer, setterRatifierData(firstOldRoot), 1e18, borrower, borrower, address(0), "");
 
         vm.prank(borrower);
         vm.expectRevert(IMidnight.ConsumedAssets.selector);
-        midnight.take(secondOldOffer, ratifierData(secondOldRoot), 1e18, borrower, borrower, address(0), "");
+        midnight.take(secondOldOffer, setterRatifierData(secondOldRoot), 1e18, borrower, borrower, address(0), "");
 
         take(newOffer, newRoot, 1e18);
     }
@@ -441,6 +505,7 @@ contract MidnightBundlesV2Test is Test {
             CALLBACK_SALT,
             newRoot,
             rootsToDeactivate,
+            noBytes32s(),
             noBytes32s(),
             abi.encode(offer),
             block.timestamp
@@ -470,6 +535,7 @@ contract MidnightBundlesV2Test is Test {
             root,
             noBytes32s(),
             noBytes32s(),
+            noBytes32s(),
             abi.encode(offer),
             block.timestamp
         );
@@ -489,7 +555,7 @@ contract MidnightBundlesV2Test is Test {
 
         vm.prank(borrower);
         vm.expectRevert();
-        midnight.take(offer, ratifierData(root), PARKED_ASSETS + 1, borrower, borrower, address(0), "");
+        midnight.take(offer, setterRatifierData(root), PARKED_ASSETS + 1, borrower, borrower, address(0), "");
 
         assertEq(morpho.expectedSupplyAssets(blueMarket, callback), PARKED_ASSETS, "rolled-back Blue withdrawal");
         assertEq(midnight.debt(IdLib.toId(midnightMarket), borrower), 0, "rolled-back Midnight take");
@@ -535,7 +601,7 @@ contract MidnightBundlesV2Test is Test {
         emit Log.Data(payload);
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2BorrowLimit(
-            market, collateralSupplies, root, noBytes32s(), noBytes32s(), payload, block.timestamp
+            market, collateralSupplies, root, noBytes32s(), noBytes32s(), noBytes32s(), payload, block.timestamp
         );
 
         assertEq(midnight.collateral(id, borrower, firstCollateralIndex), firstAssets, "first collateral");
@@ -546,7 +612,8 @@ contract MidnightBundlesV2Test is Test {
 
         vm.startPrank(lender);
         loanToken.approve(address(midnight), type(uint256).max);
-        (, uint256 sellerAssets) = midnight.take(offer, ratifierData(root), 100e18, lender, address(0), address(0), "");
+        (, uint256 sellerAssets) =
+            midnight.take(offer, setterRatifierData(root), 100e18, lender, address(0), address(0), "");
         vm.stopPrank();
 
         assertEq(loanToken.balanceOf(borrower), sellerAssets, "borrower proceeds");
@@ -567,6 +634,7 @@ contract MidnightBundlesV2Test is Test {
             oldRoot,
             noBytes32s(),
             noBytes32s(),
+            noBytes32s(),
             abi.encode(oldOffer),
             block.timestamp
         );
@@ -583,6 +651,7 @@ contract MidnightBundlesV2Test is Test {
             noCollateralSupplies(),
             newRoot,
             rootsToDeactivate,
+            noBytes32s(),
             noBytes32s(),
             abi.encode(newOffer),
             block.timestamp
@@ -619,6 +688,7 @@ contract MidnightBundlesV2Test is Test {
             root,
             noBytes32s(),
             noBytes32s(),
+            noBytes32s(),
             abi.encode(firstOffer, secondOffer),
             block.timestamp
         );
@@ -640,7 +710,7 @@ contract MidnightBundlesV2Test is Test {
         bytes32 oldRoot = keccak256("old root");
         vm.prank(lender);
         midnightBundles.midnightBundlesV2Repost(
-            oldRoot, noBytes32s(), noBytes32s(), abi.encode("old payload"), block.timestamp
+            oldRoot, noBytes32s(), noBytes32s(), noBytes32s(), abi.encode("old payload"), block.timestamp
         );
 
         bytes32 newRoot = keccak256("new root");
@@ -654,11 +724,94 @@ contract MidnightBundlesV2Test is Test {
         vm.expectEmit(address(offerLog));
         emit Log.Data(payload);
         vm.prank(lender);
-        midnightBundles.midnightBundlesV2Repost(newRoot, rootsToDeactivate, groupsToCancel, payload, block.timestamp);
+        midnightBundles.midnightBundlesV2Repost(
+            newRoot, rootsToDeactivate, noBytes32s(), groupsToCancel, payload, block.timestamp
+        );
 
         assertFalse(setterRatifier.isRootRatified(lender, oldRoot), "old root");
         assertTrue(setterRatifier.isRootRatified(lender, newRoot), "new root");
         assertEq(midnight.consumed(lender, cancelledGroup), type(uint128).max, "cancelled group");
+    }
+
+    function testRepostCanCancelEcrecoverRootMatchingNewSetterRoot() public {
+        bytes32 root = keccak256("root shared across ratifier namespaces");
+        bytes32[] memory ecrecoverRootsToCancel = new bytes32[](1);
+        ecrecoverRootsToCancel[0] = root;
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2Repost(
+            root, noBytes32s(), ecrecoverRootsToCancel, noBytes32s(), abi.encode("payload"), block.timestamp
+        );
+
+        assertTrue(ecrecoverRatifier.isRootCanceled(lender, root), "Ecrecover root");
+        assertTrue(setterRatifier.isRootRatified(lender, root), "Setter root");
+    }
+
+    function testRepostMigratesEcrecoverRootToSetterRoot() public {
+        Offer memory oldOffer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
+        oldOffer.ratifier = address(ecrecoverRatifier);
+        bytes32 oldRoot = HashLib.hashOffer(oldOffer);
+        bytes memory oldEcrecoverData = ecrecoverRatifierData(oldRoot);
+
+        vm.prank(lender);
+        midnight.setIsAuthorized(address(ecrecoverRatifier), true, lender);
+        assertEq(ecrecoverRatifier.isRatified(oldOffer, oldEcrecoverData, address(0)), CALLBACK_SUCCESS);
+
+        Offer memory newOffer = oldOffer;
+        newOffer.ratifier = address(setterRatifier);
+        newOffer.tick = MAX_TICK - 4;
+        bytes32 newRoot = HashLib.hashOffer(newOffer);
+        bytes32[] memory ecrecoverRootsToCancel = new bytes32[](1);
+        ecrecoverRootsToCancel[0] = oldRoot;
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2Repost(
+            newRoot, noBytes32s(), ecrecoverRootsToCancel, noBytes32s(), abi.encode(newOffer), block.timestamp
+        );
+
+        assertTrue(ecrecoverRatifier.isRootCanceled(lender, oldRoot), "old Ecrecover root");
+        assertTrue(setterRatifier.isRootRatified(lender, newRoot), "new Setter root");
+
+        vm.expectRevert(IEcrecoverRatifier.RootCanceled.selector);
+        ecrecoverRatifier.isRatified(oldOffer, oldEcrecoverData, address(0));
+    }
+
+    function testCancelDeactivatesSetterRootsAndCancelsEcrecoverRootsAndGroups() public {
+        bytes32 setterRoot = keccak256("setter root");
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2Repost(
+            setterRoot, noBytes32s(), noBytes32s(), noBytes32s(), abi.encode("payload"), block.timestamp
+        );
+
+        bytes32 ecrecoverRoot = keccak256("ecrecover root");
+        bytes32 group = keccak256("group");
+        bytes32[] memory setterRootsToDeactivate = new bytes32[](1);
+        setterRootsToDeactivate[0] = setterRoot;
+        bytes32[] memory ecrecoverRootsToCancel = new bytes32[](1);
+        ecrecoverRootsToCancel[0] = ecrecoverRoot;
+        bytes32[] memory groupsToCancel = new bytes32[](1);
+        groupsToCancel[0] = group;
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2Cancel(
+            setterRootsToDeactivate, ecrecoverRootsToCancel, groupsToCancel, block.timestamp
+        );
+
+        assertFalse(setterRatifier.isRootRatified(lender, setterRoot), "Setter root");
+        assertTrue(ecrecoverRatifier.isRootCanceled(lender, ecrecoverRoot), "Ecrecover root");
+        assertEq(midnight.consumed(lender, group), type(uint128).max, "group");
+    }
+
+    function testCancelRevertsAfterDeadline() public {
+        bytes32 ecrecoverRoot = keccak256("ecrecover root");
+        bytes32[] memory ecrecoverRootsToCancel = new bytes32[](1);
+        ecrecoverRootsToCancel[0] = ecrecoverRoot;
+
+        vm.prank(lender);
+        vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
+        midnightBundles.midnightBundlesV2Cancel(noBytes32s(), ecrecoverRootsToCancel, noBytes32s(), block.timestamp - 1);
+
+        assertFalse(ecrecoverRatifier.isRootCanceled(lender, ecrecoverRoot), "Ecrecover root");
     }
 
     function testTakeRevertsWhenCallbackLoanTokenIsInconsistent() public {
@@ -670,7 +823,7 @@ contract MidnightBundlesV2Test is Test {
 
         vm.prank(borrower);
         vm.expectRevert(IBlueBuyCallback.InconsistentLoanToken.selector);
-        midnight.take(offer, ratifierData(root), 1e18, borrower, borrower, address(0), "");
+        midnight.take(offer, setterRatifierData(root), 1e18, borrower, borrower, address(0), "");
     }
 
     function testMakeRevertsAfterDeadline() public {
@@ -681,7 +834,15 @@ contract MidnightBundlesV2Test is Test {
         vm.prank(lender);
         vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
-            blueMarket, PARKED_ASSETS, CALLBACK_SALT, root, noBytes32s(), noBytes32s(), abi.encode(offer), deadline
+            blueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            root,
+            noBytes32s(),
+            noBytes32s(),
+            noBytes32s(),
+            abi.encode(offer),
+            deadline
         );
     }
 }

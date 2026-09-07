@@ -22,6 +22,7 @@ interface IMidnightBundlesV2 {
     function BLUE_BUY_CALLBACK_FACTORY() external view returns (address);
     function LOG() external view returns (address);
     function SETTER_RATIFIER() external view returns (address);
+    function ECRECOVER_RATIFIER() external view returns (address);
 
     /// FUNCTIONS ///
     function midnightBundlesV2LendLimitWithBlueBuyCallback(
@@ -29,7 +30,8 @@ interface IMidnightBundlesV2 {
         uint256 assetsToPark,
         bytes32 callbackSalt,
         bytes32 newRoot,
-        bytes32[] memory rootsToDeactivate,
+        bytes32[] memory setterRootsToDeactivate,
+        bytes32[] memory ecrecoverRootsToCancel,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
@@ -39,7 +41,8 @@ interface IMidnightBundlesV2 {
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
         bytes32 newRoot,
-        bytes32[] memory rootsToDeactivate,
+        bytes32[] memory setterRootsToDeactivate,
+        bytes32[] memory ecrecoverRootsToCancel,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
@@ -47,9 +50,17 @@ interface IMidnightBundlesV2 {
 
     function midnightBundlesV2Repost(
         bytes32 newRoot,
-        bytes32[] memory rootsToDeactivate,
+        bytes32[] memory setterRootsToDeactivate,
+        bytes32[] memory ecrecoverRootsToCancel,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
+        uint256 deadline
+    ) external;
+
+    function midnightBundlesV2Cancel(
+        bytes32[] memory setterRootsToDeactivate,
+        bytes32[] memory ecrecoverRootsToCancel,
+        bytes32[] memory groupsToCancel,
         uint256 deadline
     ) external;
 }
