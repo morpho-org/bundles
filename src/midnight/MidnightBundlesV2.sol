@@ -14,13 +14,17 @@ import {IMidnightBundlesV2, CollateralSupply} from "./interfaces/IMidnightBundle
 
 /// @dev Maker-side Midnight offer creation and reposting, including callback-funded lend offers and collateralized
 /// borrow offers.
-/// @dev The maker should authorize this contract on Midnight before calling make.
-/// @dev Offers are constructed offchain and activated as Merkle roots through SETTER_RATIFIER.
-/// @dev Reposting activates a new root, then deactivates selected roots and cancels selected offer groups atomically.
-/// @dev assetsToPark is optional so a repost can reuse assets already supplied to the callback on Blue.
-/// @dev The signed offer must be a buy offer whose callback is the callback derived from callbackSalt and whose
-/// callbackData is abi.encode(blueMarket).
-/// @dev Replacement offers must not reuse a group passed in groupsToCancel.
+/// @dev The maker must authorize this contract on Midnight beforehand.
+/// @dev Offer roots and publication payloads are constructed offchain, may contain multi-market offers, and are not
+/// checked against each other or against the markets passed to this contract.
+/// @dev Reposting deactivates selected roots, cancels selected groups, activates a new root through SETTER_RATIFIER,
+/// then publishes the payload through LOG. Root deactivation is reversible, whereas group cancellation is not.
+/// @dev SETTER_RATIFIER is authorized on behalf of the maker if it is not already authorized.
+/// @dev Replacement offers must not use a group passed in groupsToCancel.
+/// @dev Inherits the token safety requirements of Midnight and Morpho Blue.
+/// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
+/// @dev No-ops are not systematically prevented.
+/// @dev Zero checks are not systematically performed.
 contract MidnightBundlesV2 is IMidnightBundlesV2 {
     address public immutable MIDNIGHT;
     address public immutable BLUE;
@@ -44,47 +48,45 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// EXTERNAL ///
 
-    /// @dev Creates or reuses msg.sender's BlueBuyCallback for callbackSalt.
-    /// @dev Pulls assetsToPark from msg.sender and supplies them to blueMarket on behalf of the callback. msg.sender
-    /// must approve this contract for at least assetsToPark beforehand.
-    /// @dev This contract must be authorized by msg.sender on Midnight so it can authorize SETTER_RATIFIER and update roots.
-    /// @dev SETTER_RATIFIER is authorized on Midnight if it is not already authorized.
-    /// @dev The new root is enabled before selected roots and groups are cancelled, then payload is published through LOG.
-    /// @dev payload is forwarded verbatim and is not checked against newRoot.
+    /// @dev If assetsToPark is non-zero, pulls them from msg.sender and supplies them on Blue on behalf of msg.sender's
+    /// callback derived from callbackSalt, creating the callback if necessary. Then reposts the maker's offers.
+    /// @dev msg.sender must approve this contract for at least assetsToPark beforehand.
+    /// @dev blueMarket and callbackSalt are not used when assetsToPark is zero.
+    /// @dev Offers intended to use the parked assets must be buy offers whose callback is the derived callback and whose
+    /// callbackData is abi.encode(blueMarket).
     function midnightBundlesV2LendLimitWithBlueBuyCallback(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
         bytes32 callbackSalt,
         bytes32 newRoot,
-        bytes32[] memory rootsToCancel,
+        bytes32[] memory rootsToDeactivate,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
 
-        address blueBuyCallback =
-            IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).createBlueBuyCallback(msg.sender, callbackSalt);
-
         if (assetsToPark > 0) {
+            address blueBuyCallback =
+                IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).createBlueBuyCallback(msg.sender, callbackSalt);
             SafeTransferLib.safeTransferFrom(blueMarket.loanToken, msg.sender, address(this), assetsToPark);
             TokenLib.forceApproveMax(blueMarket.loanToken, BLUE);
             IMorpho(BLUE).supply(blueMarket, assetsToPark, 0, blueBuyCallback, "");
         }
 
-        executeCancelAndMake(newRoot, rootsToCancel, groupsToCancel, payload);
+        repost(newRoot, rootsToDeactivate, groupsToCancel, payload);
     }
 
-    /// @dev Pulls each collateral supply from msg.sender and supplies it to market on behalf of msg.sender. msg.sender
-    /// must approve this contract for each collateral token beforehand.
-    /// @dev The new root is expected to contain sell offers made by msg.sender. The collateral is supplied only to
-    /// market, while the opaque root may include offers for other markets and is not validated onchain.
-    /// @dev This contract must be authorized by msg.sender on Midnight.
+    /// @dev Pulls each non-zero collateral supply from msg.sender, supplies it to msg.sender's position on market, then
+    /// reposts the maker's offers.
+    /// @dev msg.sender must approve this contract for each collateral token beforehand.
+    /// @dev The new root is expected to contain sell offers made by msg.sender, but may also contain offers for other
+    /// markets.
     function midnightBundlesV2BorrowLimit(
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
         bytes32 newRoot,
-        bytes32[] memory rootsToCancel,
+        bytes32[] memory rootsToDeactivate,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
@@ -103,30 +105,27 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             }
         }
 
-        executeCancelAndMake(newRoot, rootsToCancel, groupsToCancel, payload);
+        repost(newRoot, rootsToDeactivate, groupsToCancel, payload);
     }
 
-    /// @dev Activates a new maker offer root, deactivates selected roots, cancels selected offer groups, and publishes
-    /// payload through LOG. The opaque root and payload are not validated onchain in order to support multi-market
-    /// offers.
-    /// @dev This contract must be authorized by msg.sender on Midnight.
-    function midnightBundlesV2CancelAndMake(
+    /// @dev Deactivates selected roots, cancels selected groups, activates a new maker root, then publishes payload.
+    function midnightBundlesV2Repost(
         bytes32 newRoot,
-        bytes32[] memory rootsToCancel,
+        bytes32[] memory rootsToDeactivate,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
 
-        executeCancelAndMake(newRoot, rootsToCancel, groupsToCancel, payload);
+        repost(newRoot, rootsToDeactivate, groupsToCancel, payload);
     }
 
     /// INTERNAL ///
 
-    function executeCancelAndMake(
+    function repost(
         bytes32 newRoot,
-        bytes32[] memory rootsToCancel,
+        bytes32[] memory rootsToDeactivate,
         bytes32[] memory groupsToCancel,
         bytes memory payload
     ) internal {
@@ -135,15 +134,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             midnight.setIsAuthorized(SETTER_RATIFIER, true, msg.sender);
         }
 
-        ISetterRatifier(SETTER_RATIFIER).setIsRootRatified(msg.sender, newRoot, true);
-
-        for (uint256 i; i < rootsToCancel.length; i++) {
-            require(rootsToCancel[i] != newRoot, NewRootCannotBeCancelled());
-            ISetterRatifier(SETTER_RATIFIER).setIsRootRatified(msg.sender, rootsToCancel[i], false);
+        for (uint256 i; i < rootsToDeactivate.length; i++) {
+            require(rootsToDeactivate[i] != newRoot, NewRootCannotBeDeactivated());
+            ISetterRatifier(SETTER_RATIFIER).setIsRootRatified(msg.sender, rootsToDeactivate[i], false);
         }
         for (uint256 i; i < groupsToCancel.length; i++) {
             midnight.setConsumed(groupsToCancel[i], type(uint128).max, msg.sender);
         }
+
+        ISetterRatifier(SETTER_RATIFIER).setIsRootRatified(msg.sender, newRoot, true);
 
         (bool success, bytes memory returndata) = LOG.call(payload);
         if (!success) {

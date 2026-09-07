@@ -248,6 +248,16 @@ contract MidnightBundlesV2Test is Test {
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundle balance");
     }
 
+    function testMakeWithoutParkingDoesNotCreateCallback() public {
+        Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
+        bytes32 root = makeLendLimit(offer, 0);
+
+        assertEq(blueBuyCallbackFactory.callbackOf(lender, CALLBACK_SALT), address(0), "factory callback");
+        assertEq(callbackOf(lender).code.length, 0, "callback code");
+        assertTrue(setterRatifier.isRootRatified(lender, root), "root ratification");
+        assertEq(loanToken.balanceOf(lender), 2 * PARKED_ASSETS, "lender balance");
+    }
+
     function testMakePublishesPayload() public {
         Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
         bytes32 root = HashLib.hashOffer(offer);
@@ -330,7 +340,7 @@ contract MidnightBundlesV2Test is Test {
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "second bundle balance");
     }
 
-    function testRepostDisablesOldRootAndEnablesNewRoot() public {
+    function testRepostDeactivatesOldRootAndActivatesNewRoot() public {
         bytes32 group = keccak256("group");
         Offer memory oldOffer = makeOffer(group, PARKED_ASSETS, MAX_TICK);
         bytes32 oldRoot = makeLendLimit(oldOffer, PARKED_ASSETS);
@@ -342,12 +352,19 @@ contract MidnightBundlesV2Test is Test {
 
         Offer memory newOffer = makeOffer(group, PARKED_ASSETS, MAX_TICK - 4);
         bytes32 newRoot = HashLib.hashOffer(newOffer);
-        bytes32[] memory rootsToCancel = new bytes32[](1);
-        rootsToCancel[0] = oldRoot;
+        bytes32[] memory rootsToDeactivate = new bytes32[](1);
+        rootsToDeactivate[0] = oldRoot;
 
         vm.prank(lender);
         midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
-            blueMarket, 0, CALLBACK_SALT, newRoot, rootsToCancel, noBytes32s(), abi.encode(newOffer), block.timestamp
+            blueMarket,
+            0,
+            CALLBACK_SALT,
+            newRoot,
+            rootsToDeactivate,
+            noBytes32s(),
+            abi.encode(newOffer),
+            block.timestamp
         );
 
         assertEq(blueBuyCallbackFactory.callbackOf(lender, CALLBACK_SALT), callback, "reused callback");
@@ -362,7 +379,7 @@ contract MidnightBundlesV2Test is Test {
         take(newOffer, newRoot, 1e18);
     }
 
-    function testRepostCancelsGroupsWithoutDisablingTheirRoots() public {
+    function testRepostCancelsGroupsWithoutDeactivatingTheirRoots() public {
         bytes32 firstGroup = keccak256("first group");
         Offer memory firstOldOffer = makeOffer(firstGroup, PARKED_ASSETS, MAX_TICK);
         bytes32 firstOldRoot = makeLendLimit(firstOldOffer, PARKED_ASSETS);
@@ -410,20 +427,20 @@ contract MidnightBundlesV2Test is Test {
         take(newOffer, newRoot, 1e18);
     }
 
-    function testRepostCannotCancelNewRoot() public {
+    function testRepostCannotDeactivateNewRoot() public {
         Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
         bytes32 newRoot = HashLib.hashOffer(offer);
-        bytes32[] memory rootsToCancel = new bytes32[](1);
-        rootsToCancel[0] = newRoot;
+        bytes32[] memory rootsToDeactivate = new bytes32[](1);
+        rootsToDeactivate[0] = newRoot;
 
         vm.prank(lender);
-        vm.expectRevert(IMidnightBundlesV2.NewRootCannotBeCancelled.selector);
+        vm.expectRevert(IMidnightBundlesV2.NewRootCannotBeDeactivated.selector);
         midnightBundles.midnightBundlesV2LendLimitWithBlueBuyCallback(
             blueMarket,
             PARKED_ASSETS,
             CALLBACK_SALT,
             newRoot,
-            rootsToCancel,
+            rootsToDeactivate,
             noBytes32s(),
             abi.encode(offer),
             block.timestamp
@@ -557,15 +574,15 @@ contract MidnightBundlesV2Test is Test {
         Offer memory newOffer = oldOffer;
         newOffer.tick = MAX_TICK - 4;
         bytes32 newRoot = HashLib.hashOffer(newOffer);
-        bytes32[] memory rootsToCancel = new bytes32[](1);
-        rootsToCancel[0] = oldRoot;
+        bytes32[] memory rootsToDeactivate = new bytes32[](1);
+        rootsToDeactivate[0] = oldRoot;
 
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2BorrowLimit(
             midnightMarket,
             noCollateralSupplies(),
             newRoot,
-            rootsToCancel,
+            rootsToDeactivate,
             noBytes32s(),
             abi.encode(newOffer),
             block.timestamp
@@ -619,17 +636,17 @@ contract MidnightBundlesV2Test is Test {
         assertEq(midnight.debt(IdLib.toId(secondMarket), borrower), 1e18, "second market debt");
     }
 
-    function testCancelAndMakeRepostsAndCancelsGroups() public {
+    function testRepostDeactivatesRootsAndCancelsGroups() public {
         bytes32 oldRoot = keccak256("old root");
         vm.prank(lender);
-        midnightBundles.midnightBundlesV2CancelAndMake(
+        midnightBundles.midnightBundlesV2Repost(
             oldRoot, noBytes32s(), noBytes32s(), abi.encode("old payload"), block.timestamp
         );
 
         bytes32 newRoot = keccak256("new root");
         bytes32 cancelledGroup = keccak256("cancelled group");
-        bytes32[] memory rootsToCancel = new bytes32[](1);
-        rootsToCancel[0] = oldRoot;
+        bytes32[] memory rootsToDeactivate = new bytes32[](1);
+        rootsToDeactivate[0] = oldRoot;
         bytes32[] memory groupsToCancel = new bytes32[](1);
         groupsToCancel[0] = cancelledGroup;
         bytes memory payload = abi.encode("new payload");
@@ -637,7 +654,7 @@ contract MidnightBundlesV2Test is Test {
         vm.expectEmit(address(offerLog));
         emit Log.Data(payload);
         vm.prank(lender);
-        midnightBundles.midnightBundlesV2CancelAndMake(newRoot, rootsToCancel, groupsToCancel, payload, block.timestamp);
+        midnightBundles.midnightBundlesV2Repost(newRoot, rootsToDeactivate, groupsToCancel, payload, block.timestamp);
 
         assertFalse(setterRatifier.isRootRatified(lender, oldRoot), "old root");
         assertTrue(setterRatifier.isRootRatified(lender, newRoot), "new root");

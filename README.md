@@ -23,13 +23,15 @@ Users should expect tokens left to the bundles as lost.
 
 [MidnightBundlesV2](src/midnight/MidnightBundlesV2.sol) is a standalone bundle containing:
 
-- `midnightBundlesV2LendLimitWithBlueBuyCallback` — create or reuse the maker's deterministic Midnight `BlueBuyCallback`, park loan assets in its Blue position, activate a new Setter-ratified lend-limit offer root, deactivate selected roots, cancel selected offer groups, and publish the offer payload through Midnight's `Log`, all atomically.
+- `midnightBundlesV2LendLimitWithBlueBuyCallback` — park loan assets on Blue through a Midnight `BlueBuyCallback`, then repost maker offers.
+- `midnightBundlesV2BorrowLimit` — supply collateral on Midnight, then repost maker offers.
+- `midnightBundlesV2Repost` — repost maker offers without moving assets.
 
-The offer must use the callback derived from the supplied factory salt and encode the Blue market parameters in its callback data. When the offer is taken, Midnight's periphery callback withdraws the required assets from its Blue position. Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
+Reposting deactivates selected roots and cancels selected groups before activating the new Setter-ratified root. Root deactivation is reversible, whereas group cancellation is not. Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
 
-The maker must approve `MidnightBundlesV2` to pull the assets being parked; the PoC does not support token permits.
+Offer roots may contain multi-market offers. Roots and publication payloads are constructed offchain and are not checked against each other or against markets passed to the bundle.
 
-The publication payload is forwarded verbatim to `Log` and is not checked against the new root.
+The maker must authorize `MidnightBundlesV2` on Midnight and approve it to pull any supplied loan or collateral assets. The PoC does not support token permits.
 
 ### Blue bundles
 

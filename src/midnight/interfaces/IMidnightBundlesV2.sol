@@ -14,7 +14,7 @@ interface IMidnightBundlesV2 {
     /// ERRORS ///
     error DeadlinePassed();
     error InconsistentMidnight();
-    error NewRootCannotBeCancelled();
+    error NewRootCannotBeDeactivated();
 
     /// STORAGE GETTERS ///
     function MIDNIGHT() external view returns (address);
@@ -29,7 +29,7 @@ interface IMidnightBundlesV2 {
         uint256 assetsToPark,
         bytes32 callbackSalt,
         bytes32 newRoot,
-        bytes32[] memory rootsToCancel,
+        bytes32[] memory rootsToDeactivate,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
@@ -39,15 +39,15 @@ interface IMidnightBundlesV2 {
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
         bytes32 newRoot,
-        bytes32[] memory rootsToCancel,
+        bytes32[] memory rootsToDeactivate,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
     ) external;
 
-    function midnightBundlesV2CancelAndMake(
+    function midnightBundlesV2Repost(
         bytes32 newRoot,
-        bytes32[] memory rootsToCancel,
+        bytes32[] memory rootsToDeactivate,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
