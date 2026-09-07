@@ -255,7 +255,8 @@ contract VaultExitMarginTest is Test {
     // Each withdrawal burns previewWithdraw(assets) shares (mulDivUp), so it rounds up by at most one share.
 
     function testMarginV1(uint256[] memory rawMarketAmounts, uint256[] memory rawYieldAmounts) public {
-        (uint256[] memory marketAmounts, uint256[] memory yieldAmounts) = _getAmounts(rawMarketAmounts, rawYieldAmounts);
+        (uint256[] memory marketAmounts, uint256[] memory yieldAmounts) =
+            _boundAmounts(rawMarketAmounts, rawYieldAmounts);
         _setupV1(marketAmounts, yieldAmounts);
 
         // The V1 path withdraws exitAssets = previewRedeem(balance - margin), so margin = 0.
@@ -271,7 +272,8 @@ contract VaultExitMarginTest is Test {
     }
 
     function testMarginV2Illiquid(uint256[] memory rawMarketAmounts, uint256[] memory rawYieldAmounts) public {
-        (uint256[] memory marketAmounts, uint256[] memory yieldAmounts) = _getAmounts(rawMarketAmounts, rawYieldAmounts);
+        (uint256[] memory marketAmounts, uint256[] memory yieldAmounts) =
+            _boundAmounts(rawMarketAmounts, rawYieldAmounts);
         _setupV2(marketAmounts, yieldAmounts, true);
 
         // The illiquid V2 path makes two withdrawals per market (penalty and deallocated assets), hence margin = 2 * numberOfMarkets.
@@ -287,7 +289,8 @@ contract VaultExitMarginTest is Test {
     }
 
     function testMarginV2Liquid(uint256[] memory rawMarketAmounts, uint256[] memory rawYieldAmounts) public {
-        (uint256[] memory marketAmounts, uint256[] memory yieldAmounts) = _getAmounts(rawMarketAmounts, rawYieldAmounts);
+        (uint256[] memory marketAmounts, uint256[] memory yieldAmounts) =
+            _boundAmounts(rawMarketAmounts, rawYieldAmounts);
         _setupV2(marketAmounts, yieldAmounts, false);
 
         // The liquid V2 path makes one upfront withdrawal, one penalty withdrawal per market, and one final withdrawal, hence margin = numberOfMarkets + 2.
@@ -302,7 +305,7 @@ contract VaultExitMarginTest is Test {
         );
     }
 
-    function _getAmounts(uint256[] memory rawMarketAmounts, uint256[] memory rawYieldAmounts)
+    function _boundAmounts(uint256[] memory rawMarketAmounts, uint256[] memory rawYieldAmounts)
         internal
         pure
         returns (uint256[] memory, uint256[] memory)
