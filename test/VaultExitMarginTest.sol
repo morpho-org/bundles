@@ -256,20 +256,13 @@ contract VaultExitMarginTest is Test {
 
     // Theoretical safe margin (in shares): the exit is split into independent vault withdrawals.
     // Each withdrawal burns previewWithdraw(assets) shares (mulDivUp), so it rounds up by at most one share.
-    // The V1 path withdraws exitAssets = previewRedeem(balance - margin), so it needs no margin (0).
-    // The illiquid V2 path makes two withdrawals per market (penalty and deallocated assets), hence 2 * numberOfMarkets.
-    // The liquid V2 path makes one upfront withdrawal, one penalty withdrawal per market, and one final withdrawal, hence numberOfMarkets + 2.
-    function _margin(uint256 scenario, uint256 numberOfMarkets) internal pure returns (uint256) {
-        if (scenario == V1_ILLIQUID) return 0;
-        if (scenario == V2_ILLIQUID) return 2 * numberOfMarkets;
-        return numberOfMarkets + 2;
-    }
 
     function testMarginV1(uint256 numberOfMarkets) public {
         numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
         _setupV1(numberOfMarkets);
 
-        uint256 margin = _margin(V1_ILLIQUID, numberOfMarkets);
+        // The V1 path withdraws exitAssets = previewRedeem(balance - margin), so margin = 0.
+        uint256 margin = 0;
         uint256 balance = IMetaMorpho(vault).balanceOf(address(this));
         if (margin >= balance) return;
         uint256 exitAssets = IMetaMorpho(vault).previewRedeem(balance - margin);
@@ -284,7 +277,8 @@ contract VaultExitMarginTest is Test {
         numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
         _setupV2(numberOfMarkets, true);
 
-        uint256 margin = _margin(V2_ILLIQUID, numberOfMarkets);
+        // The illiquid V2 path makes two withdrawals per market (penalty and deallocated assets), hence margin = 2 * numberOfMarkets.
+        uint256 margin = 2 * numberOfMarkets;
         uint256 balance = IVaultV2(vault).balanceOf(address(this));
         if (margin >= balance) return;
         uint256 exitAssets = IVaultV2(vault).previewRedeem(balance - margin);
@@ -299,7 +293,8 @@ contract VaultExitMarginTest is Test {
         numberOfMarkets = bound(numberOfMarkets, 1, MAX_NUMBER_OF_MARKETS);
         _setupV2(numberOfMarkets, false);
 
-        uint256 margin = _margin(V2_LIQUID, numberOfMarkets);
+        // The liquid V2 path makes one upfront withdrawal, one penalty withdrawal per market, and one final withdrawal, hence margin = numberOfMarkets + 2.
+        uint256 margin = numberOfMarkets + 2;
         uint256 balance = IVaultV2(vault).balanceOf(address(this));
         if (margin >= balance) return;
         uint256 exitAssets = IVaultV2(vault).previewRedeem(balance - margin);
