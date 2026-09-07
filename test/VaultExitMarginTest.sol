@@ -307,19 +307,16 @@ contract VaultExitMarginTest is Test {
         pure
         returns (uint256[] memory, uint256[] memory)
     {
-        uint256 numberOfMarkets = bound(min(rawMarketAmounts.length, rawYieldAmounts.length), 0, MAX_NUMBER_OF_MARKETS);
+        vm.assume(rawMarketAmounts.length >= 1 && rawYieldAmounts.length >= 1);
+        uint256 minLength =
+            rawMarketAmounts.length < rawYieldAmounts.length ? rawMarketAmounts.length : rawYieldAmounts.length;
+        uint256 numberOfMarkets = bound(minLength, 1, MAX_NUMBER_OF_MARKETS);
         uint256[] memory marketAmounts = new uint256[](numberOfMarkets);
-        for (uint256 i = 0; i < numberOfMarkets; i++) {
-            marketAmounts[i] = rawMarketAmounts[i] % PER_MARKET;
-        }
         uint256[] memory yieldAmounts = new uint256[](numberOfMarkets);
         for (uint256 i = 0; i < numberOfMarkets; i++) {
+            marketAmounts[i] = bound(rawMarketAmounts[i], 1e18, PER_MARKET);
             yieldAmounts[i] = rawYieldAmounts[i];
         }
         return (marketAmounts, yieldAmounts);
-    }
-
-    function min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a < b ? a : b;
     }
 }
