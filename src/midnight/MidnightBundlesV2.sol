@@ -13,11 +13,9 @@ import {IMorpho, MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorph
 import {TokenLib} from "../libraries/TokenLib.sol";
 import {IMidnightBundlesV2, CollateralSupply} from "./interfaces/IMidnightBundlesV2.sol";
 
-/// @dev Maker-side Midnight offer creation and reposting, including callback-funded lend offers and collateralized
-/// borrow offers.
+/// @dev Maker-side Midnight offer creation and reposting, including callback-funded lend offers and collateralized borrow offers.
 /// @dev The maker must authorize this contract on Midnight beforehand.
-/// @dev Reposting deactivates selected Setter roots, permanently cancels selected Ecrecover roots, cancels selected
-/// groups, authorizes SETTER_RATIFIER, activates the new Setter root, then publishes the payload through LOG.
+/// @dev Reposting deactivates selected Setter roots, permanently cancels selected Ecrecover roots, cancels selected groups, authorizes SETTER_RATIFIER, activates the new Setter root, then publishes the payload through LOG.
 /// @dev SETTER_RATIFIER is authorized on behalf of the maker when a new root is activated.
 /// @dev Replacement offers must not use a group passed in groupsToCancel.
 /// @dev Inherits the token safety requirements of Midnight and Morpho Blue.
@@ -56,14 +54,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// EXTERNAL ///
 
-    /// @dev If assetsToPark is non-zero, pulls the assets from msg.sender and supplies them on Blue on behalf of
-    /// msg.sender's callback derived from callbackSalt, creating the callback if necessary. Then reposts the maker's
-    /// offers.
+    /// @dev If assetsToPark is non-zero, pulls the assets from msg.sender and supplies them on Blue on behalf of msg.sender's callback derived from callbackSalt, creating the callback if necessary. Then reposts the maker's offers.
     /// @dev msg.sender must approve this contract for at least assetsToPark beforehand.
-    /// @dev Offers intended to use the parked assets must be buy offers whose callback is the derived callback and whose
-    /// callbackData is abi.encode(blueMarket).
-    /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected
-    /// against supply-share-price inflation attacks.
+    /// @dev Offers intended to use the parked assets must be buy offers whose callback is the derived callback and whose callbackData is abi.encode(blueMarket).
+    /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected against supply-share-price inflation attacks.
     function midnightBundlesV2LendLimitWithBlueBuyCallback(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
@@ -88,8 +82,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         repost(newRoot, setterRootsToDeactivate, ecrecoverRootsToCancel, groupsToCancel, payload);
     }
 
-    /// @dev Pulls each non-zero collateral supply from msg.sender, supplies it to msg.sender's position on market, then
-    /// reposts the maker's offers.
+    /// @dev Pulls each non-zero collateral supply from msg.sender, supplies it to msg.sender's position on market, then reposts the maker's offers.
     /// @dev msg.sender must approve this contract for each collateral token beforehand.
     /// @dev newRoot is expected to contain sell offers made by msg.sender, but may also contain offers for other markets.
     function midnightBundlesV2BorrowLimit(
@@ -119,8 +112,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         repost(newRoot, setterRootsToDeactivate, ecrecoverRootsToCancel, groupsToCancel, payload);
     }
 
-    /// @dev Invalidates selected roots and groups, authorizes SETTER_RATIFIER, activates the new Setter root, then
-    /// publishes payload.
+    /// @dev Invalidates selected roots and groups, authorizes SETTER_RATIFIER, activates the new Setter root, then publishes payload.
     function midnightBundlesV2Repost(
         bytes32 newRoot,
         bytes32[] memory setterRootsToDeactivate,
@@ -134,8 +126,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         repost(newRoot, setterRootsToDeactivate, ecrecoverRootsToCancel, groupsToCancel, payload);
     }
 
-    /// @dev Deactivates selected Setter roots, permanently cancels selected Ecrecover roots, and cancels selected
-    /// groups. Does not activate or publish a new root.
+    /// @dev Deactivates selected Setter roots, permanently cancels selected Ecrecover roots, and cancels selected groups. Does not activate or publish a new root.
     function midnightBundlesV2Cancel(
         bytes32[] memory setterRootsToDeactivate,
         bytes32[] memory ecrecoverRootsToCancel,
