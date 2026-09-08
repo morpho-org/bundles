@@ -16,11 +16,8 @@ import {IMidnightBundlesV2, CollateralSupply} from "./interfaces/IMidnightBundle
 /// @dev Maker-side Midnight offer creation and reposting, including callback-funded lend offers and collateralized
 /// borrow offers.
 /// @dev The maker must authorize this contract on Midnight beforehand.
-/// @dev Offer roots and publication payloads are constructed offchain, may contain multi-market offers, and are not
-/// checked against each other, against SETTER_RATIFIER, or against the markets passed to this contract.
 /// @dev Reposting deactivates selected Setter roots, permanently cancels selected Ecrecover roots, cancels selected
 /// groups, authorizes SETTER_RATIFIER, activates the new Setter root, then publishes the payload through LOG.
-/// @dev Setter root deactivation is reversible, whereas Ecrecover root and group cancellation are not.
 /// @dev SETTER_RATIFIER is authorized on behalf of the maker when a new root is activated.
 /// @dev Replacement offers must not use a group passed in groupsToCancel.
 /// @dev Inherits the token safety requirements of Midnight and Morpho Blue.
@@ -63,7 +60,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// msg.sender's callback derived from callbackSalt, creating the callback if necessary. Then reposts the maker's
     /// offers.
     /// @dev msg.sender must approve this contract for at least assetsToPark beforehand.
-    /// @dev blueMarket and callbackSalt are not used when assetsToPark is zero.
     /// @dev Offers intended to use the parked assets must be buy offers whose callback is the derived callback and whose
     /// callbackData is abi.encode(blueMarket).
     function midnightBundlesV2LendLimitWithBlueBuyCallback(
