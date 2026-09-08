@@ -93,13 +93,13 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 filledBuyerAssets += resBuyerAssets;
             } catch {}
         }
-        uint256 remainingUnits = targetUnits - filledUnits;
-        if (IMidnight(MIDNIGHT).debt(id, taker) > 0) {
-            IMidnight(MIDNIGHT).repay(market, remainingUnits, taker, address(0), "");
-            filledBuyerAssets += remainingUnits;
-        } else {
-            require(remainingUnits == 0, OutOfOffers());
-        }
+
+        uint256 repayUnits = UtilsLib.min(targetUnits - filledUnits, IMidnight(MIDNIGHT).debt(id, taker));
+        IMidnight(MIDNIGHT).repay(market, repayUnits, taker, address(0), "");
+        filledUnits += repayUnits;
+        filledBuyerAssets += repayUnits;
+
+        require(filledUnits == targetUnits, OutOfOffers());
 
         for (uint256 i; i < collateralWithdrawals.length; i++) {
             IMidnight(MIDNIGHT)
@@ -149,15 +149,11 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
 
-        uint256 filledUnits;
-        uint256 filledSellerAssets;
-        if (IMidnight(MIDNIGHT).credit(id, taker) > 0) {
-            uint256 withdrawable = IMidnight(MIDNIGHT).withdrawable(id);
-            uint256 withdrawUnits = UtilsLib.min(withdrawable, targetUnits);
-            IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, taker, address(this));
-            filledUnits += withdrawUnits;
-            filledSellerAssets += withdrawUnits;
-        }
+        uint256 withdrawUnits =
+            min(targetUnits, IMidnight(MIDNIGHT).credit(id, taker), IMidnight(MIDNIGHT).withdrawable(id));
+        IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, taker, address(this));
+        uint256 filledUnits = withdrawUnits;
+        uint256 filledSellerAssets = withdrawUnits;
         for (uint256 i; i < offerFills.length && filledUnits < targetUnits; i++) {
             require(offerFills[i].offer.buy, InconsistentSide());
             require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
@@ -249,14 +245,13 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
             } catch {}
         }
 
-        uint256 remainingAssets = targetFilledBuyerAssets - filledBuyerAssets;
-        if (IMidnight(MIDNIGHT).debt(id, taker) > 0) {
-            IMidnight(MIDNIGHT).repay(market, remainingAssets, taker, address(0), "");
-            filledUnits += remainingAssets;
-        } else {
-            require(remainingAssets == 0, OutOfOffers());
-        }
+        uint256 repayAssets =
+            UtilsLib.min(targetFilledBuyerAssets - filledBuyerAssets, IMidnight(MIDNIGHT).debt(id, taker));
+        IMidnight(MIDNIGHT).repay(market, repayAssets, taker, address(0), "");
+        filledUnits += repayAssets;
+        filledBuyerAssets += repayAssets;
 
+        require(filledBuyerAssets == targetFilledBuyerAssets, OutOfOffers());
         require(filledUnits >= minUnits, UnitsTooLow());
 
         for (uint256 i; i < collateralWithdrawals.length; i++) {
@@ -309,15 +304,11 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 referralFeeAssets = targetSellerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
         uint256 targetFilledSellerAssets = targetSellerAssets + referralFeeAssets;
 
-        uint256 filledUnits;
-        uint256 filledSellerAssets;
-        if (IMidnight(MIDNIGHT).credit(id, taker) > 0) {
-            uint256 withdrawable = IMidnight(MIDNIGHT).withdrawable(id);
-            uint256 withdrawUnits = UtilsLib.min(withdrawable, targetFilledSellerAssets);
-            IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, taker, address(this));
-            filledUnits += withdrawUnits;
-            filledSellerAssets += withdrawUnits;
-        }
+        uint256 withdrawUnits =
+            min(targetFilledSellerAssets, IMidnight(MIDNIGHT).credit(id, taker), IMidnight(MIDNIGHT).withdrawable(id));
+        IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, taker, address(this));
+        uint256 filledUnits = withdrawUnits;
+        uint256 filledSellerAssets = withdrawUnits;
         for (uint256 i; i < offerFills.length && filledSellerAssets < targetFilledSellerAssets; i++) {
             require(offerFills[i].offer.buy, InconsistentSide());
             require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
