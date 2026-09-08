@@ -17,8 +17,8 @@ Users should expect tokens left to the bundles as lost.
 - `midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget` — supply collateral, then withdraw credit and sell a target number of units across offers.
 - `midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget` — supply collateral, then withdraw credit and sell a target loan-asset amount across offers.
 
-Repaying and withdrawing collateral (only) is done through the buy functions with a zero amount.
-Withdrawing credit (only) can be done through the sell functions with zero amount.
+Repaying and withdrawing collateral (only) is done through the buy functions with a nonzero target and an empty `offerFills` array.
+Withdrawing credit (only) can be done through the sell functions with a nonzero target and an empty `offerFills` array.
 
 ### [BlueBundlesV1](src/blue/BlueBundlesV1.sol)
 
