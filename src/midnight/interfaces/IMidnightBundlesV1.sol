@@ -39,11 +39,66 @@ interface IMidnightBundlesV1 {
     /// STORAGE GETTERS ///
     function MIDNIGHT() external view returns (address);
 
-    // forgefmt: disable-start
     /// FUNCTIONS ///
-    function midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(Market memory market, uint256 targetUnits, uint256 maxBuyerAssets, address taker, bool reduceOnly, TokenPermit memory loanTokenPermit, OfferFill[] memory offerFills, CollateralWithdrawal[] memory collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline) external;
-    function midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(Market memory market, uint256 targetUnits, uint256 minSellerAssets, address taker, bool reduceOnly, address receiver, CollateralSupply[] memory collateralSupplies, OfferFill[] memory offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline) external;
-    function midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral(Market memory market, uint256 targetBuyerAssets, uint256 minUnits, address taker, bool reduceOnly, TokenPermit memory loanTokenPermit, OfferFill[] memory offerFills, CollateralWithdrawal[] memory collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline) external;
-    function midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget(Market memory market, uint256 targetSellerAssets, uint256 maxUnits, address taker, bool reduceOnly, address receiver, CollateralSupply[] memory collateralSupplies, OfferFill[] memory offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline) external;
-    // forgefmt: disable-end
+    function midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
+        Market memory market,
+        uint256 targetUnits,
+        uint256 maxBuyerAssets,
+        address taker,
+        bool reduceOnly,
+        TokenPermit memory loanTokenPermit,
+        OfferFill[] memory offerFills,
+        CollateralWithdrawal[] memory collateralWithdrawals,
+        address collateralReceiver,
+        uint256 referralFeePct,
+        address referralFeeRecipient,
+        uint256 maxContinuousFee,
+        uint256 deadline
+    ) external;
+
+    function midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
+        Market memory market,
+        uint256 targetUnits,
+        uint256 minSellerAssets,
+        address taker,
+        bool reduceOnly,
+        address receiver,
+        CollateralSupply[] memory collateralSupplies,
+        OfferFill[] memory offerFills,
+        uint256 referralFeePct,
+        address referralFeeRecipient,
+        uint256 maxContinuousFee,
+        uint256 deadline
+    ) external;
+
+    function midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral(
+        Market memory market,
+        uint256 targetBuyerAssets,
+        uint256 minUnits,
+        address taker,
+        bool reduceOnly,
+        TokenPermit memory loanTokenPermit,
+        OfferFill[] memory offerFills,
+        CollateralWithdrawal[] memory collateralWithdrawals,
+        address collateralReceiver,
+        uint256 referralFeePct,
+        address referralFeeRecipient,
+        uint256 maxContinuousFee,
+        uint256 deadline
+    ) external;
+
+    function midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget(
+        Market memory market,
+        uint256 targetSellerAssets,
+        uint256 maxUnits,
+        address taker,
+        bool reduceOnly,
+        address receiver,
+        CollateralSupply[] memory collateralSupplies,
+        OfferFill[] memory offerFills,
+        uint256 referralFeePct,
+        address referralFeeRecipient,
+        uint256 maxContinuousFee,
+        uint256 deadline
+    ) external;
 }
