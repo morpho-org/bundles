@@ -69,6 +69,7 @@ contract MidnightBundlesV2Test is Test {
         offerLog = new Log();
         midnightBundles = new MidnightBundlesV2(
             address(midnight),
+            address(morpho),
             address(blueBuyCallbackFactory),
             address(offerLog),
             address(setterRatifier),
@@ -307,6 +308,7 @@ contract MidnightBundlesV2Test is Test {
         RevertingLog revertingLog = new RevertingLog();
         MidnightBundlesV2 revertingBundles = new MidnightBundlesV2(
             address(midnight),
+            address(morpho),
             address(blueBuyCallbackFactory),
             address(revertingLog),
             address(setterRatifier),
@@ -346,6 +348,22 @@ contract MidnightBundlesV2Test is Test {
         vm.expectRevert(IMidnightBundlesV2.InconsistentMidnight.selector);
         new MidnightBundlesV2(
             address(midnight),
+            address(morpho),
+            address(inconsistentFactory),
+            address(offerLog),
+            address(setterRatifier),
+            address(ecrecoverRatifier)
+        );
+    }
+
+    function testConstructorRevertsWhenFactoryBlueIsInconsistent() public {
+        BlueBuyCallbackFactory inconsistentFactory =
+            new BlueBuyCallbackFactory(address(midnight), makeAddr("otherBlue"));
+
+        vm.expectRevert(IMidnightBundlesV2.InconsistentBlue.selector);
+        new MidnightBundlesV2(
+            address(midnight),
+            address(morpho),
             address(inconsistentFactory),
             address(offerLog),
             address(setterRatifier),
@@ -359,6 +377,7 @@ contract MidnightBundlesV2Test is Test {
         vm.expectRevert(IMidnightBundlesV2.InconsistentMidnight.selector);
         new MidnightBundlesV2(
             address(midnight),
+            address(morpho),
             address(blueBuyCallbackFactory),
             address(offerLog),
             address(setterRatifier),
@@ -745,6 +764,26 @@ contract MidnightBundlesV2Test is Test {
 
         assertTrue(ecrecoverRatifier.isRootCanceled(lender, root), "Ecrecover root");
         assertTrue(setterRatifier.isRootRatified(lender, root), "Setter root");
+    }
+
+    function testRepostAuthorizesOnlySetterRatifierWhenOnlyBundleIsAuthorized() public {
+        Offer memory offer = makeOffer(keccak256("Setter offer"), PARKED_ASSETS, MAX_TICK);
+        offer.callback = address(0);
+        offer.callbackData = "";
+        bytes32 root = HashLib.hashOffer(offer);
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2Repost(
+            root, noBytes32s(), noBytes32s(), noBytes32s(), abi.encode(offer), block.timestamp
+        );
+
+        assertTrue(midnight.isAuthorized(lender, address(setterRatifier)), "Setter authorization");
+        assertFalse(midnight.isAuthorized(lender, address(ecrecoverRatifier)), "Ecrecover authorization");
+
+        vm.prank(lender);
+        loanToken.approve(address(midnight), type(uint256).max);
+        vm.prank(borrower);
+        midnight.take(offer, setterRatifierData(root), 1e18, borrower, borrower, address(0), "");
     }
 
     function testRepostMigratesEcrecoverRootToSetterRoot() public {

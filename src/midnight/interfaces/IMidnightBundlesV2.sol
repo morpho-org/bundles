@@ -13,6 +13,7 @@ struct CollateralSupply {
 interface IMidnightBundlesV2 {
     /// ERRORS ///
     error DeadlinePassed();
+    error InconsistentBlue();
     error InconsistentMidnight();
     error NewRootCannotBeDeactivated();
 
