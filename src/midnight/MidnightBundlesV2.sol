@@ -62,6 +62,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev msg.sender must approve this contract for at least assetsToPark beforehand.
     /// @dev Offers intended to use the parked assets must be buy offers whose callback is the derived callback and whose
     /// callbackData is abi.encode(blueMarket).
+    /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected
+    /// against supply-share-price inflation attacks.
     function midnightBundlesV2LendLimitWithBlueBuyCallback(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
