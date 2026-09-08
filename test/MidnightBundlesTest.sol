@@ -2149,6 +2149,12 @@ contract ContinuousFeeChangingMidnightFake {
         return 0;
     }
 
+    function withdrawable(bytes32) external pure returns (uint128) {
+        return 0;
+    }
+
+    function withdraw(Market memory, uint256, address, address) external {}
+
     function take(Offer memory, bytes memory, uint256, address, address, address, bytes memory)
         external
         returns (uint256, uint256)
