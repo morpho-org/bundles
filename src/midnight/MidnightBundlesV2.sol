@@ -15,13 +15,8 @@ import {IMidnightBundlesV2, CollateralSupply} from "./interfaces/IMidnightBundle
 
 /// @dev Maker-side Midnight offer creation and reposting, including callback-funded lend offers and collateralized borrow offers.
 /// @dev The maker must authorize this contract on Midnight beforehand.
-/// @dev Reposting authorizes SETTER_RATIFIER, invalidates selected roots and groups, sets the new root in SETTER_RATIFIER, then publishes payload.
-/// @dev SETTER_RATIFIER is authorized on behalf of the maker at the beginning of reposting.
-/// @dev Replacement offers must not use a group passed in groupsToCancel.
 /// @dev Inherits the token safety requirements of Midnight and Morpho Blue.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev No-ops are not systematically prevented.
-/// @dev Zero checks are not systematically performed.
 contract MidnightBundlesV2 is IMidnightBundlesV2 {
     address public immutable MIDNIGHT;
     address public immutable BLUE;
