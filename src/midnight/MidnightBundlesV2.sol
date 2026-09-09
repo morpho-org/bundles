@@ -6,7 +6,6 @@ import {IMidnight, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol
 import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
-import {IEcrecoverRatifier} from "../../lib/midnight/src/ratifiers/interfaces/IEcrecoverRatifier.sol";
 import {ISetterRatifier} from "../../lib/midnight/src/ratifiers/interfaces/ISetterRatifier.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {IMorpho, MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -23,20 +22,17 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     address public immutable BLUE_BUY_CALLBACK_FACTORY;
     address public immutable LOG;
     address public immutable SETTER_RATIFIER;
-    address public immutable ECRECOVER_RATIFIER;
 
     constructor(
         address _midnight,
         address _blue,
         address _blueBuyCallbackFactory,
         address _log,
-        address _setterRatifier,
-        address _ecrecoverRatifier
+        address _setterRatifier
     ) {
         require(
             IBlueBuyCallbackFactory(_blueBuyCallbackFactory).MIDNIGHT() == _midnight
-                && ISetterRatifier(_setterRatifier).MIDNIGHT() == _midnight
-                && IEcrecoverRatifier(_ecrecoverRatifier).MIDNIGHT() == _midnight,
+                && ISetterRatifier(_setterRatifier).MIDNIGHT() == _midnight,
             InconsistentMidnight()
         );
         require(IBlueBuyCallbackFactory(_blueBuyCallbackFactory).BLUE() == _blue, InconsistentBlue());
@@ -46,12 +42,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         BLUE_BUY_CALLBACK_FACTORY = _blueBuyCallbackFactory;
         LOG = _log;
         SETTER_RATIFIER = _setterRatifier;
-        ECRECOVER_RATIFIER = _ecrecoverRatifier;
     }
 
     /// EXTERNAL ///
 
-    /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback and supplies collateral to msg.sender on Midnight, then invalidates selected roots and groups.
+    /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback and supplies collateral to msg.sender on Midnight, then cancels selected groups.
     /// @dev If newRoot is non-zero, authorizes SETTER_RATIFIER, activates newRoot, and publishes payload. Otherwise payload is ignored and SETTER_RATIFIER authorization is unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero; market is unused when all collateral supplies are zero.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
@@ -64,8 +59,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
         bytes32 newRoot,
-        bytes32[] memory setterRootsToDeactivate,
-        bytes32[] memory ecrecoverRootsToCancel,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
@@ -91,20 +84,12 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             }
         }
 
-        if (newRoot != bytes32(0)) IMidnight(MIDNIGHT).setIsAuthorized(SETTER_RATIFIER, true, msg.sender);
-
-        for (uint256 i; i < setterRootsToDeactivate.length; i++) {
-            require(newRoot == bytes32(0) || setterRootsToDeactivate[i] != newRoot, NewRootCannotBeDeactivated());
-            ISetterRatifier(SETTER_RATIFIER).setIsRootRatified(msg.sender, setterRootsToDeactivate[i], false);
-        }
-        for (uint256 i; i < ecrecoverRootsToCancel.length; i++) {
-            IEcrecoverRatifier(ECRECOVER_RATIFIER).cancelRoot(msg.sender, ecrecoverRootsToCancel[i]);
-        }
         for (uint256 i; i < groupsToCancel.length; i++) {
             IMidnight(MIDNIGHT).setConsumed(groupsToCancel[i], type(uint128).max, msg.sender);
         }
 
         if (newRoot != bytes32(0)) {
+            IMidnight(MIDNIGHT).setIsAuthorized(SETTER_RATIFIER, true, msg.sender);
             ISetterRatifier(SETTER_RATIFIER).setIsRootRatified(msg.sender, newRoot, true);
 
             (bool success, bytes memory returndata) = LOG.call(payload);

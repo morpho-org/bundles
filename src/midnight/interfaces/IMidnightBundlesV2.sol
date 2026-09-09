@@ -15,7 +15,6 @@ interface IMidnightBundlesV2 {
     error DeadlinePassed();
     error InconsistentBlue();
     error InconsistentMidnight();
-    error NewRootCannotBeDeactivated();
 
     /// STORAGE GETTERS ///
     function MIDNIGHT() external view returns (address);
@@ -23,7 +22,6 @@ interface IMidnightBundlesV2 {
     function BLUE_BUY_CALLBACK_FACTORY() external view returns (address);
     function LOG() external view returns (address);
     function SETTER_RATIFIER() external view returns (address);
-    function ECRECOVER_RATIFIER() external view returns (address);
 
     /// FUNCTIONS ///
     function midnightBundlesV2Make(
@@ -33,8 +31,6 @@ interface IMidnightBundlesV2 {
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
         bytes32 newRoot,
-        bytes32[] memory setterRootsToDeactivate,
-        bytes32[] memory ecrecoverRootsToCancel,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
