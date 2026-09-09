@@ -871,6 +871,45 @@ contract MidnightBundlesV2Test is Test {
         midnight.take(oldOffer, oldEcrecoverData, 1e18, borrower, borrower, address(0), "");
     }
 
+    function testCancelEntrypointInvalidatesOffersOnlyForCaller() public {
+        Offer memory firstOffer = makeOffer(keccak256("first group"), PARKED_ASSETS, MAX_TICK);
+        bytes32 firstRoot = makeLendLimit(firstOffer, PARKED_ASSETS);
+        Offer memory secondOffer = makeOffer(keccak256("second group"), PARKED_ASSETS, MAX_TICK);
+        bytes32 secondRoot = makeLendLimit(secondOffer, 0);
+        bytes32[] memory groups = new bytes32[](2);
+        groups[0] = firstOffer.group;
+        groups[1] = secondOffer.group;
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2Cancel(groups);
+
+        for (uint256 i; i < groups.length; i++) {
+            assertEq(midnight.consumed(lender, groups[i]), type(uint128).max);
+            assertEq(midnight.consumed(borrower, groups[i]), 0);
+        }
+        assertTrue(setterRatifier.isRootRatified(lender, firstRoot));
+        assertTrue(setterRatifier.isRootRatified(lender, secondRoot));
+        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS);
+
+        vm.prank(borrower);
+        vm.expectRevert(IMidnight.ConsumedAssets.selector);
+        midnight.take(firstOffer, setterRatifierData(firstRoot), 1e18, borrower, borrower, address(0), "");
+        vm.prank(borrower);
+        vm.expectRevert(IMidnight.ConsumedAssets.selector);
+        midnight.take(secondOffer, setterRatifierData(secondRoot), 1e18, borrower, borrower, address(0), "");
+    }
+
+    function testCancelEntrypointRequiresAuthorization() public {
+        bytes32[] memory groups = new bytes32[](1);
+        groups[0] = keccak256("group");
+
+        vm.prank(borrower);
+        vm.expectRevert(IMidnight.Unauthorized.selector);
+        midnightBundles.midnightBundlesV2Cancel(groups);
+
+        assertEq(midnight.consumed(borrower, groups[0]), 0);
+    }
+
     function testCancelGroupsRetainsRoots() public {
         bytes32 setterRoot = keccak256("setter root");
         vm.prank(lender);

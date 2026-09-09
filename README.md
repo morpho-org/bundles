@@ -19,6 +19,7 @@ Users should expect tokens left to the bundles as lost.
 
 ### [MidnightBundlesV2](src/midnight/MidnightBundlesV2.sol)
 - `midnightBundlesV2Make` — optionally park loan assets on Blue through a Midnight `BlueBuyCallback`, supply collateral on Midnight, cancel groups, and publish new maker offers in one call.
+- `midnightBundlesV2Cancel` — cancel a list of groups for the caller on Midnight.
 
 Set `assetsToPark` to zero to skip parking and pass an empty `collateralSupplies` array to skip collateral supply. Pass a non-zero `newRoot` to authorize the Setter ratifier, activate the root, and publish `payload`. Passing `bytes32(0)` skips those steps and ignores `payload`. Cancellation-only calls skip both funding steps and pass `bytes32(0)` as `newRoot`.
 

@@ -46,16 +46,18 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// EXTERNAL ///
 
-    /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback and supplies collateral to msg.sender on Midnight.
+    /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback.
+    /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
+    /// @dev Optionally supplies collateral to msg.sender on Midnight.
     /// @dev If newRoot is non-zero, authorizes SETTER_RATIFIER, activates newRoot, and publishes payload. Otherwise payload is ignored and SETTER_RATIFIER authorization is unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero; market is unused when all collateral supplies are zero.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
-    /// @dev Offers using parked assets must be buy offers with the derived callback and callbackData equal to abi.encode(blueMarket). The new root may contain offers for multiple markets.
+    /// @dev The new root may contain offers for multiple markets.
     /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected against supply-share-price inflation attacks.
     /// @dev This bundle does not check that:
     /// - Offers in newRoot or payload match the intended use case (lend limit or borrow limit) and the supplied funding or collateral inputs.
     /// - newRoot corresponds to the offers described by payload. The payload posted to LOG is not validated against any on-chain state or bundle inputs.
-    /// @dev Cancel prior offers before reposting to avoid duplicate offers at stale prices. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers.
+    /// @dev Cancel prior offers before reposting to avoid leaving both old and new offers takeable. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers.
     function midnightBundlesV2Make(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
@@ -102,6 +104,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                     revert(add(returndata, 0x20), mload(returndata))
                 }
             }
+        }
+    }
+
+    /// @dev Cancels each group for msg.sender by setting its consumed assets to type(uint128).max on Midnight.
+    function midnightBundlesV2Cancel(bytes32[] memory groupsToCancel) external {
+        for (uint256 i; i < groupsToCancel.length; i++) {
+            IMidnight(MIDNIGHT).setConsumed(groupsToCancel[i], type(uint128).max, msg.sender);
         }
     }
 }

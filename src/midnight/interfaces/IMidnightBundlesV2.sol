@@ -24,6 +24,8 @@ interface IMidnightBundlesV2 {
     function SETTER_RATIFIER() external view returns (address);
 
     /// FUNCTIONS ///
+    function midnightBundlesV2Cancel(bytes32[] memory groupsToCancel) external;
+
     function midnightBundlesV2Make(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
