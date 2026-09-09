@@ -43,7 +43,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
 
     /// @dev This function pulls maxBuyerAssets from the msg.sender and transfers back the remaining tokens at the end.
     /// @dev The msg.sender will pay at most maxBuyerAssets.
-    /// @dev If the taker has debt, the remaining amount not covered by the take loop is repaid.
+    /// @dev If repayEnabled and the taker has debt, the remaining amount not covered by the take loop is repaid.
     /// @dev Total loan assets transferred from msg.sender is filledBuyerAssets + filledBuyerAssets * referralFeePct / (WAD - referralFeePct).
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
     function midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral(
@@ -52,6 +52,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 maxBuyerAssets,
         address taker,
         bool reduceOnly,
+        bool repayEnabled,
         TokenPermit memory loanTokenPermit,
         OfferFill[] memory offerFills,
         CollateralWithdrawal[] memory collateralWithdrawals,
@@ -93,10 +94,12 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 filledBuyerAssets += resBuyerAssets;
             } catch {}
         }
-        uint256 repayUnits = UtilsLib.min(targetUnits - filledUnits, IMidnight(MIDNIGHT).debt(id, taker));
-        IMidnight(MIDNIGHT).repay(market, repayUnits, taker, address(0), "");
-        filledUnits += repayUnits;
-        filledBuyerAssets += repayUnits;
+        if (repayEnabled) {
+            uint256 repayUnits = UtilsLib.min(targetUnits - filledUnits, IMidnight(MIDNIGHT).debt(id, taker));
+            IMidnight(MIDNIGHT).repay(market, repayUnits, taker, address(0), "");
+            filledUnits += repayUnits;
+            filledBuyerAssets += repayUnits;
+        }
 
         require(filledUnits == targetUnits, OutOfOffers());
 
@@ -187,7 +190,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
     }
 
     /// @dev Total loan assets transferred from msg.sender is targetBuyerAssets.
-    /// @dev If the taker has debt, the remaining amount not covered by the take loop is repaid.
+    /// @dev If repayEnabled and the taker has debt, the remaining amount not covered by the take loop is repaid.
     /// @dev The taker will gain at least minUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
@@ -197,6 +200,7 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 minUnits,
         address taker,
         bool reduceOnly,
+        bool repayEnabled,
         TokenPermit memory loanTokenPermit,
         OfferFill[] memory offerFills,
         CollateralWithdrawal[] memory collateralWithdrawals,
@@ -243,11 +247,13 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 filledBuyerAssets += resBuyerAssets;
             } catch {}
         }
-        uint256 repayAssets =
-            UtilsLib.min(targetFilledBuyerAssets - filledBuyerAssets, IMidnight(MIDNIGHT).debt(id, taker));
-        IMidnight(MIDNIGHT).repay(market, repayAssets, taker, address(0), "");
-        filledUnits += repayAssets;
-        filledBuyerAssets += repayAssets;
+        if (repayEnabled) {
+            uint256 repayAssets =
+                UtilsLib.min(targetFilledBuyerAssets - filledBuyerAssets, IMidnight(MIDNIGHT).debt(id, taker));
+            IMidnight(MIDNIGHT).repay(market, repayAssets, taker, address(0), "");
+            filledUnits += repayAssets;
+            filledBuyerAssets += repayAssets;
+        }
 
         require(filledBuyerAssets == targetFilledBuyerAssets, OutOfOffers());
         require(filledUnits >= minUnits, UnitsTooLow());

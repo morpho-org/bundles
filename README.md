@@ -12,12 +12,12 @@ Users should expect tokens left to the bundles as lost.
 
 ### [MidnightBundlesV1](src/midnight/MidnightBundlesV1.sol)
 
-- `midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral` — buy a target number of units across offers and repay debt, then withdraw collateral.
-- `midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral` — buy a target loan-asset amount across offers and repay debt, then withdraw collateral.
+- `midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral` — buy a target number of units across offers and, if `repayEnabled`, repay debt, then withdraw collateral.
+- `midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral` — buy a target loan-asset amount across offers and, if `repayEnabled`, repay debt, then withdraw collateral.
 - `midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget` — supply collateral, then withdraw credit and sell a target number of units across offers.
 - `midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget` — supply collateral, then withdraw credit and sell a target loan-asset amount across offers.
 
-Repaying and withdrawing collateral (only) is done through the buy functions with a nonzero target and an empty `offerFills` array.
+Repaying and withdrawing collateral (only) is done through the buy functions with `repayEnabled`, a nonzero target and an empty `offerFills` array.
 Withdrawing credit (only) can be done through the sell functions with a nonzero target and an empty `offerFills` array.
 
 ### [BlueBundlesV1](src/blue/BlueBundlesV1.sol)
