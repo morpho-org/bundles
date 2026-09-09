@@ -792,8 +792,6 @@ contract MidnightBundlesV2Test is Test {
         bytes32 oldRoot = HashLib.hashOffer(oldOffer);
         bytes memory oldEcrecoverData = ecrecoverRatifierData(oldRoot);
 
-        vm.prank(lender);
-        midnight.setIsAuthorized(address(ecrecoverRatifier), true, lender);
         assertEq(ecrecoverRatifier.isRatified(oldOffer, oldEcrecoverData, address(0)), CALLBACK_SUCCESS);
 
         Offer memory newOffer = oldOffer;
