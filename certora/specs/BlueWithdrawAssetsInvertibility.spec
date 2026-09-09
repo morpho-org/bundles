@@ -98,7 +98,7 @@ rule referralFeeInversion(uint256 targetAssets, uint256 referralFeePct) {
 rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetAssets) {
     require e.msg.sender != currentContract, "external caller";
     require referralFeeRecipient != e.msg.sender, "separate fee recipient";
-    require reallocations.length <= 2, "loop bound";
+    require reallocations.length <= 2, "assume two allocations";
     require reallocations.length > 0 => reallocations[0].vault != e.msg.sender, "bundler caller is not the allocation vault";
     require reallocations.length > 1 => reallocations[1].vault != e.msg.sender, "bundler caller is not the allocation vault";
 
