@@ -10,6 +10,10 @@ methods {
     function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(token, assets, data) expect void;
     function _.deposit() external => NONDET;
 
+    // Model successful public allocator calls by their penalty transfer, which is the only effect relevant here.
+    function _.reallocate(address vault, address deallocateAdapter, BlueBundlesV1.MarketParams deallocateMarketParams, address allocateAdapter, BlueBundlesV1.MarketParams allocateMarketParams, uint128 assets, uint64 penalty) external => summaryPublicAllocation(vault, allocateMarketParams.loanToken, assets, penalty) expect void;
+    function _.allocateFromIdle(address vault, address adapter, BlueBundlesV1.MarketParams marketParams, uint128 assets, uint64 penalty) external => summaryPublicAllocation(vault, marketParams.loanToken, assets, penalty) expect void;
+
     // Ignore Blue authorization state.
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => NONDET;
     function _.nonce(address authorizer) external => NONDET;
@@ -20,14 +24,10 @@ methods {
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
 
     function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
-    function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
     function UtilsLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => summaryMulDivDown(x, y, d);
-
-    // The allocator's low-level token.call cannot be resolved by its selector, so model only that transfer.
-    function SafeERC20Lib.safeTransferFrom(address token, address from, address to, uint256 value) internal => summarySafeTransferFrom(token, from, to, value);
 }
 
-// Assume the bundler and public allocator use the same penalty calculation.
+// Keep the bundler's penalty calculation consistent with the summarized public allocator calls.
 persistent ghost mulDivUpG(uint256, uint256, uint256) returns uint256;
 
 // Track outgoing transfers separately from recipients' unrelated balance changes.
@@ -54,8 +54,8 @@ function summaryTransfer(address token, address from, address to, uint256 amount
     return true;
 }
 
-function summarySafeTransferFrom(address token, address from, address to, uint256 amount) {
-    summaryTransfer(token, from, to, amount);
+function summaryPublicAllocation(address vault, address loanToken, uint128 assets, uint64 penalty) {
+    summaryTransfer(loanToken, currentContract, vault, mulDivUpG(assets, penalty, WAD()));
 }
 
 function summaryBorrow(address token, uint256 assets, uint256 shares, address receiver) returns (uint256, uint256) {
@@ -73,14 +73,6 @@ function summaryWithdraw(address token, uint256 assets, uint256 shares, address 
 function summaryFlashLoan(address token, uint256 assets, bytes data) {
     env callbackEnv;
     onMorphoFlashLoan(callbackEnv, assets, data);
-}
-
-function reallocationsAssumptions(BlueBundlesV1.PublicAllocations[] reallocations, address caller) {
-    require reallocations.length <= 2, "loop bound";
-    require reallocations.length > 0 => reallocations[0].vault != currentContract, "bundler is not a vault";
-    require reallocations.length > 1 => reallocations[1].vault != currentContract, "bundler is not a vault";
-    require reallocations.length > 0 => reallocations[0].vault != caller, "no penalty to caller";
-    require reallocations.length > 1 => reallocations[1].vault != caller, "no penalty to caller";
 }
 
 function sumPenaltyAssets(BlueBundlesV1.PublicAllocations[] reallocations) returns uint256 {
@@ -106,7 +98,9 @@ rule referralFeeInversion(uint256 targetAssets, uint256 referralFeePct) {
 rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetAssets) {
     require e.msg.sender != currentContract, "external caller";
     require referralFeeRecipient != e.msg.sender, "separate fee recipient";
-    reallocationsAssumptions(reallocations, e.msg.sender);
+    require reallocations.length <= 2, "loop bound";
+    require reallocations.length > 0 => reallocations[0].vault != e.msg.sender, "bundler caller is not the allocation vault";
+    require reallocations.length > 1 => reallocations[1].vault != e.msg.sender, "bundler caller is not the allocation vault";
 
     uint256 penaltyAssets = sumPenaltyAssets(reallocations);
     uint256 receivedAssets;
@@ -124,7 +118,9 @@ rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams mar
 rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAssets, uint256 maxLtv, TokenLib.TokenPermit collateralPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetAssets) {
     require e.msg.sender != currentContract, "external caller";
     require referralFeeRecipient != e.msg.sender, "separate fee recipient";
-    reallocationsAssumptions(reallocations, e.msg.sender);
+    require reallocations.length <= 2, "loop bound";
+    require reallocations.length > 0 => reallocations[0].vault != e.msg.sender, "bundler caller is not the allocation vault";
+    require reallocations.length > 1 => reallocations[1].vault != e.msg.sender, "bundler caller is not the allocation vault";
 
     uint256 penaltyAssets = sumPenaltyAssets(reallocations);
     uint256 receivedAssets;
