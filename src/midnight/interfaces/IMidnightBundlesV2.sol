@@ -26,19 +26,10 @@ interface IMidnightBundlesV2 {
     function ECRECOVER_RATIFIER() external view returns (address);
 
     /// FUNCTIONS ///
-    function midnightBundlesV2LendLimitWithBlueBuyCallback(
+    function midnightBundlesV2Make(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
         bytes32 callbackSalt,
-        bytes32 newRoot,
-        bytes32[] memory setterRootsToDeactivate,
-        bytes32[] memory ecrecoverRootsToCancel,
-        bytes32[] memory groupsToCancel,
-        bytes memory payload,
-        uint256 deadline
-    ) external;
-
-    function midnightBundlesV2BorrowLimit(
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
         bytes32 newRoot,
@@ -46,22 +37,6 @@ interface IMidnightBundlesV2 {
         bytes32[] memory ecrecoverRootsToCancel,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
-        uint256 deadline
-    ) external;
-
-    function midnightBundlesV2Repost(
-        bytes32 newRoot,
-        bytes32[] memory setterRootsToDeactivate,
-        bytes32[] memory ecrecoverRootsToCancel,
-        bytes32[] memory groupsToCancel,
-        bytes memory payload,
-        uint256 deadline
-    ) external;
-
-    function midnightBundlesV2Cancel(
-        bytes32[] memory setterRootsToDeactivate,
-        bytes32[] memory ecrecoverRootsToCancel,
-        bytes32[] memory groupsToCancel,
         uint256 deadline
     ) external;
 }

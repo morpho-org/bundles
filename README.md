@@ -18,10 +18,9 @@ Users should expect tokens left to the bundles as lost.
 - `midnightBundlesV1RepayAndWithdrawCollateral` — repay debt and withdraw collateral.
 
 ### [MidnightBundlesV2](src/midnight/MidnightBundlesV2.sol)
-- `midnightBundlesV2LendLimitWithBlueBuyCallback` — park loan assets on Blue through a Midnight `BlueBuyCallback`, then repost maker offers.
-- `midnightBundlesV2BorrowLimit` — supply collateral on Midnight, then repost maker offers.
-- `midnightBundlesV2Repost` — repost maker offers without moving assets.
-- `midnightBundlesV2Cancel` — deactivate Setter roots and permanently cancel Ecrecover roots and groups without making new offers.
+- `midnightBundlesV2Make` — optionally park loan assets on Blue through a Midnight `BlueBuyCallback`, supply collateral on Midnight, deactivate Setter roots, cancel Ecrecover roots and groups, and publish new maker offers in one call.
+
+Set `assetsToPark` to zero to skip parking and pass an empty `collateralSupplies` array to skip collateral supply. Pass a non-zero `newRoot` to authorize the Setter ratifier, activate the root, and publish `payload`. Passing `bytes32(0)` skips those steps and ignores `payload`. Cancellation-only calls skip both funding steps and pass `bytes32(0)` as `newRoot`.
 
 Reposting deactivates selected Setter roots, permanently cancels selected Ecrecover roots, and cancels selected groups before activating the new Setter root and publishing its payload. Setter root deactivation is reversible, whereas Ecrecover root and group cancellation are not. Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
 
