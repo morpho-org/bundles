@@ -17,6 +17,18 @@ Users should expect tokens left to the bundles as lost.
 - `midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget` — supply collateral, then sell a target loan-asset amount across offers.
 - `midnightBundlesV1RepayAndWithdrawCollateral` — repay debt and withdraw collateral.
 
+### [MidnightBundlesV2](src/midnight/MidnightBundlesV2.sol)
+- `midnightBundlesV2LendLimitWithBlueBuyCallback` — park loan assets on Blue through a Midnight `BlueBuyCallback`, then repost maker offers.
+- `midnightBundlesV2BorrowLimit` — supply collateral on Midnight, then repost maker offers.
+- `midnightBundlesV2Repost` — repost maker offers without moving assets.
+- `midnightBundlesV2Cancel` — deactivate Setter roots and permanently cancel Ecrecover roots and groups without making new offers.
+
+Reposting deactivates selected Setter roots, permanently cancels selected Ecrecover roots, and cancels selected groups before activating the new Setter root and publishing its payload. Setter root deactivation is reversible, whereas Ecrecover root and group cancellation are not. Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
+
+New roots made through `MidnightBundlesV2` are expected to use its `SETTER_RATIFIER`; Ecrecover support is limited to cancelling old roots. Offer roots may contain multi-market offers. Roots and publication payloads are constructed offchain and are not checked against each other, against `SETTER_RATIFIER`, or against markets passed to the bundle.
+
+The maker must authorize `MidnightBundlesV2` on Midnight and approve it to pull any supplied loan or collateral assets. The bundle does not support token permits.
+
 ### [BlueBundlesV1](src/blue/BlueBundlesV1.sol)
 - `blueBundlesV1SupplyCollateralAndBorrow` — supply collateral and borrow.
 - `blueBundlesV1RepayAndWithdrawCollateral` — repay debt (optionally by shares) and withdraw collateral.
