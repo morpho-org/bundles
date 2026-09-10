@@ -151,8 +151,8 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
 
-        (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
-        uint256 withdrawUnits = min(targetUnits, takerCredit, IMidnight(MIDNIGHT).withdrawable(id));
+        (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
+        uint256 withdrawUnits = min(targetUnits, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
         IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, taker, address(this));
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;
@@ -308,8 +308,8 @@ contract MidnightBundlesV1 is IMidnightBundlesV1 {
         uint256 referralFeeAssets = targetSellerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
         uint256 targetFilledSellerAssets = targetSellerAssets + referralFeeAssets;
 
-        (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
-        uint256 withdrawUnits = min(targetFilledSellerAssets, takerCredit, IMidnight(MIDNIGHT).withdrawable(id));
+        (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
+        uint256 withdrawUnits = min(targetFilledSellerAssets, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
         IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, taker, address(this));
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;

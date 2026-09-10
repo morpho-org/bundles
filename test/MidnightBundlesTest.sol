@@ -1579,6 +1579,152 @@ contract MidnightBundlesTest is Test {
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
     }
 
+    function testSellUnitsTargetWithWithdrawAfterFeeAccrual() public {
+        uint256 units = 100e18;
+        address receiver = makeAddr("receiver");
+        midnight.setMarketContinuousFee(id, MAX_CONTINUOUS_FEE);
+
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+
+        // Borrower sells units so the lender holds credit, then repays so that the units are withdrawable.
+        offers[0].maxUnits = units.toUint128();
+        offers[0].continuousFeeCap = MAX_CONTINUOUS_FEE;
+        OfferFill[] memory sellOfferFills = new OfferFill[](1);
+        sellOfferFills[0] = OfferFill({offer: offers[0], units: units, ratifierData: hex""});
+        collateralize(market, borrower, units);
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
+            market,
+            units,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            sellOfferFills,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+        deal(address(loanToken), borrower, 2 * units);
+        vm.prank(borrower);
+        midnight.repay(market, units, borrower, address(0), "");
+
+        // Half of the continuous fee accrues: the stored credit is above the actual credit.
+        vm.warp(vm.getBlockTimestamp() + 50);
+        uint256 storedCredit = midnight.credit(id, lender);
+        (uint128 actualCredit,,) = midnight.updatePositionView(market, id, lender);
+        assertGt(storedCredit, actualCredit, "no fee accrued");
+
+        // Buy offer from the borrower for the lender to sell the units not covered by the withdraw.
+        Offer memory buyOffer = offers[0];
+        buyOffer.maker = borrower;
+        buyOffer.maxUnits = type(uint128).max;
+        buyOffer.group = bytes32(uint256(2));
+        OfferFill[] memory offerFills = new OfferFill[](1);
+        offerFills[0] = OfferFill({offer: buyOffer, units: storedCredit - actualCredit, ratifierData: hex""});
+        collateralize(market, lender, storedCredit - actualCredit);
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
+            market,
+            storedCredit,
+            0,
+            lender,
+            false,
+            receiver,
+            new CollateralSupply[](0),
+            offerFills,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+
+        uint256 price = TickLib.tickToPrice(MAX_TICK);
+        assertEq(midnight.credit(id, lender), 0, "lender credit");
+        assertEq(midnight.debt(id, lender), storedCredit - actualCredit, "lender debt");
+        assertEq(
+            loanToken.balanceOf(receiver),
+            actualCredit + (storedCredit - actualCredit).mulDivDown(price, WAD),
+            "receiver assets"
+        );
+    }
+
+    function testSellSellerAssetsTargetWithWithdrawAfterFeeAccrual() public {
+        uint256 units = 100e18;
+        address receiver = makeAddr("receiver");
+        midnight.setMarketContinuousFee(id, MAX_CONTINUOUS_FEE);
+
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+
+        // Borrower sells units so the lender holds credit, then repays so that the units are withdrawable.
+        offers[0].maxUnits = units.toUint128();
+        offers[0].continuousFeeCap = MAX_CONTINUOUS_FEE;
+        OfferFill[] memory sellOfferFills = new OfferFill[](1);
+        sellOfferFills[0] = OfferFill({offer: offers[0], units: units, ratifierData: hex""});
+        collateralize(market, borrower, units);
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget(
+            market,
+            units,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            sellOfferFills,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+        deal(address(loanToken), borrower, 2 * units);
+        vm.prank(borrower);
+        midnight.repay(market, units, borrower, address(0), "");
+
+        // Half of the continuous fee accrues: the stored credit is above the actual credit.
+        vm.warp(vm.getBlockTimestamp() + 50);
+        uint256 storedCredit = midnight.credit(id, lender);
+        (uint128 actualCredit,,) = midnight.updatePositionView(market, id, lender);
+        assertGt(storedCredit, actualCredit, "no fee accrued");
+
+        // Buy offer from the borrower for the lender to sell the assets not covered by the withdraw.
+        Offer memory buyOffer = offers[0];
+        buyOffer.maker = borrower;
+        buyOffer.maxUnits = type(uint128).max;
+        buyOffer.group = bytes32(uint256(2));
+        OfferFill[] memory offerFills = new OfferFill[](1);
+        offerFills[0] = OfferFill({offer: buyOffer, units: type(uint256).max, ratifierData: hex""});
+        collateralize(market, lender, units);
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget(
+            market,
+            storedCredit,
+            type(uint256).max,
+            lender,
+            false,
+            receiver,
+            new CollateralSupply[](0),
+            offerFills,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+
+        uint256 price = TickLib.tickToPrice(MAX_TICK);
+        assertEq(midnight.credit(id, lender), 0, "lender credit");
+        assertEq(midnight.debt(id, lender), (storedCredit - actualCredit).mulDivUp(WAD, price), "lender debt");
+        assertEq(loanToken.balanceOf(receiver), storedCredit, "receiver assets");
+    }
+
     function testPctExceeded() public {
         OfferFill[] memory offerFills = new OfferFill[](1);
         offerFills[0] = OfferFill({offer: offers[0], units: 1, ratifierData: hex""});
@@ -2377,8 +2523,8 @@ contract ContinuousFeeChangingMidnightFake {
         return 0;
     }
 
-    function credit(bytes32, address) external pure returns (uint128) {
-        return 0;
+    function updatePositionView(Market memory, bytes32, address) external pure returns (uint128, uint128, uint128) {
+        return (0, 0, 0);
     }
 
     function withdrawable(bytes32) external pure returns (uint128) {
