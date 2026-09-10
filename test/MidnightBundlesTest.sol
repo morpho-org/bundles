@@ -703,7 +703,7 @@ contract MidnightBundlesTest is Test {
                 maxBuyerAssets,
                 borrower,
                 true,
-                true,
+                false,
                 _noPermit(),
                 buyOfferFills,
                 new CollateralWithdrawal[](0),
