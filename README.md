@@ -12,8 +12,8 @@ Users should expect tokens left to the bundles as lost.
 
 ### [MidnightBundlesV1](src/midnight/MidnightBundlesV1.sol)
 
-- `midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral` — buy a target number of units across offers and, if `repayEnabled`, repay debt, then withdraw collateral.
-- `midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral` — buy a target loan-asset amount across offers and, if `repayEnabled`, repay debt, then withdraw collateral.
+- `midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral` — buy a target number of units across offers and, repay debt if `repayEnabled` and target is not reached, then withdraw collateral.
+- `midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral` — buy a target loan-asset amount across offers and, repay debt if `repayEnabled` and target is not reached, then withdraw collateral.
 - `midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget` — supply collateral, then withdraw credit and sell a target number of units across offers.
 - `midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget` — supply collateral, then withdraw credit and sell a target loan-asset amount across offers.
 

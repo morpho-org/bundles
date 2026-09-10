@@ -29,7 +29,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
-/// @dev For buy/sell functions, the current market continuous fee must be at most maxContinuousFee. Pass type(uint256).max to disable.
+/// @dev For buy/sell functions, the current market continuous fee must be at most maxContinuousFee when taking offers. Pass type(uint256).max to disable.
 contract MidnightBundlesV1 is IMidnightBundlesV1 {
     using UtilsLib for uint256;
 
