@@ -57,7 +57,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev This bundle does not check that:
     /// - Offers in newRoot or payload match the intended use case (lend limit or borrow limit) and the supplied funding or collateral inputs.
     /// - newRoot corresponds to the offers described by payload. The payload posted to LOG is not validated against any on-chain state or bundle inputs.
-    /// @dev Cancel prior offers before reposting to avoid leaving both old and new offers takeable. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers.
+    /// @dev Cancel prior offers before reposting to avoid leaving both old and new offers takeable. Use fresh group id for the new offers.
     function midnightBundlesV2Make(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
@@ -65,7 +65,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
         bytes32 newRoot,
-        bytes32[] memory groupsToCancel,
+        bytes32 groupToCancel,
         bytes memory payload,
         uint256 deadline
     ) external {
@@ -90,9 +90,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             }
         }
 
-        for (uint256 i; i < groupsToCancel.length; i++) {
-            IMidnight(MIDNIGHT).setConsumed(groupsToCancel[i], type(uint128).max, msg.sender);
-        }
+        IMidnight(MIDNIGHT).setConsumed(groupToCancel, type(uint128).max, msg.sender);
 
         if (newRoot != bytes32(0)) {
             IMidnight(MIDNIGHT).setIsAuthorized(SETTER_RATIFIER, true, msg.sender);

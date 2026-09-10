@@ -33,7 +33,7 @@ interface IMidnightBundlesV2 {
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
         bytes32 newRoot,
-        bytes32[] memory groupsToCancel,
+        bytes32 groupToCancel,
         bytes memory payload,
         uint256 deadline
     ) external;
