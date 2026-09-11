@@ -24,16 +24,14 @@ interface IMidnightBundlesV2 {
     function SETTER_RATIFIER() external view returns (address);
 
     /// FUNCTIONS ///
-    function midnightBundlesV2Cancel(bytes32[] memory groupsToCancel) external;
-
-    function midnightBundlesV2Make(
+    function midnightBundlesV2CancelAndMake(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
         bytes32 callbackSalt,
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
         bytes32 newRoot,
-        bytes32 groupToCancel,
+        bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
     ) external;

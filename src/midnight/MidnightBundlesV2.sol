@@ -49,6 +49,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback.
     /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
     /// @dev Optionally supplies collateral to msg.sender on Midnight.
+    /// @dev Cancels each group in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
     /// @dev If newRoot is non-zero, authorizes SETTER_RATIFIER, activates newRoot, and publishes payload. Otherwise payload is ignored and SETTER_RATIFIER authorization is unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero; market is unused when all collateral supplies are zero.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
@@ -57,15 +58,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev This bundle does not check that:
     /// - Offers in newRoot or payload match the intended use case (lend limit or borrow limit) and the supplied funding or collateral inputs.
     /// - newRoot corresponds to the offers described by payload. The payload posted to LOG is not validated against any on-chain state or bundle inputs.
-    /// @dev Cancel prior offers before reposting to avoid leaving both old and new offers takeable. Use fresh group id for the new offers.
-    function midnightBundlesV2Make(
+    /// @dev Cancel prior offers before reposting to avoid leaving both old and new offers takeable. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers.
+    function midnightBundlesV2CancelAndMake(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
         bytes32 callbackSalt,
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
         bytes32 newRoot,
-        bytes32 groupToCancel,
+        bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
     ) external {
@@ -90,7 +91,9 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             }
         }
 
-        IMidnight(MIDNIGHT).setConsumed(groupToCancel, type(uint128).max, msg.sender);
+        for (uint256 i; i < groupsToCancel.length; i++) {
+            IMidnight(MIDNIGHT).setConsumed(groupsToCancel[i], type(uint128).max, msg.sender);
+        }
 
         if (newRoot != bytes32(0)) {
             IMidnight(MIDNIGHT).setIsAuthorized(SETTER_RATIFIER, true, msg.sender);
@@ -102,13 +105,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                     revert(add(returndata, 0x20), mload(returndata))
                 }
             }
-        }
-    }
-
-    /// @dev Cancels each group for msg.sender by setting its consumed assets to type(uint128).max on Midnight.
-    function midnightBundlesV2Cancel(bytes32[] memory groupsToCancel) external {
-        for (uint256 i; i < groupsToCancel.length; i++) {
-            IMidnight(MIDNIGHT).setConsumed(groupsToCancel[i], type(uint128).max, msg.sender);
         }
     }
 }
