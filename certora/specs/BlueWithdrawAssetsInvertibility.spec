@@ -43,7 +43,11 @@ function summaryMulDivDown(uint256 a, uint256 b, uint256 d) returns uint256 {
     return assert_uint256(a * b / d);
 }
 
-function referralFeeInversionHolds(uint256 receivedAssets, uint256 referralFeePct, uint256 targetAssets) returns bool {
+function referralFeeInversionHolds(uint256 assets, uint256 penaltyAssets, uint256 referralFeePct, uint256 targetAssets) returns bool {
+    if (assets < penaltyAssets) {
+        return false;
+    }
+    uint256 receivedAssets = assert_uint256(assets - penaltyAssets);
     return receivedAssets - summaryMulDivDown(receivedAssets, referralFeePct, WAD()) == targetAssets;
 }
 
@@ -85,13 +89,15 @@ function sumPenaltyAssets(BlueBundlesV1.PublicAllocations[] reallocations) retur
     }
 }
 
-// Check that the NatSpec formula yields the target assets after deducting the referral fee.
-rule referralFeeInversion(uint256 targetAssets, uint256 referralFeePct) {
+// Construct the full borrow/withdraw input, including penalties, and check that it yields the target net assets.
+rule referralFeeInversion(uint256 targetAssets, uint256 referralFeePct, uint256 penaltyAssets) {
     require referralFeePct < WAD(), "valid fee";
 
     uint256 receivedAssets = summaryMulDivDown(targetAssets, WAD(), assert_uint256(WAD() - referralFeePct));
+    require penaltyAssets + receivedAssets <= max_uint256, "valid uint256 input";
+    uint256 borrowAssets = assert_uint256(penaltyAssets + receivedAssets);
 
-    assert referralFeeInversionHolds(receivedAssets, referralFeePct, targetAssets);
+    assert referralFeeInversionHolds(borrowAssets, penaltyAssets, referralFeePct, targetAssets);
 }
 
 // Check that withdrawing transfers the target amount.
@@ -103,10 +109,8 @@ rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams mar
     require reallocations.length > 1 => reallocations[1].vault != e.msg.sender, "bundler caller is not the allocation vault";
 
     uint256 penaltyAssets = sumPenaltyAssets(reallocations);
-    uint256 receivedAssets;
-    require referralFeeInversionHolds(receivedAssets, referralFeePct, targetAssets), "see referralFeeInversion";
-    require penaltyAssets + receivedAssets <= max_uint256, "valid uint256 input";
-    uint256 withdrawAssets = assert_uint256(penaltyAssets + receivedAssets);
+    uint256 withdrawAssets;
+    require referralFeeInversionHolds(withdrawAssets, penaltyAssets, referralFeePct, targetAssets), "see referralFeeInversion";
     mathint receivedBefore = transferredFromBundler[marketParams.loanToken][e.msg.sender];
 
     blueBundlesV1Withdraw(e, marketParams, withdrawAssets, 0, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
@@ -123,10 +127,8 @@ rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1
     require reallocations.length > 1 => reallocations[1].vault != e.msg.sender, "bundler caller is not the allocation vault";
 
     uint256 penaltyAssets = sumPenaltyAssets(reallocations);
-    uint256 receivedAssets;
-    require referralFeeInversionHolds(receivedAssets, referralFeePct, targetAssets), "see referralFeeInversion";
-    require penaltyAssets + receivedAssets <= max_uint256, "valid uint256 input";
-    uint256 borrowAssets = assert_uint256(penaltyAssets + receivedAssets);
+    uint256 borrowAssets;
+    require referralFeeInversionHolds(borrowAssets, penaltyAssets, referralFeePct, targetAssets), "see referralFeeInversion";
     mathint receivedBefore = transferredFromBundler[marketParams.loanToken][e.msg.sender];
 
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, borrowAssets, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
