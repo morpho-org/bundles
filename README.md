@@ -18,14 +18,13 @@ Users should expect tokens left to the bundles as lost.
 - `midnightBundlesV1RepayAndWithdrawCollateral` — repay debt and withdraw collateral.
 
 ### [MidnightBundlesV2](src/midnight/MidnightBundlesV2.sol)
-- `midnightBundlesV2LendLimitWithBlueBuyCallback` — park loan assets on Blue through a Midnight `BlueBuyCallback`, then repost maker offers.
-- `midnightBundlesV2BorrowLimit` — supply collateral on Midnight, then repost maker offers.
-- `midnightBundlesV2Repost` — repost maker offers without moving assets.
-- `midnightBundlesV2Cancel` — deactivate Setter roots and permanently cancel Ecrecover roots and groups without making new offers.
+- `midnightBundlesV2CancelAndMake` — optionally park loan assets on Blue through a Midnight `BlueBuyCallback`, supply collateral on Midnight, cancel a group, and publish new maker offers in one call.
 
-Reposting deactivates selected Setter roots, permanently cancels selected Ecrecover roots, and cancels selected groups before activating the new Setter root and publishing its payload. Setter root deactivation is reversible, whereas Ecrecover root and group cancellation are not. Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
+Pass an empty `groupsToCancel` array to skip cancellation. Set `assetsToPark` to zero to skip parking and pass an empty `collateralSupplies` array to skip collateral supply. Pass a non-zero `newRoot` to authorize the Setter ratifier, activate the root, and publish `payload`. Passing `bytes32(0)` skips those steps and ignores `payload`. Cancellation-only calls skip both funding steps and pass `bytes32(0)` as `newRoot`.
 
-New roots made through `MidnightBundlesV2` are expected to use its `SETTER_RATIFIER`; Ecrecover support is limited to cancelling old roots. Offer roots may contain multi-market offers. Roots and publication payloads are constructed offchain and are not checked against each other, against `SETTER_RATIFIER`, or against markets passed to the bundle.
+Reposting cancels selected groups before activating the new Setter root and publishing its payload. Group cancellation applies to offers using any ratifier and is permanent; existing roots remain unchanged. Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
+
+New roots made through `MidnightBundlesV2` are expected to use its `SETTER_RATIFIER`. Offer roots may contain multi-market offers. Roots and publication payloads are constructed offchain and are not checked against each other, against `SETTER_RATIFIER`, or against markets passed to the bundle.
 
 The maker must authorize `MidnightBundlesV2` on Midnight and approve it to pull any supplied loan or collateral assets. The bundle does not support token permits.
 
