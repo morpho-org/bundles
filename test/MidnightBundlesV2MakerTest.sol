@@ -23,7 +23,7 @@ import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
 import {IMidnightBundlesV2, CollateralSupply} from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
 
-contract MidnightBundlesV2Test is Test {
+contract MidnightBundlesV2MakerTest is Test {
     using MorphoBalancesLib for IMorpho;
 
     uint256 internal constant LLTV = 0.8e18;

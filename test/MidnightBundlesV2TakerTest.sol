@@ -19,9 +19,6 @@ import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
-import {SetterRatifier} from "../lib/midnight/src/ratifiers/SetterRatifier.sol";
-import {BlueBuyCallbackFactory} from "../lib/midnight/src/periphery/blue-buy-callback/BlueBuyCallbackFactory.sol";
-import {Log} from "../lib/midnight/src/periphery/log/Log.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
 import {
     IMidnightBundlesV2,
@@ -87,11 +84,10 @@ contract MidnightBundlesV2TakerTest is Test {
         collateralToken2.approve(address(midnight), type(uint256).max);
 
         address blue = makeAddr("blue");
-        BlueBuyCallbackFactory blueBuyCallbackFactory = new BlueBuyCallbackFactory(address(midnight), blue);
-        Log offerLog = new Log();
-        SetterRatifier setterRatifier = new SetterRatifier(address(midnight));
+        BlueBuyCallbackFactoryStub blueBuyCallbackFactory = new BlueBuyCallbackFactoryStub(address(midnight), blue);
+        SetterRatifierStub setterRatifier = new SetterRatifierStub(address(midnight));
         midnightBundles = new MidnightBundlesV2(
-            address(midnight), blue, address(blueBuyCallbackFactory), address(offerLog), address(setterRatifier)
+            address(midnight), blue, address(blueBuyCallbackFactory), makeAddr("log"), address(setterRatifier)
         );
         assertEq(midnightBundles.MIDNIGHT(), address(midnight));
 
@@ -256,11 +252,10 @@ contract MidnightBundlesV2TakerTest is Test {
         uint256 targetUnits = firstUnits + secondUnits;
         ContinuousFeeChangingMidnightFake fakeMidnight = new ContinuousFeeChangingMidnightFake();
         address fakeBlue = makeAddr("fakeBlue");
-        BlueBuyCallbackFactory fakeFactory = new BlueBuyCallbackFactory(address(fakeMidnight), fakeBlue);
-        Log fakeLog = new Log();
-        SetterRatifier fakeSetterRatifier = new SetterRatifier(address(fakeMidnight));
+        BlueBuyCallbackFactoryStub fakeFactory = new BlueBuyCallbackFactoryStub(address(fakeMidnight), fakeBlue);
+        SetterRatifierStub fakeSetterRatifier = new SetterRatifierStub(address(fakeMidnight));
         MidnightBundlesV2 fakeBundles = new MidnightBundlesV2(
-            address(fakeMidnight), fakeBlue, address(fakeFactory), address(fakeLog), address(fakeSetterRatifier)
+            address(fakeMidnight), fakeBlue, address(fakeFactory), makeAddr("fakeLog"), address(fakeSetterRatifier)
         );
 
         Market memory fakeMarket;
@@ -2555,5 +2550,25 @@ contract ContinuousFeeChangingMidnightFake {
         takeCalls++;
         if (takeCalls == 1) continuousFeeValue = MAX_CONTINUOUS_FEE;
         return (0, 0);
+    }
+}
+
+/// @dev Only satisfies MidnightBundlesV2's constructor check; the taker functions never call the ratifier.
+contract SetterRatifierStub {
+    address public immutable MIDNIGHT;
+
+    constructor(address _midnight) {
+        MIDNIGHT = _midnight;
+    }
+}
+
+/// @dev Only satisfies MidnightBundlesV2's constructor check; the taker functions never call the factory.
+contract BlueBuyCallbackFactoryStub {
+    address public immutable MIDNIGHT;
+    address public immutable BLUE;
+
+    constructor(address _midnight, address _blue) {
+        MIDNIGHT = _midnight;
+        BLUE = _blue;
     }
 }

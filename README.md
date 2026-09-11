@@ -13,17 +13,25 @@ Users should expect tokens left to the bundles as lost.
 ### [MidnightBundlesV2](src/midnight/MidnightBundlesV2.sol)
 
 Maker-side:
+
 - `midnightBundlesV2CancelAndMake` — optionally park loan assets on Blue through a Midnight `BlueBuyCallback`, supply collateral on Midnight, cancel a group, and publish new maker offers in one call.
 
-Pass an empty `groupsToCancel` array to skip cancellation. Set `assetsToPark` to zero to skip parking and pass an empty `collateralSupplies` array to skip collateral supply. Pass a non-zero `newRoot` to authorize the Setter ratifier, activate the root, and publish `payload`. Passing `bytes32(0)` skips those steps and ignores `payload`. Cancellation-only calls skip both funding steps and pass `bytes32(0)` as `newRoot`.
+Pass an empty `groupsToCancel` array to skip cancellation. Set `assetsToPark` to zero to skip parking and pass an empty `collateralSupplies` array to skip collateral supply.
+Pass a non-zero `newRoot` to authorize the Setter ratifier, activate the root, and publish `payload`. Passing `bytes32(0)` skips those steps and ignores `payload`.
+Cancellation-only calls skip both funding steps and pass `bytes32(0)` as `newRoot`.
 
-Reposting cancels selected groups before activating the new Setter root and publishing its payload. Group cancellation applies to offers using any ratifier and is permanent; existing roots remain unchanged. Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
+Reposting cancels selected groups before activating the new Setter root and publishing its payload.
+Group cancellation applies to offers using any ratifier and is permanent; existing roots remain unchanged.
+Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
 
-New roots made through `midnightBundlesV2CancelAndMake` are expected to use its `SETTER_RATIFIER`. Offer roots may contain multi-market offers. Roots and publication payloads are constructed offchain and are not checked against each other, against `SETTER_RATIFIER`, or against markets passed to the bundle.
+New roots made through `midnightBundlesV2CancelAndMake` are expected to use its `SETTER_RATIFIER`.
+Offer roots may contain multi-market offers.
+Roots and publication payloads are constructed offchain and are not checked against each other, against `SETTER_RATIFIER`, or against markets passed to the bundle.
 
-The maker must authorize `MidnightBundlesV2` on Midnight and approve it to pull any supplied loan or collateral assets. `midnightBundlesV2CancelAndMake` does not support token permits.
+The maker must authorize `MidnightBundlesV2` on Midnight and approve it to pull any supplied loan or collateral assets.
 
 Taker-side:
+
 - `midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral` — buy a target number of units across offers and, repay debt if `repayEnabled` and target is not reached, then withdraw collateral.
 - `midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral` — buy a target loan-asset amount across offers and, repay debt if `repayEnabled` and target is not reached, then withdraw collateral.
 - `midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget` — supply collateral, then sell a target number of units, filling it first by withdrawing credit and then across offers.
@@ -32,7 +40,7 @@ Taker-side:
 Repaying and withdrawing collateral (only) is done through the buy functions with `repayEnabled`, a nonzero target and an empty `offerFills` array.
 Withdrawing credit (only) can be done through the sell functions with a nonzero target and an empty `offerFills` array.
 
-The taker (or msg.sender if authorized by the taker) must be authorized by the taker on Midnight for these functions, and the bundle must have an allowance to pull the tokens it needs from msg.sender. Unlike the maker function, `loanTokenPermit` and the taker sell functions' `collateralSupplies` support token permits.
+The taker (or msg.sender if authorized by the taker) must be authorized by the taker on Midnight for these functions, and the bundle must have an allowance to pull the tokens it needs from msg.sender.
 
 ### [BlueBundlesV1](src/blue/BlueBundlesV1.sol)
 
