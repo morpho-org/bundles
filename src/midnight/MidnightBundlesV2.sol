@@ -57,7 +57,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         SETTER_RATIFIER = _setterRatifier;
     }
 
-    /// EXTERNAL ///
+    /// MAKE-SIDE EXTERNAL FUNCTIONS ///
 
     /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback.
     /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
@@ -122,15 +122,17 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         }
     }
 
-    /// @dev For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer") units.
-    /// @dev Only touched offers are checked to point to the given market.
-    /// @dev The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
-    /// @dev This bundler and the msg.sender (if different from the taker/onBehalf) should be authorized by taker/onBehalf on Midnight for the buy/sell functions below.
-    /// @dev msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
-    /// @dev The bundler contract must have an allowance to pull enough tokens from msg.sender for the buy/sell functions below.
-    /// @dev Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing to buy, decreasing to sell).
-    /// @dev offerFills[i].units should prevent taking more than what is takeable w.r.t. the callback / the balances / the health.
-    /// @dev For the buy/sell functions below, the current market continuous fee must be at most maxContinuousFee when taking offers. Pass type(uint256).max to disable.
+    /// TAKE-SIDE EXTERNAL FUNCTIONS ///
+
+    // For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer") units.
+    // Only touched offers are checked to point to the given market.
+    // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
+    // This bundler and the msg.sender (if different from the taker/onBehalf) should be authorized by taker/onBehalf on Midnight for the buy/sell functions below.
+    // msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
+    // The bundler contract must have an allowance to pull enough tokens from msg.sender for the buy/sell functions below.
+    // Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing to buy, decreasing to sell).
+    // offerFills[i].units should prevent taking more than what is takeable w.r.t. the callback / the balances / the health.
+    // For the buy/sell functions below, the current market continuous fee must be at most maxContinuousFee when taking offers. Pass type(uint256).max to disable.
 
     /// @dev This function pulls maxBuyerAssets from the msg.sender and transfers back the remaining tokens at the end.
     /// @dev The msg.sender will pay at most maxBuyerAssets.
@@ -438,7 +440,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         SafeTransferLib.safeTransfer(loanToken, receiver, targetSellerAssets);
     }
 
-    /// INTERNAL ///
+    /// INTERNAL FUNCTIONS ///
 
     /// @dev Returns min(x, y, z).
     function min(uint256 x, uint256 y, uint256 z) internal pure returns (uint256) {
