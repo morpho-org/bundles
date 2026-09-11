@@ -28,8 +28,6 @@ import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/Utils
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev When using a Vault V2 with this contract, the receiveAssetsGate must allow this contract to receive the withdrawn assets. The gate can query the bundle's initiator through to the exposed transient variable.
-/// @dev No-ops are not systematically prevented.
-/// @dev Zero checks are not systematically performed.
 contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
     using MathLib for uint256;
     using MarketParamsLib for MarketParams;
