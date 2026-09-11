@@ -15,6 +15,7 @@ import {BlueBuyCallback} from "../lib/midnight/src/periphery/blue-buy-callback/B
 import {BlueBuyCallbackFactory} from "../lib/midnight/src/periphery/blue-buy-callback/BlueBuyCallbackFactory.sol";
 import {IBlueBuyCallback} from "../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallback.sol";
 import {Log} from "../lib/midnight/src/periphery/log/Log.sol";
+import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
 import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {IMorpho, MarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -932,6 +933,88 @@ contract MidnightBundlesV2MakerTest is Test {
             deadline
         );
     }
+
+    // Native wrapping.
+
+    function testMakeParksNativeAsWrapped() public {
+        WETHMock weth = new WETHMock();
+        MarketParams memory wethBlueMarket = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(blueOracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethBlueMarket);
+
+        Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
+        bytes32 root = HashLib.hashOffer(offer);
+
+        deal(lender, PARKED_ASSETS);
+
+        // The parked assets are wrapped from msg.value instead of being pulled.
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
+            wethBlueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            root,
+            new bytes32[](0),
+            abi.encode(offer),
+            block.timestamp
+        );
+
+        assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
+        assertTrue(setterRatifier.isRootRatified(lender, root), "root ratification");
+        assertEq(lender.balance, 0, "lender native residual");
+        assertEq(address(midnightBundles).balance, 0, "bundler native residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+    }
+
+    function testMakeSuppliesNativeCollateral() public {
+        WETHMock weth = new WETHMock();
+
+        CollateralParams[] memory collateralParams = new CollateralParams[](1);
+        collateralParams[0] = CollateralParams({
+            token: address(weth), lltv: LLTV, liquidationCursor: 0.25e18, oracle: address(midnightOracle)
+        });
+        Market memory wethCollateralMarket = Market({
+            chainId: block.chainid,
+            midnight: address(midnight),
+            loanToken: address(loanToken),
+            collateralParams: collateralParams,
+            maturity: block.timestamp + 100 days,
+            rcfThreshold: 0,
+            enterGate: address(0),
+            liquidatorGate: address(0)
+        });
+        bytes32 wethCollateralId = midnight.touchMarket(wethCollateralMarket);
+
+        CollateralSupply[] memory supplies = new CollateralSupply[](1);
+        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
+
+        deal(lender, PARKED_ASSETS);
+
+        // With assetsToPark zero, msg.value funds the single collateral supply instead.
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
+            blueMarket,
+            0,
+            CALLBACK_SALT,
+            wethCollateralMarket,
+            supplies,
+            bytes32(0),
+            new bytes32[](0),
+            "",
+            block.timestamp
+        );
+
+        assertEq(midnight.collateral(wethCollateralId, lender, 0), PARKED_ASSETS, "collateral supplied");
+        assertEq(lender.balance, 0, "lender native residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+    }
 }
 
 contract RevertingLog {
@@ -939,5 +1022,19 @@ contract RevertingLog {
 
     fallback() external {
         revert Reverted();
+    }
+}
+
+/// @dev Minimal wrapped-native token: deposit() mints 1:1 for the native tokens sent.
+contract WETHMock is ERC20 {
+    constructor() ERC20("Wrapped Ether", "WETH") {}
+
+    function deposit() external payable {
+        balanceOf[msg.sender] += msg.value;
+    }
+
+    function withdraw(uint256 amount) external {
+        balanceOf[msg.sender] -= amount;
+        payable(msg.sender).transfer(amount);
     }
 }
