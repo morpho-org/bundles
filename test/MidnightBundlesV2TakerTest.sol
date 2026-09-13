@@ -87,7 +87,12 @@ contract MidnightBundlesV2TakerTest is Test {
         BlueBuyCallbackFactoryStub blueBuyCallbackFactory = new BlueBuyCallbackFactoryStub(address(midnight), blue);
         SetterRatifierStub setterRatifier = new SetterRatifierStub(address(midnight));
         midnightBundles = new MidnightBundlesV2(
-            address(midnight), blue, address(blueBuyCallbackFactory), makeAddr("log"), address(setterRatifier)
+            address(midnight),
+            blue,
+            address(blueBuyCallbackFactory),
+            makeAddr("log"),
+            address(setterRatifier),
+            address(new SetterRatifierStub(address(midnight)))
         );
         assertEq(midnightBundles.MIDNIGHT(), address(midnight));
 
@@ -255,7 +260,12 @@ contract MidnightBundlesV2TakerTest is Test {
         BlueBuyCallbackFactoryStub fakeFactory = new BlueBuyCallbackFactoryStub(address(fakeMidnight), fakeBlue);
         SetterRatifierStub fakeSetterRatifier = new SetterRatifierStub(address(fakeMidnight));
         MidnightBundlesV2 fakeBundles = new MidnightBundlesV2(
-            address(fakeMidnight), fakeBlue, address(fakeFactory), makeAddr("fakeLog"), address(fakeSetterRatifier)
+            address(fakeMidnight),
+            fakeBlue,
+            address(fakeFactory),
+            makeAddr("fakeLog"),
+            address(fakeSetterRatifier),
+            address(new SetterRatifierStub(address(fakeMidnight)))
         );
 
         Market memory fakeMarket;

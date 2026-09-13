@@ -43,6 +43,7 @@ interface IMidnightBundlesV2 {
     error Unauthorized();
     error UnitsTooHigh();
     error UnitsTooLow();
+    error UnsupportedRatifier();
 
     /// STORAGE GETTERS ///
     function MIDNIGHT() external view returns (address);
@@ -50,6 +51,7 @@ interface IMidnightBundlesV2 {
     function BLUE_BUY_CALLBACK_FACTORY() external view returns (address);
     function LOG() external view returns (address);
     function SETTER_RATIFIER() external view returns (address);
+    function SETTER_RATE_RATIFIER() external view returns (address);
 
     /// FUNCTIONS ///
     function midnightBundlesV2CancelAndMake(
@@ -58,6 +60,7 @@ interface IMidnightBundlesV2 {
         bytes32 callbackSalt,
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
+        address ratifier,
         bytes32 newRoot,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
