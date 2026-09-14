@@ -5,9 +5,11 @@ pragma solidity >=0.8.0;
 import {Offer, Market} from "../../../lib/midnight/src/interfaces/IMidnight.sol";
 import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 
+/// @dev wrapNative funds the supply by wrapping msg.value into the collateral token instead of pulling it.
 struct CollateralSupply {
     uint256 collateralIndex;
     uint256 assets;
+    bool wrapNative;
 }
 
 struct CollateralWithdrawal {
@@ -36,6 +38,7 @@ interface IMidnightBundlesV2 {
     error SellerAssetsTooLow();
     error Unauthorized();
     error UnitsTooHigh();
+    error UnusedNative();
     error UnitsTooLow();
 
     /// STORAGE GETTERS ///
@@ -49,6 +52,7 @@ interface IMidnightBundlesV2 {
     function midnightBundlesV2CancelAndMake(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
+        bool wrapAssetsToPark,
         bytes32 callbackSalt,
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
@@ -62,6 +66,7 @@ interface IMidnightBundlesV2 {
         Market memory market,
         uint256 targetUnits,
         uint256 maxBuyerAssets,
+        bool wrapBuyerAssets,
         address taker,
         bool reduceOnly,
         bool repayEnabled,
@@ -93,6 +98,7 @@ interface IMidnightBundlesV2 {
         Market memory market,
         uint256 targetBuyerAssets,
         uint256 minUnits,
+        bool wrapBuyerAssets,
         address taker,
         bool reduceOnly,
         bool repayEnabled,

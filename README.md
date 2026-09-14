@@ -42,6 +42,14 @@ Withdrawing credit (only) can be done through the sell functions with a nonzero 
 
 The taker (or msg.sender if authorized by the taker) must be authorized by the taker on Midnight for these functions, and the bundle must have an allowance to pull the tokens it needs from msg.sender.
 
+None of the Midnight entrypoints support token permits: msg.sender must approve `MidnightBundlesV2` beforehand.
+All of them are `payable` instead: each transfer is flagged, or not, as the one funded by wrapping msg.value rather than by pulling the token, and a flagged transfer's amount must equal msg.value.
+The flag is `wrapAssetsToPark` for the assets parked on Blue, `CollateralSupply.wrapNative` for a collateral supply, and `wrapBuyerAssets` for a buy; the token being wrapped into must be the wrapped-native token.
+Flagging the transfer rather than comparing its token to a wrapped-native address makes the wrapping transfer explicit, lets it be any one of them and not just the first, and leaves the bundle without any chain-specific address.
+Since msg.value funds a single wrap, exactly one transfer per call may be flagged.
+Each entrypoint compares its native balance before and after its transfers and reverts unless msg.value was consumed exactly once, so native tokens sent to a call that flags no transfer are refused rather than stranded.
+`midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral` unwraps the unfilled remainder back to native when `wrapBuyerAssets`, which requires msg.sender to be able to receive native tokens.
+
 ### [BlueBundlesV1](src/blue/BlueBundlesV1.sol)
 
 - `blueBundlesV1SupplyCollateralAndBorrow` — supply collateral and borrow.

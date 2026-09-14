@@ -42,6 +42,7 @@ contract MidnightBundlesV2MakerTest is Test {
     ERC20Permit internal loanToken;
     ERC20Permit internal collateralToken;
     Oracle internal midnightOracle;
+    WETHMock internal weth;
     OracleMock internal blueOracle;
 
     Market internal midnightMarket;
@@ -63,6 +64,7 @@ contract MidnightBundlesV2MakerTest is Test {
         ecrecoverRatifier = new EcrecoverRatifier(address(midnight));
         blueBuyCallbackFactory = new BlueBuyCallbackFactory(address(midnight), address(morpho));
         offerLog = new Log();
+        weth = new WETHMock();
         midnightBundles = new MidnightBundlesV2(
             address(midnight),
             address(morpho),
@@ -225,6 +227,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             assetsToPark,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -261,9 +264,9 @@ contract MidnightBundlesV2MakerTest is Test {
         groupsToCancel[1] = keccak256("second group");
         groupsToCancel[2] = bytes32(0);
         CollateralSupply[] memory supplies = new CollateralSupply[](2);
-        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
+        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS, wrapNative: false});
         // Zero supplies must be skipped even if their collateral index is invalid.
-        supplies[1] = CollateralSupply({collateralIndex: type(uint256).max, assets: 0});
+        supplies[1] = CollateralSupply({collateralIndex: type(uint256).max, assets: 0, wrapNative: false});
         deal(address(collateralToken), lender, PARKED_ASSETS);
 
         vm.startPrank(lender);
@@ -274,6 +277,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             PARKED_ASSETS,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             supplies,
@@ -315,6 +319,7 @@ contract MidnightBundlesV2MakerTest is Test {
         cancellingBundles.midnightBundlesV2CancelAndMake(
             unusedBlueMarket,
             0,
+            false,
             bytes32(0),
             unusedMarket,
             noCollateralSupplies(),
@@ -336,6 +341,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -385,6 +391,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             PARKED_ASSETS,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -414,6 +421,7 @@ contract MidnightBundlesV2MakerTest is Test {
         revertingBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             PARKED_ASSETS,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -496,6 +504,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -529,6 +538,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -564,6 +574,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             PARKED_ASSETS,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -623,8 +634,10 @@ contract MidnightBundlesV2MakerTest is Test {
         vm.stopPrank();
 
         CollateralSupply[] memory collateralSupplies = new CollateralSupply[](2);
-        collateralSupplies[0] = CollateralSupply({collateralIndex: firstCollateralIndex, assets: firstAssets});
-        collateralSupplies[1] = CollateralSupply({collateralIndex: secondCollateralIndex, assets: secondAssets});
+        collateralSupplies[0] =
+            CollateralSupply({collateralIndex: firstCollateralIndex, assets: firstAssets, wrapNative: false});
+        collateralSupplies[1] =
+            CollateralSupply({collateralIndex: secondCollateralIndex, assets: secondAssets, wrapNative: false});
 
         Offer memory offer = makeBorrowOffer(market, keccak256("borrow group"), PARKED_ASSETS, MAX_TICK);
         bytes32 root = HashLib.hashOffer(offer);
@@ -634,7 +647,16 @@ contract MidnightBundlesV2MakerTest is Test {
         emit Log.Data(payload);
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2CancelAndMake(
-            blueMarket, 0, CALLBACK_SALT, market, collateralSupplies, root, new bytes32[](0), payload, block.timestamp
+            blueMarket,
+            0,
+            false,
+            CALLBACK_SALT,
+            market,
+            collateralSupplies,
+            root,
+            new bytes32[](0),
+            payload,
+            block.timestamp
         );
 
         assertEq(midnight.collateral(id, borrower, firstCollateralIndex), firstAssets, "first collateral");
@@ -664,6 +686,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -681,6 +704,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -718,6 +742,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -746,6 +771,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -765,6 +791,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -789,6 +816,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -825,6 +853,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -852,6 +881,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -868,6 +898,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -890,6 +921,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -924,6 +956,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             PARKED_ASSETS,
+            false,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -936,8 +969,63 @@ contract MidnightBundlesV2MakerTest is Test {
 
     // Native wrapping.
 
+    function testMakeRevertsWhenNativeIsNotConsumed() public {
+        deal(lender, 1 ether);
+
+        // No transfer is flagged to wrap, so the native tokens would otherwise be stranded in the bundle.
+        vm.prank(lender);
+        vm.expectRevert(IMidnightBundlesV2.UnusedNative.selector);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: 1 ether}(
+            blueMarket,
+            0,
+            false,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            bytes32(0),
+            new bytes32[](0),
+            "",
+            block.timestamp
+        );
+
+        assertEq(address(midnightBundles).balance, 0, "no native left in the bundle");
+        assertEq(lender.balance, 1 ether, "native returned to the lender");
+    }
+
+    function testMakeIgnoresNativeAlreadyHeldByTheBundle() public {
+        // A prior donation must not let a later call strand its own msg.value, nor block a legitimate one.
+        deal(address(midnightBundles), 5 ether);
+        deal(lender, PARKED_ASSETS);
+
+        MarketParams memory wethBlueMarket = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(blueOracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethBlueMarket);
+        Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
+            wethBlueMarket,
+            PARKED_ASSETS,
+            true,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            HashLib.hashOffer(offer),
+            new bytes32[](0),
+            abi.encode(offer),
+            block.timestamp
+        );
+
+        assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
+        assertEq(address(midnightBundles).balance, 5 ether, "donation untouched");
+    }
+
     function testMakeParksNativeAsWrapped() public {
-        WETHMock weth = new WETHMock();
         MarketParams memory wethBlueMarket = MarketParams({
             loanToken: address(weth),
             collateralToken: address(collateralToken),
@@ -957,6 +1045,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
             wethBlueMarket,
             PARKED_ASSETS,
+            true,
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
@@ -974,8 +1063,6 @@ contract MidnightBundlesV2MakerTest is Test {
     }
 
     function testMakeSuppliesNativeCollateral() public {
-        WETHMock weth = new WETHMock();
-
         CollateralParams[] memory collateralParams = new CollateralParams[](1);
         collateralParams[0] = CollateralParams({
             token: address(weth), lltv: LLTV, liquidationCursor: 0.25e18, oracle: address(midnightOracle)
@@ -993,7 +1080,7 @@ contract MidnightBundlesV2MakerTest is Test {
         bytes32 wethCollateralId = midnight.touchMarket(wethCollateralMarket);
 
         CollateralSupply[] memory supplies = new CollateralSupply[](1);
-        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
+        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS, wrapNative: true});
 
         deal(lender, PARKED_ASSETS);
 
@@ -1002,6 +1089,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
             blueMarket,
             0,
+            false,
             CALLBACK_SALT,
             wethCollateralMarket,
             supplies,
