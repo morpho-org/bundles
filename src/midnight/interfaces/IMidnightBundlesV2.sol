@@ -37,6 +37,7 @@ interface IMidnightBundlesV2 {
     error Unauthorized();
     error UnitsTooHigh();
     error UnitsTooLow();
+    error UnusedNative();
 
     /// STORAGE GETTERS ///
     function MIDNIGHT() external view returns (address);

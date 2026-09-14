@@ -1086,6 +1086,60 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
         assertEq(collateralToken.balanceOf(address(midnightBundles)), 0, "bundler collateral residual");
     }
+
+    function testMakeRevertsWhenNativeIsNotConsumed() public {
+        deal(lender, 1 ether);
+
+        // There is no first transfer to wrap into, so the native tokens would otherwise be stranded in the bundle.
+        vm.prank(lender);
+        vm.expectRevert(IMidnightBundlesV2.UnusedNative.selector);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: 1 ether}(
+            blueMarket,
+            0,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            bytes32(0),
+            new bytes32[](0),
+            "",
+            block.timestamp
+        );
+
+        assertEq(address(midnightBundles).balance, 0, "no native left in the bundle");
+        assertEq(lender.balance, 1 ether, "native returned to the lender");
+    }
+
+    function testMakeIgnoresNativeAlreadyHeldByTheBundle() public {
+        // A prior donation must not let a later call strand its own msg.value, nor block a legitimate one.
+        deal(address(midnightBundles), 5 ether);
+
+        WETHMock weth = new WETHMock();
+        MarketParams memory wethBlueMarket = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(blueOracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethBlueMarket);
+
+        deal(lender, PARKED_ASSETS);
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
+            wethBlueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            bytes32(0),
+            new bytes32[](0),
+            "",
+            block.timestamp
+        );
+
+        assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
+        assertEq(address(midnightBundles).balance, 5 ether, "donation untouched");
+    }
 }
 
 contract RevertingLog {

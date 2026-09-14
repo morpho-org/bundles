@@ -2823,6 +2823,31 @@ contract MidnightBundlesV2TakerTest is Test {
             block.timestamp
         );
     }
+
+    function testSellUnitsTargetRevertsWhenNativeIsNotConsumed() public {
+        deal(borrower, 1 ether);
+
+        // There is no collateral supply to wrap into, so the native tokens would otherwise be stranded in the bundle.
+        vm.prank(borrower);
+        vm.expectRevert(IMidnightBundlesV2.UnusedNative.selector);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget{value: 1 ether}(
+            market,
+            0,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            new OfferFill[](0),
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+
+        assertEq(address(midnightBundles).balance, 0, "no native left in the bundle");
+        assertEq(borrower.balance, 1 ether, "native returned to the borrower");
+    }
 }
 
 contract ContinuousFeeChangingMidnightFake {
