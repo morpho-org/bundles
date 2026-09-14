@@ -35,13 +35,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     address public immutable BLUE_BUY_CALLBACK_FACTORY;
     address public immutable LOG;
     address public immutable SETTER_RATIFIER;
+    address public immutable WNATIVE;
 
     constructor(
         address _midnight,
         address _blue,
         address _blueBuyCallbackFactory,
         address _log,
-        address _setterRatifier
+        address _setterRatifier,
+        address _wNative
     ) {
         require(
             IBlueBuyCallbackFactory(_blueBuyCallbackFactory).MIDNIGHT() == _midnight
@@ -55,6 +57,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         BLUE_BUY_CALLBACK_FACTORY = _blueBuyCallbackFactory;
         LOG = _log;
         SETTER_RATIFIER = _setterRatifier;
+        WNATIVE = _wNative;
     }
 
     /// @dev Receives the native tokens unwrapped from the wrapped-native token when reimbursing a native buy.
@@ -68,7 +71,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Cancels each group in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
     /// @dev If newRoot is non-zero, authorizes SETTER_RATIFIER, activates newRoot, and publishes payload. Otherwise payload is ignored and SETTER_RATIFIER authorization is unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero; market is unused when all collateral supplies are zero.
-    /// @dev When native tokens are sent, they are wrapped into the token being funded (which must be the wrapped-native token) instead of being pulled, and msg.value must equal that funding amount. Since msg.value funds a single wrap, exactly one of assetsToPark and the non-zero collateral supplies may be native.
+    /// @dev A funded token equal to WNATIVE is wrapped from msg.value instead of being pulled, whichever transfer it is, and its amount must equal msg.value. At most one of assetsToPark and the collateral supplies may be the wrapped-native token.
+    /// @dev Reverts if msg.value is not consumed, which is the case when neither blueMarket.loanToken nor a supplied collateral token is WNATIVE.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
     /// @dev The new root may contain offers for multiple markets.
     /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected against supply-share-price inflation attacks.
@@ -90,10 +94,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
 
+        uint256 nativeBefore = address(this).balance;
         if (assetsToPark > 0) {
             address blueBuyCallback =
                 IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).createBlueBuyCallback(msg.sender, callbackSalt);
-            TokenLib.transferFromOrWrapNative(blueMarket.loanToken, msg.sender, assetsToPark);
+            transferFromOrWrapNative(blueMarket.loanToken, msg.sender, assetsToPark);
             TokenLib.forceApproveMax(blueMarket.loanToken, BLUE);
             IMorpho(BLUE).supply(blueMarket, assetsToPark, 0, blueBuyCallback, "");
         }
@@ -102,12 +107,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             CollateralSupply memory collateralSupply = collateralSupplies[i];
             if (collateralSupply.assets > 0) {
                 address collateralToken = market.collateralParams[collateralSupply.collateralIndex].token;
-                TokenLib.transferFromOrWrapNative(collateralToken, msg.sender, collateralSupply.assets);
+                transferFromOrWrapNative(collateralToken, msg.sender, collateralSupply.assets);
                 TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
                 IMidnight(MIDNIGHT)
                     .supplyCollateral(market, collateralSupply.collateralIndex, collateralSupply.assets, msg.sender);
             }
         }
+        require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
         for (uint256 i; i < groupsToCancel.length; i++) {
             IMidnight(MIDNIGHT).setConsumed(groupsToCancel[i], type(uint128).max, msg.sender);
@@ -139,7 +145,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     // For the buy/sell functions below, the current market continuous fee must be at most maxContinuousFee when taking offers. Pass type(uint256).max to disable.
 
     /// @dev This function pulls maxBuyerAssets from the msg.sender and transfers back the remaining tokens at the end.
-    /// @dev When native tokens are sent, maxBuyerAssets must equal msg.value; the native tokens are wrapped into market.loanToken (which must be the wrapped-native token) instead of being pulled, and the remaining tokens are unwrapped back to native.
+    /// @dev When market.loanToken is WNATIVE, maxBuyerAssets is wrapped from msg.value instead of being pulled, so msg.value must equal maxBuyerAssets, and the remaining tokens are unwrapped back to native.
     /// @dev Reimbursing native tokens requires msg.sender to be able to receive native tokens, or else it will revert.
     /// @dev The msg.sender will pay at most maxBuyerAssets.
     /// @dev If repayEnabled and the taker has debt, the remaining amount not covered by the take loop is repaid.
@@ -167,7 +173,9 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
         address loanToken = market.loanToken;
-        TokenLib.transferFromOrWrapNative(loanToken, msg.sender, maxBuyerAssets);
+        uint256 nativeBefore = address(this).balance;
+        transferFromOrWrapNative(loanToken, msg.sender, maxBuyerAssets);
+        require(address(this).balance == nativeBefore - msg.value, UnusedNative());
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
         uint256 filledUnits;
@@ -217,7 +225,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
         uint256 remainder = maxBuyerAssets - filledBuyerAssets - referralFeeAssets;
         if (remainder > 0) {
-            if (msg.value > 0) {
+            if (loanToken == WNATIVE) {
                 IWNative(loanToken).withdraw(remainder);
                 (bool success,) = msg.sender.call{value: remainder}("");
                 require(success, NativeTransferFailed());
@@ -231,7 +239,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev If the taker has credit, as much credit as possible is withdrawn before the take loop.
     /// @dev Total loan assets received by the receiver is filledSellerAssets - filledSellerAssets * referralFeePct / WAD.
     /// @dev msg.sender will pay collateralSupplies[0].assets of the first token of collateralSupplies, etc.
-    /// @dev When native tokens are sent, they are wrapped into the supplied collateral token (which must be the wrapped-native token) instead of being pulled, and msg.value must equal that supply's assets. Since msg.value funds a single wrap, exactly one collateral supply may be native.
+    /// @dev A supplied collateral token equal to WNATIVE is wrapped from msg.value instead of being pulled, whichever supply it is, and its assets must equal msg.value. At most one supply may be the wrapped-native token.
+    /// @dev Reverts if msg.value is not consumed, which is the case when no supplied collateral token is WNATIVE.
     function midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
         Market memory market,
         uint256 targetUnits,
@@ -251,14 +260,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
-
+        uint256 nativeBefore = address(this).balance;
         for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            TokenLib.transferFromOrWrapNative(token, msg.sender, collateralSupplies[i].assets);
+            transferFromOrWrapNative(token, msg.sender, collateralSupplies[i].assets);
             TokenLib.forceApproveMax(token, MIDNIGHT);
             IMidnight(MIDNIGHT)
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
+        require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
         (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
         uint256 withdrawUnits = min(targetUnits, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
@@ -303,7 +313,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev The taker will gain at least minUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
-    /// @dev When native tokens are sent, targetBuyerAssets must equal msg.value; the native tokens are wrapped into market.loanToken (which must be the wrapped-native token) instead of being pulled.
+    /// @dev When market.loanToken is WNATIVE, targetBuyerAssets is wrapped from msg.value instead of being pulled, so msg.value must equal targetBuyerAssets.
     function midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
         Market memory market,
         uint256 targetBuyerAssets,
@@ -326,7 +336,9 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
         address loanToken = market.loanToken;
-        TokenLib.transferFromOrWrapNative(loanToken, msg.sender, targetBuyerAssets);
+        uint256 nativeBefore = address(this).balance;
+        transferFromOrWrapNative(loanToken, msg.sender, targetBuyerAssets);
+        require(address(this).balance == nativeBefore - msg.value, UnusedNative());
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
         uint256 referralFeeAssets = targetBuyerAssets.mulDivDown(referralFeePct, WAD);
@@ -386,7 +398,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev The taker will lose at most maxUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev msg.sender will pay collateralSupplies[0].assets of the first token of collateralSupplies, etc.
-    /// @dev When native tokens are sent, they are wrapped into the supplied collateral token (which must be the wrapped-native token) instead of being pulled, and msg.value must equal that supply's assets. Since msg.value funds a single wrap, exactly one collateral supply may be native.
+    /// @dev A supplied collateral token equal to WNATIVE is wrapped from msg.value instead of being pulled, whichever supply it is, and its assets must equal msg.value. At most one supply may be the wrapped-native token.
+    /// @dev Reverts if msg.value is not consumed, which is the case when no supplied collateral token is WNATIVE.
     function midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
         Market memory market,
         uint256 targetSellerAssets,
@@ -406,14 +419,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
-
+        uint256 nativeBefore = address(this).balance;
         for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            TokenLib.transferFromOrWrapNative(token, msg.sender, collateralSupplies[i].assets);
+            transferFromOrWrapNative(token, msg.sender, collateralSupplies[i].assets);
             TokenLib.forceApproveMax(token, MIDNIGHT);
             IMidnight(MIDNIGHT)
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
+        require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
         uint256 referralFeeAssets = targetSellerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
         uint256 targetFilledSellerAssets = targetSellerAssets + referralFeeAssets;
@@ -458,6 +472,19 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     }
 
     /// INTERNAL FUNCTIONS ///
+
+    /// @dev Transfers `amount` of `token` from `from` to this contract, or wraps msg.value when token is WNATIVE.
+    /// @dev Deciding on the token rather than on msg.value is what lets a transfer other than the first one be the wrapping one.
+    /// @dev Since msg.value funds a single wrap, at most one call per transaction may pass WNATIVE.
+    /// @dev Callers check that msg.value was consumed by comparing this contract's native balance before and after their transfers, so native tokens cannot be left in it.
+    function transferFromOrWrapNative(address token, address from, uint256 amount) internal {
+        if (token == WNATIVE) {
+            require(amount == msg.value, InconsistentAmountAndNative());
+            IWNative(token).deposit{value: msg.value}();
+        } else {
+            SafeTransferLib.safeTransferFrom(token, from, address(this), amount);
+        }
+    }
 
     /// @dev Returns min(x, y, z).
     function min(uint256 x, uint256 y, uint256 z) internal pure returns (uint256) {

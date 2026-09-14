@@ -25,6 +25,7 @@ interface IMidnightBundlesV2 {
     /// ERRORS ///
     error ContinuousFeeAboveMax();
     error DeadlinePassed();
+    error InconsistentAmountAndNative();
     error InconsistentBlue();
     error InconsistentMarket();
     error InconsistentMidnight();
@@ -36,6 +37,7 @@ interface IMidnightBundlesV2 {
     error SellerAssetsTooLow();
     error Unauthorized();
     error UnitsTooHigh();
+    error UnusedNative();
     error UnitsTooLow();
 
     /// STORAGE GETTERS ///
@@ -44,6 +46,7 @@ interface IMidnightBundlesV2 {
     function BLUE_BUY_CALLBACK_FACTORY() external view returns (address);
     function LOG() external view returns (address);
     function SETTER_RATIFIER() external view returns (address);
+    function WNATIVE() external view returns (address);
 
     /// FUNCTIONS ///
     function midnightBundlesV2CancelAndMake(

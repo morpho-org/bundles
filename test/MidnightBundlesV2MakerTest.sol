@@ -21,6 +21,7 @@ import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {IMorpho, MarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
+import {TokenLib} from "../src/libraries/TokenLib.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
 import {IMidnightBundlesV2, CollateralSupply} from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
 
@@ -42,6 +43,7 @@ contract MidnightBundlesV2MakerTest is Test {
     ERC20Permit internal loanToken;
     ERC20Permit internal collateralToken;
     Oracle internal midnightOracle;
+    WETHMock internal weth;
     OracleMock internal blueOracle;
 
     Market internal midnightMarket;
@@ -63,12 +65,14 @@ contract MidnightBundlesV2MakerTest is Test {
         ecrecoverRatifier = new EcrecoverRatifier(address(midnight));
         blueBuyCallbackFactory = new BlueBuyCallbackFactory(address(midnight), address(morpho));
         offerLog = new Log();
+        weth = new WETHMock();
         midnightBundles = new MidnightBundlesV2(
             address(midnight),
             address(morpho),
             address(blueBuyCallbackFactory),
             address(offerLog),
-            address(setterRatifier)
+            address(setterRatifier),
+            address(weth)
         );
 
         assertEq(midnightBundles.MIDNIGHT(), address(midnight));
@@ -303,7 +307,8 @@ contract MidnightBundlesV2MakerTest is Test {
             address(morpho),
             address(blueBuyCallbackFactory),
             address(new RevertingLog()),
-            address(setterRatifier)
+            address(setterRatifier),
+            address(weth)
         );
         bytes32 root = bytes32(0);
         MarketParams memory unusedBlueMarket;
@@ -402,7 +407,8 @@ contract MidnightBundlesV2MakerTest is Test {
             address(morpho),
             address(blueBuyCallbackFactory),
             address(revertingLog),
-            address(setterRatifier)
+            address(setterRatifier),
+            address(weth)
         );
         Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
         bytes32 root = HashLib.hashOffer(offer);
@@ -437,7 +443,12 @@ contract MidnightBundlesV2MakerTest is Test {
 
         vm.expectRevert(IMidnightBundlesV2.InconsistentMidnight.selector);
         new MidnightBundlesV2(
-            address(midnight), address(morpho), address(inconsistentFactory), address(offerLog), address(setterRatifier)
+            address(midnight),
+            address(morpho),
+            address(inconsistentFactory),
+            address(offerLog),
+            address(setterRatifier),
+            address(weth)
         );
     }
 
@@ -447,7 +458,12 @@ contract MidnightBundlesV2MakerTest is Test {
 
         vm.expectRevert(IMidnightBundlesV2.InconsistentBlue.selector);
         new MidnightBundlesV2(
-            address(midnight), address(morpho), address(inconsistentFactory), address(offerLog), address(setterRatifier)
+            address(midnight),
+            address(morpho),
+            address(inconsistentFactory),
+            address(offerLog),
+            address(setterRatifier),
+            address(weth)
         );
     }
 
@@ -936,8 +952,61 @@ contract MidnightBundlesV2MakerTest is Test {
 
     // Native wrapping.
 
+    function testMakeRevertsWhenNativeIsNotConsumed() public {
+        deal(lender, 1 ether);
+
+        // No transfer is in WNATIVE, so the native tokens would otherwise be stranded in the bundle.
+        vm.prank(lender);
+        vm.expectRevert(IMidnightBundlesV2.UnusedNative.selector);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: 1 ether}(
+            blueMarket,
+            0,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            bytes32(0),
+            new bytes32[](0),
+            "",
+            block.timestamp
+        );
+
+        assertEq(address(midnightBundles).balance, 0, "no native left in the bundle");
+        assertEq(lender.balance, 1 ether, "native returned to the lender");
+    }
+
+    function testMakeIgnoresNativeAlreadyHeldByTheBundle() public {
+        // A prior donation must not let a later call strand its own msg.value, nor block a legitimate one.
+        deal(address(midnightBundles), 5 ether);
+        deal(lender, PARKED_ASSETS);
+
+        MarketParams memory wethBlueMarket = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(blueOracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethBlueMarket);
+        Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
+            wethBlueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            HashLib.hashOffer(offer),
+            new bytes32[](0),
+            abi.encode(offer),
+            block.timestamp
+        );
+
+        assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
+        assertEq(address(midnightBundles).balance, 5 ether, "donation untouched");
+    }
+
     function testMakeParksNativeAsWrapped() public {
-        WETHMock weth = new WETHMock();
         MarketParams memory wethBlueMarket = MarketParams({
             loanToken: address(weth),
             collateralToken: address(collateralToken),
@@ -974,8 +1043,6 @@ contract MidnightBundlesV2MakerTest is Test {
     }
 
     function testMakeSuppliesNativeCollateral() public {
-        WETHMock weth = new WETHMock();
-
         CollateralParams[] memory collateralParams = new CollateralParams[](1);
         collateralParams[0] = CollateralParams({
             token: address(weth), lltv: LLTV, liquidationCursor: 0.25e18, oracle: address(midnightOracle)

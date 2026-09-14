@@ -92,18 +92,6 @@ library TokenLib {
         }
     }
 
-    /// @dev Transfers `amount` of `token` from `from` to this contract.
-    /// @dev When native tokens are sent with the call, instead wraps msg.value into token.
-    /// @dev Since msg.value funds a single wrap, at most one call per transaction can take the native branch.
-    function transferFromOrWrapNative(address token, address from, uint256 amount) internal {
-        if (msg.value > 0) {
-            require(amount == msg.value, InconsistentAmountAndNative());
-            IWNative(token).deposit{value: msg.value}();
-        } else {
-            SafeTransferLib.safeTransferFrom(token, from, address(this), amount);
-        }
-    }
-
     /// @dev The parameters signed by the user should be the same as the inputs of this function.
     /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful when the tokens are already permitted.
     /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that case.
