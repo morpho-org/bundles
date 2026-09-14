@@ -53,9 +53,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Optionally supplies collateral to msg.sender on Midnight.
     /// @dev Checks and cancels groupsToCancel for msg.sender before moving assets. Pass an empty array to skip cancellation.
     /// @dev Group IDs in groupsToCancel must be unique; uniqueness is not checked.
-    /// @dev Each group's maxConsumed is the maximum acceptable Midnight consumption before cancellation, in the group's units or assets.
+    /// @dev Each group's maxConsumed is the maximum acceptable Midnight consumption before making, in the group's units or assets.
     /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
-    /// @dev If any group's consumption exceeds maxConsumed, the entire call reverts, including any earlier group cancellations.
+    /// @dev If any group's consumption exceeds maxConsumed and cancelWithoutReplacement is true, cancels all groups and skips funding, ratifier authorization, root activation, and publication.
+    /// @dev If any group's consumption exceeds maxConsumed and cancelWithoutReplacement is false, the entire call reverts, including any earlier group cancellations.
     /// @dev If newRoot is non-zero, ratifier may be any address implementing setIsRootRatified(address,bytes32,bool). Authorizes the selected ratifier, activates newRoot on it, and publishes payload.
     /// @dev If newRoot is zero, ratifier and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero; market is unused when all collateral supplies are zero.
@@ -76,19 +77,22 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         address ratifier,
         bytes32 newRoot,
         GroupCancellation[] memory groupsToCancel,
+        bool cancelWithoutReplacement,
         bytes memory payload,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
 
+        bool consumedAboveMax;
         for (uint256 i; i < groupsToCancel.length; i++) {
             GroupCancellation memory cancellation = groupsToCancel[i];
-            require(
-                IMidnight(MIDNIGHT).consumed(msg.sender, cancellation.group) <= cancellation.maxConsumed,
-                ConsumedAboveMax()
-            );
+            if (IMidnight(MIDNIGHT).consumed(msg.sender, cancellation.group) > cancellation.maxConsumed) {
+                require(cancelWithoutReplacement, ConsumedAboveMax());
+                consumedAboveMax = true;
+            }
             IMidnight(MIDNIGHT).setConsumed(cancellation.group, type(uint128).max, msg.sender);
         }
+        if (consumedAboveMax) return;
 
         if (assetsToPark > 0) {
             address blueBuyCallback =

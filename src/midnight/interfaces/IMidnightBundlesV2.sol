@@ -66,6 +66,7 @@ interface IMidnightBundlesV2 {
         address ratifier,
         bytes32 newRoot,
         GroupCancellation[] memory groupsToCancel,
+        bool cancelWithoutReplacement,
         bytes memory payload,
         uint256 deadline
     ) external;

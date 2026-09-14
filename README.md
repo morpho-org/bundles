@@ -19,7 +19,7 @@ Maker-side:
 Pass an empty `groupsToCancel` array to skip cancellation. Set `assetsToPark` to zero to skip parking and pass an empty `collateralSupplies` array to skip collateral supply.
 Group IDs in `groupsToCancel` must be unique; the bundle does not check for duplicates.
 Each `GroupCancellation` entry contains a `group` and its `maxConsumed`. Consumption is checked before each group is cancelled, and all cancellations precede funding; equality with `maxConsumed` is allowed. Set the limit to the group's observed consumption to reject additional consumption, or to `type(uint128).max` to disable the limit.
-If any group exceeds its limit, the entire cancel-and-make transaction reverts, including any earlier group cancellations. These checks do not undo earlier fills; a reverted cancellation leaves the remaining old offers active.
+If any group exceeds its limit, `cancelWithoutReplacement` selects the behavior: `true` cancels every group in `groupsToCancel` and skips parking assets, supplying collateral, authorizing the ratifier, activating the new root, and publishing the payload; `false` reverts the entire transaction, including any earlier group cancellations. If no limit is exceeded, making proceeds normally with either flag value, including when `groupsToCancel` is empty. These checks do not undo earlier fills; a reverted cancellation leaves the remaining old offers active.
 
 Pass any ratifier implementing `setIsRootRatified(address,bytes32,bool)` as `ratifier` and a non-zero `newRoot` to authorize the selected ratifier, activate the root on it, and publish `payload`.
 Passing `bytes32(0)` as `newRoot` skips those steps and ignores both `ratifier` and `payload`.
