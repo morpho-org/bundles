@@ -17,7 +17,7 @@ Maker-side:
 - `midnightBundlesV2CancelAndMake` — optionally park loan assets on Blue through a Midnight `BlueBuyCallback`, supply collateral on Midnight, cancel a group, and publish new maker offers in one call.
 
 Pass an empty `groupsToCancel` array to skip cancellation. Set `assetsToPark` to zero to skip parking and pass an empty `collateralSupplies` array to skip collateral supply.
-Pass `SETTER_RATIFIER` or `SETTER_RATE_RATIFIER` as `ratifier` and a non-zero `newRoot` to authorize the selected ratifier, activate the root on it, and publish `payload`.
+Pass any ratifier implementing `setIsRootRatified(address,bytes32,bool)` as `ratifier` and a non-zero `newRoot` to authorize the selected ratifier, activate the root on it, and publish `payload`.
 Passing `bytes32(0)` as `newRoot` skips those steps and ignores both `ratifier` and `payload`.
 Cancellation-only calls skip both funding steps and pass `bytes32(0)` as `newRoot`.
 
@@ -26,7 +26,7 @@ Group cancellation applies to offers using any ratifier and is permanent; existi
 Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
 
 New roots made through `midnightBundlesV2CancelAndMake` are expected to use the selected `ratifier`.
-Use fixed-tick offer hashes for `SETTER_RATIFIER` and rate-offer hashes for `SETTER_RATE_RATIFIER`; rate-offer payloads must include `startRate`, `expiryRate`, and `allowedTaker`.
+Use fixed-tick offer hashes for `SetterRatifier` and rate-offer hashes for `SetterRateRatifier`; rate-offer payloads must include `startRate`, `expiryRate`, and `allowedTaker`.
 Offer roots may contain multi-market offers.
 Roots and publication payloads are constructed offchain and are not checked against each other, against the selected ratifier, or against markets passed to the bundle.
 Switching ratifiers does not revoke existing ratifier authorizations or deactivate old roots; cancel the old offers' groups explicitly when replacing them.

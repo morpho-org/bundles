@@ -7,7 +7,6 @@ import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
 import {ISetterRatifier} from "../../lib/midnight/src/ratifiers/interfaces/ISetterRatifier.sol";
-import {ISetterRateRatifier} from "../../lib/midnight/src/ratifiers/interfaces/ISetterRateRatifier.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {IdLib} from "../../lib/midnight/src/libraries/IdLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
@@ -35,31 +34,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     address public immutable BLUE;
     address public immutable BLUE_BUY_CALLBACK_FACTORY;
     address public immutable LOG;
-    address public immutable SETTER_RATIFIER;
-    address public immutable SETTER_RATE_RATIFIER;
 
-    constructor(
-        address _midnight,
-        address _blue,
-        address _blueBuyCallbackFactory,
-        address _log,
-        address _setterRatifier,
-        address _setterRateRatifier
-    ) {
-        require(
-            IBlueBuyCallbackFactory(_blueBuyCallbackFactory).MIDNIGHT() == _midnight
-                && ISetterRatifier(_setterRatifier).MIDNIGHT() == _midnight
-                && ISetterRateRatifier(_setterRateRatifier).MIDNIGHT() == _midnight,
-            InconsistentMidnight()
-        );
+    constructor(address _midnight, address _blue, address _blueBuyCallbackFactory, address _log) {
+        require(IBlueBuyCallbackFactory(_blueBuyCallbackFactory).MIDNIGHT() == _midnight, InconsistentMidnight());
         require(IBlueBuyCallbackFactory(_blueBuyCallbackFactory).BLUE() == _blue, InconsistentBlue());
 
         MIDNIGHT = _midnight;
         BLUE = _blue;
         BLUE_BUY_CALLBACK_FACTORY = _blueBuyCallbackFactory;
         LOG = _log;
-        SETTER_RATIFIER = _setterRatifier;
-        SETTER_RATE_RATIFIER = _setterRateRatifier;
     }
 
     /// MAKE-SIDE EXTERNAL FUNCTIONS ///
@@ -68,7 +51,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
     /// @dev Optionally supplies collateral to msg.sender on Midnight.
     /// @dev Cancels each group in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
-    /// @dev If newRoot is non-zero, ratifier must be SETTER_RATIFIER or SETTER_RATE_RATIFIER. Authorizes the selected ratifier, activates newRoot on it, and publishes payload.
+    /// @dev If newRoot is non-zero, ratifier may be any address implementing setIsRootRatified(address,bytes32,bool). Authorizes the selected ratifier, activates newRoot on it, and publishes payload.
     /// @dev If newRoot is zero, ratifier and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero; market is unused when all collateral supplies are zero.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
@@ -117,7 +100,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         }
 
         if (newRoot != bytes32(0)) {
-            require(ratifier == SETTER_RATIFIER || ratifier == SETTER_RATE_RATIFIER, UnsupportedRatifier());
             IMidnight(MIDNIGHT).setIsAuthorized(ratifier, true, msg.sender);
             ISetterRatifier(ratifier).setIsRootRatified(msg.sender, newRoot, true);
 

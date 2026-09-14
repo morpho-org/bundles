@@ -69,20 +69,13 @@ contract MidnightBundlesV2MakerTest is Test {
         blueBuyCallbackFactory = new BlueBuyCallbackFactory(address(midnight), address(morpho));
         offerLog = new Log();
         midnightBundles = new MidnightBundlesV2(
-            address(midnight),
-            address(morpho),
-            address(blueBuyCallbackFactory),
-            address(offerLog),
-            address(setterRatifier),
-            address(setterRateRatifier)
+            address(midnight), address(morpho), address(blueBuyCallbackFactory), address(offerLog)
         );
 
         assertEq(midnightBundles.MIDNIGHT(), address(midnight));
         assertEq(midnightBundles.BLUE(), address(morpho));
         assertEq(midnightBundles.BLUE_BUY_CALLBACK_FACTORY(), address(blueBuyCallbackFactory));
         assertEq(midnightBundles.LOG(), address(offerLog));
-        assertEq(midnightBundles.SETTER_RATIFIER(), address(setterRatifier));
-        assertEq(midnightBundles.SETTER_RATE_RATIFIER(), address(setterRateRatifier));
 
         loanToken = new ERC20Permit("loan", "loan");
         collateralToken = new ERC20Permit("collateral", "collateral");
@@ -332,12 +325,7 @@ contract MidnightBundlesV2MakerTest is Test {
 
     function testCancelSkipsPublicationWithoutAuthorizingRatifiers(address ignoredRatifier) public {
         MidnightBundlesV2 cancellingBundles = new MidnightBundlesV2(
-            address(midnight),
-            address(morpho),
-            address(blueBuyCallbackFactory),
-            address(new RevertingLog()),
-            address(setterRatifier),
-            address(setterRateRatifier)
+            address(midnight), address(morpho), address(blueBuyCallbackFactory), address(new RevertingLog())
         );
         bytes32 root = bytes32(0);
         MarketParams memory unusedBlueMarket;
@@ -442,12 +430,7 @@ contract MidnightBundlesV2MakerTest is Test {
         address ratifier = useRateRatifier ? address(setterRateRatifier) : address(setterRatifier);
         RevertingLog revertingLog = new RevertingLog();
         MidnightBundlesV2 revertingBundles = new MidnightBundlesV2(
-            address(midnight),
-            address(morpho),
-            address(blueBuyCallbackFactory),
-            address(revertingLog),
-            address(setterRatifier),
-            address(setterRateRatifier)
+            address(midnight), address(morpho), address(blueBuyCallbackFactory), address(revertingLog)
         );
         Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
         offer.ratifier = ratifier;
@@ -485,14 +468,7 @@ contract MidnightBundlesV2MakerTest is Test {
             new BlueBuyCallbackFactory(makeAddr("otherMidnight"), address(morpho));
 
         vm.expectRevert(IMidnightBundlesV2.InconsistentMidnight.selector);
-        new MidnightBundlesV2(
-            address(midnight),
-            address(morpho),
-            address(inconsistentFactory),
-            address(offerLog),
-            address(setterRatifier),
-            address(setterRateRatifier)
-        );
+        new MidnightBundlesV2(address(midnight), address(morpho), address(inconsistentFactory), address(offerLog));
     }
 
     function testConstructorRevertsWhenFactoryBlueIsInconsistent() public {
@@ -500,40 +476,17 @@ contract MidnightBundlesV2MakerTest is Test {
             new BlueBuyCallbackFactory(address(midnight), makeAddr("otherBlue"));
 
         vm.expectRevert(IMidnightBundlesV2.InconsistentBlue.selector);
-        new MidnightBundlesV2(
-            address(midnight),
-            address(morpho),
-            address(inconsistentFactory),
-            address(offerLog),
-            address(setterRatifier),
-            address(setterRateRatifier)
-        );
+        new MidnightBundlesV2(address(midnight), address(morpho), address(inconsistentFactory), address(offerLog));
     }
 
-    function testConstructorRevertsWhenRatifierMidnightIsInconsistent(bool useRateRatifier) public {
-        address otherMidnight = makeAddr("otherMidnight");
-        address fixedRatifier = useRateRatifier ? address(setterRatifier) : address(new SetterRatifier(otherMidnight));
-        address rateRatifier =
-            useRateRatifier ? address(new SetterRateRatifier(otherMidnight)) : address(setterRateRatifier);
-
-        vm.expectRevert(IMidnightBundlesV2.InconsistentMidnight.selector);
-        new MidnightBundlesV2(
-            address(midnight),
-            address(morpho),
-            address(blueBuyCallbackFactory),
-            address(offerLog),
-            fixedRatifier,
-            rateRatifier
-        );
-    }
-
-    function testMakeRejectsUnsupportedRatifier(address ratifier) public {
-        vm.assume(ratifier != address(setterRatifier) && ratifier != address(setterRateRatifier));
-        bool authorizedBefore = midnight.isAuthorized(lender, ratifier);
+    function testMakeAcceptsArbitraryRatifier(bool useRateRatifier) public {
+        address ratifier = useRateRatifier
+            ? address(new SetterRateRatifier(address(midnight)))
+            : address(new SetterRatifier(address(midnight)));
         bytes32 group = keccak256("cancelled group");
+        bytes32 root = keccak256("new root");
 
         vm.prank(lender);
-        vm.expectRevert(IMidnightBundlesV2.UnsupportedRatifier.selector);
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             PARKED_ASSETS,
@@ -541,16 +494,16 @@ contract MidnightBundlesV2MakerTest is Test {
             midnightMarket,
             noCollateralSupplies(),
             ratifier,
-            keccak256("new root"),
+            root,
             oneGroup(group),
             "payload",
             block.timestamp
         );
 
-        assertEq(midnight.isAuthorized(lender, ratifier), authorizedBefore);
-        assertEq(midnight.consumed(lender, group), 0, "cancellation rolled back");
-        assertEq(callbackOf(lender).code.length, 0, "callback deployment rolled back");
-        assertEq(loanToken.balanceOf(lender), 2 * PARKED_ASSETS, "funding rolled back");
+        assertTrue(midnight.isAuthorized(lender, ratifier));
+        assertTrue(ISetterRatifier(ratifier).isRootRatified(lender, root));
+        assertEq(midnight.consumed(lender, group), type(uint128).max);
+        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS);
     }
 
     function testPartialFillsWithdrawFromBlue(bool useRateRatifier) public {

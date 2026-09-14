@@ -85,15 +85,8 @@ contract MidnightBundlesV2TakerTest is Test {
 
         address blue = makeAddr("blue");
         BlueBuyCallbackFactoryStub blueBuyCallbackFactory = new BlueBuyCallbackFactoryStub(address(midnight), blue);
-        SetterRatifierStub setterRatifier = new SetterRatifierStub(address(midnight));
-        midnightBundles = new MidnightBundlesV2(
-            address(midnight),
-            blue,
-            address(blueBuyCallbackFactory),
-            makeAddr("log"),
-            address(setterRatifier),
-            address(new SetterRatifierStub(address(midnight)))
-        );
+        midnightBundles =
+            new MidnightBundlesV2(address(midnight), blue, address(blueBuyCallbackFactory), makeAddr("log"));
         assertEq(midnightBundles.MIDNIGHT(), address(midnight));
 
         // Set settlement fees to max for all breakpoints.
@@ -258,15 +251,8 @@ contract MidnightBundlesV2TakerTest is Test {
         ContinuousFeeChangingMidnightFake fakeMidnight = new ContinuousFeeChangingMidnightFake();
         address fakeBlue = makeAddr("fakeBlue");
         BlueBuyCallbackFactoryStub fakeFactory = new BlueBuyCallbackFactoryStub(address(fakeMidnight), fakeBlue);
-        SetterRatifierStub fakeSetterRatifier = new SetterRatifierStub(address(fakeMidnight));
-        MidnightBundlesV2 fakeBundles = new MidnightBundlesV2(
-            address(fakeMidnight),
-            fakeBlue,
-            address(fakeFactory),
-            makeAddr("fakeLog"),
-            address(fakeSetterRatifier),
-            address(new SetterRatifierStub(address(fakeMidnight)))
-        );
+        MidnightBundlesV2 fakeBundles =
+            new MidnightBundlesV2(address(fakeMidnight), fakeBlue, address(fakeFactory), makeAddr("fakeLog"));
 
         Market memory fakeMarket;
         fakeMarket.chainId = block.chainid;
@@ -2560,15 +2546,6 @@ contract ContinuousFeeChangingMidnightFake {
         takeCalls++;
         if (takeCalls == 1) continuousFeeValue = MAX_CONTINUOUS_FEE;
         return (0, 0);
-    }
-}
-
-/// @dev Only satisfies MidnightBundlesV2's constructor check; the taker functions never call the ratifier.
-contract SetterRatifierStub {
-    address public immutable MIDNIGHT;
-
-    constructor(address _midnight) {
-        MIDNIGHT = _midnight;
     }
 }
 
