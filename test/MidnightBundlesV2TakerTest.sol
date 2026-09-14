@@ -2658,6 +2658,138 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
     }
 
+    /// @dev Market with two collaterals: the wrapped-native token and collateralToken1, sorted by address.
+    function wethAndTokenCollateralMarket(WETHMock weth)
+        internal
+        returns (Market memory wethCollateralMarket, uint256 wethIndex)
+    {
+        CollateralParams memory wethParams = CollateralParams({
+            token: address(weth), lltv: 0.77e18, liquidationCursor: 0.25e18, oracle: address(oracle1)
+        });
+        CollateralParams memory tokenParams = CollateralParams({
+            token: address(collateralToken1), lltv: 0.77e18, liquidationCursor: 0.25e18, oracle: address(oracle1)
+        });
+
+        CollateralParams[] memory collateralParams = new CollateralParams[](2);
+        wethIndex = address(weth) < address(collateralToken1) ? 0 : 1;
+        collateralParams[wethIndex] = wethParams;
+        collateralParams[1 - wethIndex] = tokenParams;
+
+        wethCollateralMarket.chainId = block.chainid;
+        wethCollateralMarket.midnight = address(midnight);
+        wethCollateralMarket.loanToken = address(loanToken);
+        wethCollateralMarket.maturity = vm.getBlockTimestamp() + 100;
+        wethCollateralMarket.collateralParams = collateralParams;
+
+        bytes32 wethCollateralId = midnight.touchMarket(wethCollateralMarket);
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(wethCollateralId, i, 0);
+        }
+    }
+
+    function buyOfferOn(Market memory _market, uint256 units) internal view returns (Offer memory offer) {
+        offer.buy = true;
+        offer.maker = lender;
+        offer.market = _market;
+        offer.ratifier = address(dummyRatifier);
+        offer.expiry = vm.getBlockTimestamp() + 200;
+        offer.tick = MAX_TICK;
+        offer.maxUnits = units.toUint128();
+    }
+
+    function testSellUnitsTargetWrapNativeFirstCollateralAndPullSecond() public {
+        uint256 units = 100e18;
+        WETHMock weth = new WETHMock();
+        (Market memory wethCollateralMarket, uint256 wethIndex) = wethAndTokenCollateralMarket(weth);
+        bytes32 wethCollateralId = IdLib.toId(wethCollateralMarket);
+
+        // Each collateral covers half of the debt.
+        uint256 collateralAssets = (units / 2 + 1).mulDivUp(WAD, 0.77e18).mulDivUp(ORACLE_PRICE_SCALE, oracle1.price());
+        // The native supply must come first; the second supply is pulled.
+        CollateralSupply[] memory supplies = new CollateralSupply[](2);
+        supplies[0] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
+        supplies[1] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+
+        OfferFill[] memory offerFills = new OfferFill[](1);
+        offerFills[0] = OfferFill({offer: buyOfferOn(wethCollateralMarket, units), units: units, ratifierData: hex""});
+
+        deal(borrower, collateralAssets);
+        deal(address(collateralToken1), borrower, collateralAssets);
+        vm.prank(borrower);
+        collateralToken1.approve(address(midnightBundles), collateralAssets);
+
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget{value: collateralAssets}(
+            wethCollateralMarket,
+            units,
+            0,
+            borrower,
+            false,
+            borrower,
+            supplies,
+            offerFills,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+
+        assertEq(midnight.collateral(wethCollateralId, borrower, wethIndex), collateralAssets, "wrapped collateral");
+        assertEq(midnight.collateral(wethCollateralId, borrower, 1 - wethIndex), collateralAssets, "pulled collateral");
+        assertEq(midnight.debt(wethCollateralId, borrower), units, "debt");
+        assertEq(borrower.balance, 0, "borrower native residual");
+        assertEq(collateralToken1.balanceOf(borrower), 0, "borrower token residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+        assertEq(collateralToken1.balanceOf(address(midnightBundles)), 0, "bundler token residual");
+    }
+
+    function testSellSellerAssetsTargetWrapNativeFirstCollateralAndPullSecond() public {
+        uint256 units = 100e18;
+        WETHMock weth = new WETHMock();
+        (Market memory wethCollateralMarket, uint256 wethIndex) = wethAndTokenCollateralMarket(weth);
+        bytes32 wethCollateralId = IdLib.toId(wethCollateralMarket);
+
+        // Each collateral covers half of the debt.
+        uint256 collateralAssets = (units / 2 + 1).mulDivUp(WAD, 0.77e18).mulDivUp(ORACLE_PRICE_SCALE, oracle1.price());
+        // The native supply must come first; the second supply is pulled.
+        CollateralSupply[] memory supplies = new CollateralSupply[](2);
+        supplies[0] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
+        supplies[1] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+
+        OfferFill[] memory offerFills = new OfferFill[](1);
+        offerFills[0] = OfferFill({offer: buyOfferOn(wethCollateralMarket, units), units: units, ratifierData: hex""});
+
+        deal(borrower, collateralAssets);
+        deal(address(collateralToken1), borrower, collateralAssets);
+        vm.prank(borrower);
+        collateralToken1.approve(address(midnightBundles), collateralAssets);
+
+        uint256 targetSellerAssets = units.mulDivDown(TickLib.tickToPrice(MAX_TICK), WAD);
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget{value: collateralAssets}(
+            wethCollateralMarket,
+            targetSellerAssets,
+            units,
+            borrower,
+            false,
+            borrower,
+            supplies,
+            offerFills,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+
+        assertEq(midnight.collateral(wethCollateralId, borrower, wethIndex), collateralAssets, "wrapped collateral");
+        assertEq(midnight.collateral(wethCollateralId, borrower, 1 - wethIndex), collateralAssets, "pulled collateral");
+        assertEq(loanToken.balanceOf(borrower), targetSellerAssets, "seller assets");
+        assertEq(borrower.balance, 0, "borrower native residual");
+        assertEq(collateralToken1.balanceOf(borrower), 0, "borrower token residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+        assertEq(collateralToken1.balanceOf(address(midnightBundles)), 0, "bundler token residual");
+    }
+
     function testBuyUnitsTargetNativeAmountMismatch() public {
         uint256 units = 100e18;
 

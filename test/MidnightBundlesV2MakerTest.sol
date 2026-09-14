@@ -1015,6 +1015,77 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(lender.balance, 0, "lender native residual");
         assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
     }
+
+    function testMakeParksNativeAndPullsCollateral() public {
+        WETHMock weth = new WETHMock();
+        MarketParams memory wethBlueMarket = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(blueOracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethBlueMarket);
+        bytes32 midnightId = midnight.touchMarket(midnightMarket);
+
+        CollateralSupply[] memory supplies = new CollateralSupply[](1);
+        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
+
+        deal(lender, PARKED_ASSETS);
+        deal(address(collateralToken), lender, PARKED_ASSETS);
+        vm.prank(lender);
+        collateralToken.approve(address(midnightBundles), PARKED_ASSETS);
+
+        // msg.value funds the parked assets; the collateral supply is pulled.
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
+            wethBlueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            midnightMarket,
+            supplies,
+            bytes32(0),
+            new bytes32[](0),
+            "",
+            block.timestamp
+        );
+
+        assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
+        assertEq(midnight.collateral(midnightId, lender, 0), PARKED_ASSETS, "collateral supplied");
+        assertEq(lender.balance, 0, "lender native residual");
+        assertEq(collateralToken.balanceOf(lender), 0, "lender collateral residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+        assertEq(collateralToken.balanceOf(address(midnightBundles)), 0, "bundler collateral residual");
+    }
+
+    function testMakeSuppliesNativeFirstCollateralAndPullsSecond() public {
+        WETHMock weth = new WETHMock();
+        (Market memory market, uint256 wethIndex, uint256 tokenIndex) =
+            makeMultiCollateralMarket(ERC20Permit(address(weth)), collateralToken);
+        bytes32 id = midnight.touchMarket(market);
+
+        // The native supply must come first; the second supply is pulled.
+        CollateralSupply[] memory supplies = new CollateralSupply[](2);
+        supplies[0] = CollateralSupply({collateralIndex: wethIndex, assets: PARKED_ASSETS});
+        supplies[1] = CollateralSupply({collateralIndex: tokenIndex, assets: 2 * PARKED_ASSETS});
+
+        deal(lender, PARKED_ASSETS);
+        deal(address(collateralToken), lender, 2 * PARKED_ASSETS);
+        vm.prank(lender);
+        collateralToken.approve(address(midnightBundles), 2 * PARKED_ASSETS);
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
+            blueMarket, 0, CALLBACK_SALT, market, supplies, bytes32(0), new bytes32[](0), "", block.timestamp
+        );
+
+        assertEq(midnight.collateral(id, lender, wethIndex), PARKED_ASSETS, "wrapped collateral");
+        assertEq(midnight.collateral(id, lender, tokenIndex), 2 * PARKED_ASSETS, "pulled collateral");
+        assertEq(lender.balance, 0, "lender native residual");
+        assertEq(collateralToken.balanceOf(lender), 0, "lender collateral residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+        assertEq(collateralToken.balanceOf(address(midnightBundles)), 0, "bundler collateral residual");
+    }
 }
 
 contract RevertingLog {
