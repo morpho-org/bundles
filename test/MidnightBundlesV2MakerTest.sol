@@ -22,7 +22,12 @@ import {IMorpho, MarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.s
 import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
-import {IMidnightBundlesV2, CollateralSupply} from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
+import {
+    IMidnightBundlesV2,
+    CollateralSupply,
+    NO_WRAP,
+    WRAP_LOAN_ASSETS
+} from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
 
 contract MidnightBundlesV2MakerTest is Test {
     using MorphoBalancesLib for IMorpho;
@@ -42,6 +47,7 @@ contract MidnightBundlesV2MakerTest is Test {
     ERC20Permit internal loanToken;
     ERC20Permit internal collateralToken;
     Oracle internal midnightOracle;
+    WETHMock internal weth;
     OracleMock internal blueOracle;
 
     Market internal midnightMarket;
@@ -63,6 +69,7 @@ contract MidnightBundlesV2MakerTest is Test {
         ecrecoverRatifier = new EcrecoverRatifier(address(midnight));
         blueBuyCallbackFactory = new BlueBuyCallbackFactory(address(midnight), address(morpho));
         offerLog = new Log();
+        weth = new WETHMock();
         midnightBundles = new MidnightBundlesV2(
             address(midnight),
             address(morpho),
@@ -228,6 +235,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -277,6 +285,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             supplies,
+            NO_WRAP,
             newRoot,
             groupsToCancel,
             "combined payload",
@@ -318,6 +327,7 @@ contract MidnightBundlesV2MakerTest is Test {
             bytes32(0),
             unusedMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             root,
             oneGroup(root),
             "ignored payload",
@@ -339,6 +349,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             bytes32(0),
             new bytes32[](0),
             "",
@@ -388,6 +399,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             root,
             new bytes32[](0),
             payload,
@@ -417,6 +429,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -499,6 +512,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             newRoot,
             oneGroup(group),
             abi.encode(newOffer),
@@ -532,6 +546,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             newRoot,
             oneGroup(group),
             abi.encode(newOffer),
@@ -567,6 +582,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -634,7 +650,16 @@ contract MidnightBundlesV2MakerTest is Test {
         emit Log.Data(payload);
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2CancelAndMake(
-            blueMarket, 0, CALLBACK_SALT, market, collateralSupplies, root, new bytes32[](0), payload, block.timestamp
+            blueMarket,
+            0,
+            CALLBACK_SALT,
+            market,
+            collateralSupplies,
+            NO_WRAP,
+            root,
+            new bytes32[](0),
+            payload,
+            block.timestamp
         );
 
         assertEq(midnight.collateral(id, borrower, firstCollateralIndex), firstAssets, "first collateral");
@@ -667,6 +692,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             oldRoot,
             new bytes32[](0),
             abi.encode(oldOffer),
@@ -684,6 +710,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             newRoot,
             new bytes32[](0),
             abi.encode(newOffer),
@@ -721,6 +748,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             root,
             new bytes32[](0),
             abi.encode(firstOffer, secondOffer),
@@ -749,6 +777,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             oldRoot,
             new bytes32[](0),
             abi.encode("old payload"),
@@ -768,6 +797,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             newRoot,
             oneGroup(cancelledGroup),
             payload,
@@ -792,6 +822,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -828,6 +859,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             newRoot,
             oneGroup(oldOffer.group),
             abi.encode(newOffer),
@@ -855,6 +887,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             setterRoot,
             new bytes32[](0),
             abi.encode("payload"),
@@ -871,6 +904,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             bytes32(0),
             oneGroup(group),
             "",
@@ -893,6 +927,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             bytes32(0),
             oneGroup(group),
             "",
@@ -927,6 +962,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            NO_WRAP,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -936,8 +972,63 @@ contract MidnightBundlesV2MakerTest is Test {
 
     // Native wrapping.
 
+    function testMakeRevertsWhenNativeIsNotConsumed() public {
+        deal(lender, 1 ether);
+
+        // NO_WRAP designates no transfer, so the native tokens would otherwise be stranded in the bundle.
+        vm.prank(lender);
+        vm.expectRevert(IMidnightBundlesV2.InconsistentAmountAndNative.selector);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: 1 ether}(
+            blueMarket,
+            0,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            NO_WRAP,
+            bytes32(0),
+            new bytes32[](0),
+            "",
+            block.timestamp
+        );
+
+        assertEq(address(midnightBundles).balance, 0, "no native left in the bundle");
+        assertEq(lender.balance, 1 ether, "native returned to the lender");
+    }
+
+    function testMakeIgnoresNativeAlreadyHeldByTheBundle() public {
+        // A prior donation must not let a later call strand its own msg.value, nor block a legitimate one.
+        deal(address(midnightBundles), 5 ether);
+        deal(lender, PARKED_ASSETS);
+
+        MarketParams memory wethBlueMarket = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(blueOracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethBlueMarket);
+        Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
+            wethBlueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            WRAP_LOAN_ASSETS,
+            HashLib.hashOffer(offer),
+            new bytes32[](0),
+            abi.encode(offer),
+            block.timestamp
+        );
+
+        assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
+        assertEq(address(midnightBundles).balance, 5 ether, "donation untouched");
+    }
+
     function testMakeParksNativeAsWrapped() public {
-        WETHMock weth = new WETHMock();
         MarketParams memory wethBlueMarket = MarketParams({
             loanToken: address(weth),
             collateralToken: address(collateralToken),
@@ -960,6 +1051,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            WRAP_LOAN_ASSETS,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -974,8 +1066,6 @@ contract MidnightBundlesV2MakerTest is Test {
     }
 
     function testMakeSuppliesNativeCollateral() public {
-        WETHMock weth = new WETHMock();
-
         CollateralParams[] memory collateralParams = new CollateralParams[](1);
         collateralParams[0] = CollateralParams({
             token: address(weth), lltv: LLTV, liquidationCursor: 0.25e18, oracle: address(midnightOracle)
@@ -997,7 +1087,7 @@ contract MidnightBundlesV2MakerTest is Test {
 
         deal(lender, PARKED_ASSETS);
 
-        // With assetsToPark zero, msg.value funds the single collateral supply instead.
+        // With assetsToPark zero, msg.value funds the collateral supply designated by its index instead.
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
             blueMarket,
@@ -1005,6 +1095,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             wethCollateralMarket,
             supplies,
+            0,
             bytes32(0),
             new bytes32[](0),
             "",

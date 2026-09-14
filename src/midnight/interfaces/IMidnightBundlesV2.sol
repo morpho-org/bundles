@@ -5,6 +5,13 @@ pragma solidity >=0.8.0;
 import {Offer, Market} from "../../../lib/midnight/src/interfaces/IMidnight.sol";
 import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 
+/// @dev Value of the nativeWrap parameters designating no transfer, so that nothing wraps msg.value, which must then be zero.
+uint256 constant NO_WRAP = type(uint256).max;
+
+/// @dev Value of the nativeWrap parameters designating the loan assets transfer: the assets parked on Blue in midnightBundlesV2CancelAndMake, the buyer assets in the buy functions.
+/// @dev Any other value designates the collateral supply at that index.
+uint256 constant WRAP_LOAN_ASSETS = type(uint256).max - 1;
+
 struct CollateralSupply {
     uint256 collateralIndex;
     uint256 assets;
@@ -25,6 +32,7 @@ interface IMidnightBundlesV2 {
     /// ERRORS ///
     error ContinuousFeeAboveMax();
     error DeadlinePassed();
+    error InconsistentAmountAndNative();
     error InconsistentBlue();
     error InconsistentMarket();
     error InconsistentMidnight();
@@ -52,6 +60,7 @@ interface IMidnightBundlesV2 {
         bytes32 callbackSalt,
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
+        uint256 nativeWrap,
         bytes32 newRoot,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
@@ -62,6 +71,7 @@ interface IMidnightBundlesV2 {
         Market memory market,
         uint256 targetUnits,
         uint256 maxBuyerAssets,
+        uint256 nativeWrap,
         address taker,
         bool reduceOnly,
         bool repayEnabled,
@@ -82,6 +92,7 @@ interface IMidnightBundlesV2 {
         bool reduceOnly,
         address receiver,
         CollateralSupply[] memory collateralSupplies,
+        uint256 nativeWrap,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -93,6 +104,7 @@ interface IMidnightBundlesV2 {
         Market memory market,
         uint256 targetBuyerAssets,
         uint256 minUnits,
+        uint256 nativeWrap,
         address taker,
         bool reduceOnly,
         bool repayEnabled,
@@ -113,6 +125,7 @@ interface IMidnightBundlesV2 {
         bool reduceOnly,
         address receiver,
         CollateralSupply[] memory collateralSupplies,
+        uint256 nativeWrap,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,

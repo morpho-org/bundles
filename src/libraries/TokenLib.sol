@@ -92,12 +92,10 @@ library TokenLib {
         }
     }
 
-    /// @dev Transfers `amount` of `token` from `from` to this contract.
-    /// @dev When native tokens are sent with the call, instead wraps msg.value into token.
-    /// @dev Since msg.value funds a single wrap, at most one call per transaction can take the native branch.
-    function transferFromOrWrapNative(address token, address from, uint256 amount) internal {
-        if (msg.value > 0) {
-            require(amount == msg.value, InconsistentAmountAndNative());
+    /// @dev Transfers `amount` of `token` from `from` to this bundler, or wraps msg.value into `token` when wrapNative.
+    /// @dev The caller designates the wrapping transfer, so it is responsible for `token` being the wrapped-native token, for `amount` being msg.value, and for passing wrapNative at most once per transaction.
+    function transferFromOrWrapNative(address token, address from, uint256 amount, bool wrapNative) internal {
+        if (wrapNative) {
             IWNative(token).deposit{value: msg.value}();
         } else {
             SafeTransferLib.safeTransferFrom(token, from, address(this), amount);
