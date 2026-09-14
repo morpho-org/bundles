@@ -106,6 +106,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             CollateralSupply memory collateralSupply = collateralSupplies[i];
             if (collateralSupply.assets > 0) {
                 address collateralToken = market.collateralParams[collateralSupply.collateralIndex].token;
+                // forge-lint: disable-next-item(msg-value-loop) only the first transfer wraps.
                 TokenLib.transferFromOrWrapNative(
                     collateralToken, msg.sender, collateralSupply.assets, msg.value > 0 && assetsToPark == 0 && i == 0
                 );
@@ -114,6 +115,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                     .supplyCollateral(market, collateralSupply.collateralIndex, collateralSupply.assets, msg.sender);
             }
         }
+        // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
         for (uint256 i; i < groupsToCancel.length; i++) {
@@ -260,11 +262,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 nativeBefore = address(this).balance;
         for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            // forge-lint: disable-next-item(msg-value-loop) only the first transfer wraps.
             TokenLib.transferFromOrWrapNative(token, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0);
             TokenLib.forceApproveMax(token, MIDNIGHT);
             IMidnight(MIDNIGHT)
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
+        // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
         (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, taker);
@@ -415,11 +419,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 nativeBefore = address(this).balance;
         for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            // forge-lint: disable-next-item(msg-value-loop) only the first transfer wraps.
             TokenLib.transferFromOrWrapNative(token, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0);
             TokenLib.forceApproveMax(token, MIDNIGHT);
             IMidnight(MIDNIGHT)
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
+        // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
         uint256 referralFeeAssets = targetSellerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);

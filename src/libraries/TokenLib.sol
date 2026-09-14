@@ -96,7 +96,9 @@ library TokenLib {
     /// @dev When wrapNative is true, instead wraps msg.value into token.
     function transferFromOrWrapNative(address token, address from, uint256 amount, bool wrapNative) internal {
         if (wrapNative) {
+            // forge-lint: disable-next-item(msg-value-loop) guarded by wrapNative, set for a single transfer.
             require(amount == msg.value, InconsistentAmountAndNative());
+            // forge-lint: disable-next-item(msg-value-loop) guarded by wrapNative, set for a single transfer.
             IWNative(token).deposit{value: msg.value}();
         } else {
             SafeTransferLib.safeTransferFrom(token, from, address(this), amount);
