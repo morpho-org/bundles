@@ -23,7 +23,11 @@ import {IMorpho, MarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.s
 import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
-import {IMidnightBundlesV2, CollateralSupply} from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
+import {
+    IMidnightBundlesV2,
+    GroupCancellation,
+    CollateralSupply
+} from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
 
 contract MidnightBundlesV2MakerTest is Test {
     using MorphoBalancesLib for IMorpho;
@@ -214,9 +218,13 @@ contract MidnightBundlesV2MakerTest is Test {
         });
     }
 
-    function oneGroup(bytes32 group) internal pure returns (bytes32[] memory groups) {
-        groups = new bytes32[](1);
-        groups[0] = group;
+    function oneGroup(bytes32 group) internal pure returns (GroupCancellation[] memory groups) {
+        return oneGroup(group, type(uint128).max);
+    }
+
+    function oneGroup(bytes32 group, uint128 maxConsumed) internal pure returns (GroupCancellation[] memory groups) {
+        groups = new GroupCancellation[](1);
+        groups[0] = GroupCancellation({group: group, maxConsumed: maxConsumed});
     }
 
     function makeLendLimit(Offer memory offer, uint256 assetsToPark) internal returns (bytes32 root) {
@@ -230,7 +238,7 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             offer.ratifier,
             root,
-            new bytes32[](0),
+            new GroupCancellation[](0),
             offerPayload(offer),
             block.timestamp
         );
@@ -278,10 +286,10 @@ contract MidnightBundlesV2MakerTest is Test {
         address otherRatifier = useRateRatifier ? address(setterRatifier) : address(setterRateRatifier);
         bytes32 oldRoot = keccak256("old root");
         bytes32 newRoot = keccak256("new root");
-        bytes32[] memory groupsToCancel = new bytes32[](3);
-        groupsToCancel[0] = oldRoot;
-        groupsToCancel[1] = keccak256("second group");
-        groupsToCancel[2] = bytes32(0);
+        GroupCancellation[] memory groupsToCancel = new GroupCancellation[](3);
+        groupsToCancel[0] = GroupCancellation({group: oldRoot, maxConsumed: 0});
+        groupsToCancel[1] = GroupCancellation({group: keccak256("second group"), maxConsumed: 0});
+        groupsToCancel[2] = GroupCancellation({group: bytes32(0), maxConsumed: 0});
         CollateralSupply[] memory supplies = new CollateralSupply[](2);
         supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
         // Zero supplies must be skipped even if their collateral index is invalid.
@@ -312,8 +320,8 @@ contract MidnightBundlesV2MakerTest is Test {
         assertTrue(ISetterRatifier(ratifier).isRootRatified(lender, oldRoot));
         assertFalse(ecrecoverRatifier.isRootCanceled(lender, oldRoot));
         for (uint256 i; i < groupsToCancel.length; i++) {
-            assertEq(midnight.consumed(lender, groupsToCancel[i]), type(uint128).max);
-            assertEq(midnight.consumed(borrower, groupsToCancel[i]), 0);
+            assertEq(midnight.consumed(lender, groupsToCancel[i].group), type(uint128).max);
+            assertEq(midnight.consumed(borrower, groupsToCancel[i].group), 0);
         }
         assertTrue(ISetterRatifier(ratifier).isRootRatified(lender, newRoot));
         assertTrue(midnight.isAuthorized(lender, ratifier));
@@ -321,6 +329,159 @@ contract MidnightBundlesV2MakerTest is Test {
         assertFalse(ISetterRatifier(otherRatifier).isRootRatified(lender, newRoot));
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0);
         assertEq(collateralToken.balanceOf(address(midnightBundles)), 0);
+    }
+
+    function testMakeWithinConsumptionLimits(uint128 consumed, uint128 maxConsumed) public {
+        if (maxConsumed < consumed) maxConsumed = consumed;
+        bytes32 group = keccak256("group");
+        bytes32 secondGroup = keccak256("second group");
+        bytes32 root = keccak256("new root");
+        vm.prank(lender);
+        midnight.setConsumed(group, consumed, lender);
+        vm.prank(lender);
+        midnight.setConsumed(secondGroup, consumed, lender);
+        vm.prank(borrower);
+        midnight.setConsumed(group, type(uint128).max, borrower);
+
+        GroupCancellation[] memory groups = new GroupCancellation[](2);
+        groups[0] = GroupCancellation({group: group, maxConsumed: maxConsumed});
+        groups[1] = GroupCancellation({group: secondGroup, maxConsumed: consumed});
+
+        vm.expectEmit(address(offerLog));
+        emit Log.Data("new payload");
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake(
+            blueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            address(setterRatifier),
+            root,
+            groups,
+            "new payload",
+            block.timestamp
+        );
+
+        assertEq(midnight.consumed(lender, group), type(uint128).max);
+        assertEq(midnight.consumed(lender, secondGroup), type(uint128).max);
+        assertTrue(midnight.isAuthorized(lender, address(setterRatifier)));
+        assertTrue(setterRatifier.isRootRatified(lender, root));
+        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS);
+    }
+
+    function testMakeRevertsWhenConsumptionExceedsLimit(uint128 maxConsumed, uint128 consumed) public {
+        if (maxConsumed == type(uint128).max) maxConsumed--;
+        if (consumed <= maxConsumed) consumed = maxConsumed + 1;
+        bytes32 exceededGroup = keccak256("exceeded group");
+        bytes32 root = keccak256("new root");
+        GroupCancellation[] memory groups = new GroupCancellation[](3);
+        groups[0] = GroupCancellation({group: keccak256("first group"), maxConsumed: 0});
+        groups[1] = GroupCancellation({group: exceededGroup, maxConsumed: maxConsumed});
+        groups[2] = GroupCancellation({group: keccak256("last group"), maxConsumed: 0});
+
+        CollateralSupply[] memory supplies = new CollateralSupply[](1);
+        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
+        deal(address(collateralToken), lender, PARKED_ASSETS);
+
+        vm.startPrank(lender);
+        midnight.setConsumed(exceededGroup, consumed, lender);
+        collateralToken.approve(address(midnightBundles), type(uint256).max);
+        vm.expectRevert(IMidnightBundlesV2.ConsumedAboveMax.selector);
+        midnightBundles.midnightBundlesV2CancelAndMake(
+            blueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            midnightMarket,
+            supplies,
+            address(setterRatifier),
+            root,
+            groups,
+            "payload",
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        for (uint256 i; i < groups.length; i++) {
+            uint128 expected = i == 1 ? consumed : 0;
+            assertEq(midnight.consumed(lender, groups[i].group), expected);
+            assertEq(midnight.consumed(borrower, groups[i].group), 0);
+        }
+        assertEq(callbackOf(lender).code.length, 0);
+        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), 0);
+        assertEq(midnight.collateral(IdLib.toId(midnightMarket), lender, 0), 0);
+        assertEq(loanToken.balanceOf(lender), 2 * PARKED_ASSETS);
+        assertEq(collateralToken.balanceOf(lender), PARKED_ASSETS);
+        assertFalse(midnight.isAuthorized(lender, address(setterRatifier)));
+        assertFalse(setterRatifier.isRootRatified(lender, root));
+    }
+
+    function testRepostRevertsAfterAdditionalFill(bool useRateRatifier) public {
+        Offer memory oldOffer = makeOffer(keccak256("old group"), PARKED_ASSETS, MAX_TICK / 2);
+        oldOffer.start = block.timestamp;
+        if (useRateRatifier) oldOffer.ratifier = address(setterRateRatifier);
+        bytes32 oldRoot = makeLendLimit(oldOffer, PARKED_ASSETS);
+        take(oldOffer, oldRoot, 100e18);
+
+        uint128 maxConsumed = midnight.consumed(lender, oldOffer.group);
+        Offer memory newOffer = makeOffer(keccak256("new group"), PARKED_ASSETS - maxConsumed, MAX_TICK / 2);
+        bytes32 newRoot = offerRoot(newOffer);
+
+        // Another take lands after the maker has sized the replacement and captured the limit.
+        take(oldOffer, oldRoot, 300e18);
+        uint128 consumed = midnight.consumed(lender, oldOffer.group);
+        assertGt(consumed, maxConsumed);
+        uint256 supplyBefore = morpho.expectedSupplyAssets(blueMarket, callbackOf(lender));
+        uint256 borrowerBalanceBefore = loanToken.balanceOf(borrower);
+        bool authorizedBefore = midnight.isAuthorized(lender, newOffer.ratifier);
+
+        vm.expectRevert(IMidnightBundlesV2.ConsumedAboveMax.selector);
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake(
+            blueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            newOffer.ratifier,
+            newRoot,
+            oneGroup(oldOffer.group, maxConsumed),
+            offerPayload(newOffer),
+            block.timestamp
+        );
+
+        assertEq(midnight.consumed(lender, oldOffer.group), consumed);
+        assertTrue(ISetterRatifier(oldOffer.ratifier).isRootRatified(lender, oldRoot));
+        assertFalse(setterRatifier.isRootRatified(lender, newRoot));
+        assertEq(midnight.isAuthorized(lender, newOffer.ratifier), authorizedBefore);
+        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), supplyBefore);
+        assertEq(loanToken.balanceOf(lender), PARKED_ASSETS);
+        assertEq(loanToken.balanceOf(borrower), borrowerBalanceBefore);
+
+        // The failed cancellation leaves the old offer takeable.
+        take(oldOffer, oldRoot, 1e18);
+    }
+
+    function testCancelRequiresAuthorization() public {
+        bytes32 group = keccak256("group");
+        vm.startPrank(lender);
+        midnight.setConsumed(group, 1, lender);
+        midnight.setIsAuthorized(address(midnightBundles), false, lender);
+        vm.expectRevert(IMidnight.Unauthorized.selector);
+        midnightBundles.midnightBundlesV2CancelAndMake(
+            blueMarket,
+            0,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            address(setterRatifier),
+            bytes32(0),
+            oneGroup(group, 1),
+            "payload",
+            block.timestamp
+        );
+        vm.stopPrank();
+        assertEq(midnight.consumed(lender, group), 1);
     }
 
     function testCancelSkipsPublicationWithoutAuthorizingRatifiers(address ignoredRatifier) public {
@@ -367,7 +528,7 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(0),
             bytes32(0),
-            new bytes32[](0),
+            new GroupCancellation[](0),
             "",
             block.timestamp
         );
@@ -420,7 +581,7 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(setterRatifier),
             root,
-            new bytes32[](0),
+            new GroupCancellation[](0),
             payload,
             block.timestamp
         );
@@ -638,7 +799,7 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(setterRatifier),
             root,
-            new bytes32[](0),
+            new GroupCancellation[](0),
             abi.encode(offer),
             block.timestamp
         );
@@ -711,7 +872,7 @@ contract MidnightBundlesV2MakerTest is Test {
             collateralSupplies,
             address(setterRatifier),
             root,
-            new bytes32[](0),
+            new GroupCancellation[](0),
             payload,
             block.timestamp
         );
@@ -748,7 +909,7 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(setterRatifier),
             oldRoot,
-            new bytes32[](0),
+            new GroupCancellation[](0),
             abi.encode(oldOffer),
             block.timestamp
         );
@@ -766,7 +927,7 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(setterRatifier),
             newRoot,
-            new bytes32[](0),
+            new GroupCancellation[](0),
             abi.encode(newOffer),
             block.timestamp
         );
@@ -804,7 +965,7 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(setterRatifier),
             root,
-            new bytes32[](0),
+            new GroupCancellation[](0),
             abi.encode(firstOffer, secondOffer),
             block.timestamp
         );
@@ -833,7 +994,7 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(setterRatifier),
             oldRoot,
-            new bytes32[](0),
+            new GroupCancellation[](0),
             abi.encode("old payload"),
             block.timestamp
         );
@@ -878,7 +1039,7 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(setterRatifier),
             root,
-            new bytes32[](0),
+            new GroupCancellation[](0),
             abi.encode(offer),
             block.timestamp
         );
@@ -943,7 +1104,7 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(setterRatifier),
             setterRoot,
-            new bytes32[](0),
+            new GroupCancellation[](0),
             abi.encode("payload"),
             block.timestamp
         );
@@ -1018,7 +1179,7 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(setterRatifier),
             root,
-            new bytes32[](0),
+            new GroupCancellation[](0),
             abi.encode(offer),
             deadline
         );

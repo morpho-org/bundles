@@ -17,6 +17,7 @@ import {IMorpho, MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorph
 import {TokenLib, TokenPermit} from "../libraries/TokenLib.sol";
 import {
     IMidnightBundlesV2,
+    GroupCancellation,
     CollateralSupply,
     CollateralSupplyWithPermit,
     CollateralWithdrawal,
@@ -50,7 +51,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback.
     /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
     /// @dev Optionally supplies collateral to msg.sender on Midnight.
-    /// @dev Cancels each group in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
+    /// @dev Checks and cancels groupsToCancel for msg.sender before moving assets. Pass an empty array to skip cancellation.
+    /// @dev Group IDs in groupsToCancel must be unique; uniqueness is not checked.
+    /// @dev Each group's maxConsumed is the maximum acceptable Midnight consumption before cancellation, in the group's units or assets.
+    /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
+    /// @dev If any group's consumption exceeds maxConsumed, the entire call reverts, including any earlier group cancellations.
     /// @dev If newRoot is non-zero, ratifier may be any address implementing setIsRootRatified(address,bytes32,bool). Authorizes the selected ratifier, activates newRoot on it, and publishes payload.
     /// @dev If newRoot is zero, ratifier and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero; market is unused when all collateral supplies are zero.
@@ -70,11 +75,20 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         CollateralSupply[] memory collateralSupplies,
         address ratifier,
         bytes32 newRoot,
-        bytes32[] memory groupsToCancel,
+        GroupCancellation[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
+
+        for (uint256 i; i < groupsToCancel.length; i++) {
+            GroupCancellation memory cancellation = groupsToCancel[i];
+            require(
+                IMidnight(MIDNIGHT).consumed(msg.sender, cancellation.group) <= cancellation.maxConsumed,
+                ConsumedAboveMax()
+            );
+            IMidnight(MIDNIGHT).setConsumed(cancellation.group, type(uint128).max, msg.sender);
+        }
 
         if (assetsToPark > 0) {
             address blueBuyCallback =
@@ -93,10 +107,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 IMidnight(MIDNIGHT)
                     .supplyCollateral(market, collateralSupply.collateralIndex, collateralSupply.assets, msg.sender);
             }
-        }
-
-        for (uint256 i; i < groupsToCancel.length; i++) {
-            IMidnight(MIDNIGHT).setConsumed(groupsToCancel[i], type(uint128).max, msg.sender);
         }
 
         if (newRoot != bytes32(0)) {

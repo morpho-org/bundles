@@ -6,6 +6,11 @@ import {Offer, Market} from "../../../lib/midnight/src/interfaces/IMidnight.sol"
 import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {TokenPermit} from "../../libraries/TokenLib.sol";
 
+struct GroupCancellation {
+    bytes32 group;
+    uint128 maxConsumed;
+}
+
 struct CollateralSupply {
     uint256 collateralIndex;
     uint256 assets;
@@ -30,6 +35,7 @@ struct OfferFill {
 
 interface IMidnightBundlesV2 {
     /// ERRORS ///
+    error ConsumedAboveMax();
     error ContinuousFeeAboveMax();
     error DeadlinePassed();
     error InconsistentBlue();
@@ -59,7 +65,7 @@ interface IMidnightBundlesV2 {
         CollateralSupply[] memory collateralSupplies,
         address ratifier,
         bytes32 newRoot,
-        bytes32[] memory groupsToCancel,
+        GroupCancellation[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
     ) external;
