@@ -21,8 +21,9 @@ Group IDs in `groupsToCancel` must be unique; the bundle does not check for dupl
 Each `GroupCancellation` entry contains a `group` and its `maxConsumed`. Consumption is checked before each group is cancelled, and all cancellations precede funding; equality with `maxConsumed` is allowed. Set the limit to the group's observed consumption to reject additional consumption, or to `type(uint128).max` to disable the limit.
 If any group exceeds its limit, the entire cancel-and-make transaction reverts, including any earlier group cancellations. These checks do not undo earlier fills; a reverted cancellation leaves the remaining old offers active.
 
-Pass any ratifier implementing `setIsRootRatified(address,bytes32,bool)` as `ratifier` and a non-zero `newRoot` to authorize the selected ratifier, activate the root on it, and publish `payload`.
-Passing `bytes32(0)` as `newRoot` skips those steps and ignores both `ratifier` and `payload`.
+Pass a `PriceRatifierV1` or `RateRatifierV1` as `ratifier` and a non-zero `newRoot` to authorize the selected ratifier, activate the root on it, and publish `payload`. Both ratifiers share the root activation interface and return `SET_IS_ROOT_RATIFIED_SUCCESS`, which the bundle checks.
+Pass an empty `rootSignature` to call `setIsRootRatified(address,bytes32,bool)`. To call `setIsRootRatifiedWithSig`, pass `abi.encode(uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s)` instead. The EIP-712 signature must authorize `SetIsRootRatified(msg.sender, newRoot, true, nonce, signatureDeadline)` for the selected ratifier and chain, signed by the maker or an address authorized by the maker on Midnight. The signature deadline is independent of the bundle's deadline. Invalid signed ratifications revert the entire bundle.
+Passing `bytes32(0)` as `newRoot` skips those steps and ignores `ratifier`, `rootSignature`, and `payload`.
 Cancellation-only calls skip both funding steps and pass `bytes32(0)` as `newRoot`.
 
 Reposting cancels selected groups before activating the new root on the selected ratifier and publishing its payload.
@@ -30,7 +31,7 @@ Group cancellation applies to offers using any ratifier and is permanent; existi
 Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
 
 New roots made through `midnightBundlesV2CancelAndMake` are expected to use the selected `ratifier`.
-Use fixed-tick offer hashes for `SetterRatifier` and rate-offer hashes for `SetterRateRatifier`; rate-offer payloads must include `startRate`, `expiryRate`, and `allowedTaker`.
+Use fixed-tick offer hashes for `PriceRatifierV1` and rate-offer hashes for `RateRatifierV1`; rate-offer payloads must include `startRate`, `expiryRate`, and `allowedTaker`.
 Offer roots may contain multi-market offers.
 Roots and publication payloads are constructed offchain and are not checked against each other, against the selected ratifier, or against markets passed to the bundle.
 Switching ratifiers does not revoke existing ratifier authorizations or deactivate old roots; cancel the old offers' groups explicitly when replacing them.

@@ -6,7 +6,10 @@ import {IMidnight, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol
 import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
-import {ISetterRatifier} from "../../lib/midnight/src/ratifiers/interfaces/ISetterRatifier.sol";
+import {
+    IPriceRatifierV1,
+    SET_IS_ROOT_RATIFIED_SUCCESS
+} from "../../lib/midnight/src/ratifiers/interfaces/IPriceRatifierV1.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {IdLib} from "../../lib/midnight/src/libraries/IdLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
@@ -51,13 +54,14 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback.
     /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
     /// @dev Optionally supplies collateral to msg.sender on Midnight.
-    /// @dev Checks and cancels groupsToCancel for msg.sender before moving assets. Pass an empty array to skip cancellation.
+    /// @dev First checks consumption limits and cancels the groups in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
     /// @dev Group IDs in groupsToCancel must be unique; uniqueness is not checked.
     /// @dev Each group's maxConsumed is the maximum acceptable Midnight consumption before cancellation, in the group's units or assets.
     /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
-    /// @dev If any group's consumption exceeds maxConsumed, the entire call reverts, including any earlier group cancellations.
-    /// @dev If newRoot is non-zero, ratifier may be any address implementing setIsRootRatified(address,bytes32,bool). Authorizes the selected ratifier, activates newRoot on it, and publishes payload.
-    /// @dev If newRoot is zero, ratifier and payload are ignored and ratifier authorizations are unchanged.
+    /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports PriceRatifierV1 and RateRatifierV1, which share the root activation interface and success value.
+    /// @dev Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig.
+    /// @dev The signature must authorize (msg.sender, newRoot, true) for the selected ratifier. Its deadline is independent of the bundle's deadline. Invalid signed ratifications revert.
+    /// @dev If newRoot is zero, ratifier, rootSignature, and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero; market is unused when all collateral supplies are zero.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
     /// @dev The new root may contain offers for multiple markets.
@@ -75,6 +79,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         CollateralSupply[] memory collateralSupplies,
         address ratifier,
         bytes32 newRoot,
+        bytes memory rootSignature,
         GroupCancellation[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
@@ -111,7 +116,16 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
         if (newRoot != bytes32(0)) {
             IMidnight(MIDNIGHT).setIsAuthorized(ratifier, true, msg.sender);
-            ISetterRatifier(ratifier).setIsRootRatified(msg.sender, newRoot, true);
+            bytes32 ratificationResult;
+            if (rootSignature.length == 0) {
+                ratificationResult = IPriceRatifierV1(ratifier).setIsRootRatified(msg.sender, newRoot, true);
+            } else {
+                (uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) =
+                    abi.decode(rootSignature, (uint128, uint256, uint8, bytes32, bytes32));
+                ratificationResult = IPriceRatifierV1(ratifier)
+                    .setIsRootRatifiedWithSig(msg.sender, newRoot, true, nonce, signatureDeadline, v, r, s);
+            }
+            require(ratificationResult == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
 
             (bool success, bytes memory returndata) = LOG.call(payload);
             if (!success) {

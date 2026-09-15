@@ -42,6 +42,7 @@ interface IMidnightBundlesV2 {
     error InconsistentMarket();
     error InconsistentMidnight();
     error InconsistentSide();
+    error InvalidRatifierResponse();
     error NotReduceOnly();
     error OutOfOffers();
     error PctExceeded();
@@ -65,6 +66,7 @@ interface IMidnightBundlesV2 {
         CollateralSupply[] memory collateralSupplies,
         address ratifier,
         bytes32 newRoot,
+        bytes memory rootSignature,
         GroupCancellation[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
