@@ -14,29 +14,11 @@ Users should expect tokens left to the bundles as lost.
 
 Maker-side:
 
-- `midnightBundlesV2CancelAndMake` — optionally park loan assets on Blue through a Midnight `BlueBuyCallback`, supply collateral on Midnight, cancel a group, and publish new maker offers in one call.
+- `midnightBundlesV2CancelAndMake` — cancel offer groups, optionally park loan assets on Blue or supply collateral on Midnight, and publish new maker offers.
 
-Pass an empty `groupsToCancel` array to skip cancellation. Set `assetsToPark` to zero to skip parking and pass an empty `collateralSupplies` array to skip collateral supply.
-Group IDs in `groupsToCancel` must be unique; the bundle does not check for duplicates.
-Each `GroupCancellation` entry contains a `group` and its `maxConsumed`. Consumption is checked before each group is cancelled, and all cancellations precede funding; equality with `maxConsumed` is allowed. Set the limit to the group's observed consumption to reject additional consumption, or to `type(uint128).max` to disable the limit.
-If any group exceeds its limit, the entire cancel-and-make transaction reverts, including any earlier group cancellations. These checks do not undo earlier fills; a reverted cancellation leaves the remaining old offers active.
-
-Pass a `PriceRatifierV1` or `RateRatifierV1` as `ratifier` and a non-zero `newRoot` to authorize the selected ratifier, activate the root on it, and publish `payload`. Both ratifiers share the root activation interface and return `SET_IS_ROOT_RATIFIED_SUCCESS`, which the bundle checks.
-Pass an empty `rootSignature` to call `setIsRootRatified(address,bytes32,bool)`. To call `setIsRootRatifiedWithSig`, pass `abi.encode(uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s)` instead. The EIP-712 signature must authorize `SetIsRootRatified(msg.sender, newRoot, true, nonce, signatureDeadline)` for the selected ratifier and chain, signed by the maker or an address authorized by the maker on Midnight. The signature deadline is independent of the bundle's deadline. Invalid signed ratifications revert the entire bundle.
-Passing `bytes32(0)` as `newRoot` skips those steps and ignores `ratifier`, `rootSignature`, and `payload`.
-Cancellation-only calls skip both funding steps and pass `bytes32(0)` as `newRoot`.
-
-Reposting cancels selected groups before activating the new root on the selected ratifier and publishing its payload.
-Group cancellation applies to offers using any ratifier and is permanent; existing roots remain unchanged.
-Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
-
-New roots made through `midnightBundlesV2CancelAndMake` are expected to use the selected `ratifier`.
-Use fixed-tick offer hashes for `PriceRatifierV1` and rate-offer hashes for `RateRatifierV1`; rate-offer payloads must include `startRate`, `expiryRate`, and `allowedTaker`.
-Offer roots may contain multi-market offers.
-Roots and publication payloads are constructed offchain and are not checked against each other, against the selected ratifier, or against markets passed to the bundle.
-Switching ratifiers does not revoke existing ratifier authorizations or deactivate old roots; cancel the old offers' groups explicitly when replacing them.
-
-The maker must authorize `MidnightBundlesV2` on Midnight and approve it to pull any supplied loan or collateral assets.
+Supports `PriceRatifierV1` and `RateRatifierV1`, with optional signed root activation.
+The maker must authorize the bundle on Midnight and approve it to pull any supplied loan or collateral assets.
+See the entrypoint's NatSpec for parameters, validation limits, and ratifier authorization requirements.
 
 Taker-side:
 
