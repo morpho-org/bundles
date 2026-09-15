@@ -31,6 +31,7 @@ import {
 /// @dev Order matters: the native amount must come first, as the transfers after it are pulled.
 /// @dev The entrypoints don't strand native tokens: balance is compared before and after transfers and the function reverts unless msg.value was consumed, and the buy functions always transfer the buyer assets.
 // forge-lint: disable-start(reentrancy-balance) balance checks only guard against misuse of msg.value.
+// forge-lint: disable-start(msg-value-loop) msg.value is used only once, even when there is a loop.
 contract MidnightBundlesV2 is IMidnightBundlesV2 {
     using UtilsLib for uint256;
 
@@ -107,7 +108,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             CollateralSupply memory collateralSupply = collateralSupplies[i];
             if (collateralSupply.assets > 0) {
                 address collateralToken = market.collateralParams[collateralSupply.collateralIndex].token;
-                // forge-lint: disable-next-item(msg-value-loop) only the first transfer wraps.
                 TokenLib.transferFromOrWrapNative(
                     collateralToken, msg.sender, collateralSupply.assets, msg.value > 0 && assetsToPark == 0 && i == 0
                 );
@@ -263,7 +263,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 nativeBefore = address(this).balance;
         for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            // forge-lint: disable-next-item(msg-value-loop) only the first transfer wraps.
             TokenLib.transferFromOrWrapNative(token, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0);
             TokenLib.forceApproveMax(token, MIDNIGHT);
             IMidnight(MIDNIGHT)
@@ -420,7 +419,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 nativeBefore = address(this).balance;
         for (uint256 i; i < collateralSupplies.length; i++) {
             address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            // forge-lint: disable-next-item(msg-value-loop) only the first transfer wraps.
             TokenLib.transferFromOrWrapNative(token, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0);
             TokenLib.forceApproveMax(token, MIDNIGHT);
             IMidnight(MIDNIGHT)
