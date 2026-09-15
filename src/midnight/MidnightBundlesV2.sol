@@ -72,7 +72,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Optionally supplies collateral to msg.sender on Midnight.
     /// @dev Cancels each group in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
     /// @dev If newRoot is non-zero, authorizes SETTER_RATIFIER, activates newRoot, and publishes payload. Otherwise payload is ignored and SETTER_RATIFIER authorization is unchanged.
-    /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero; market is unused when all collateral supplies are zero.
+    /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
     /// @dev The fact that only the first transfer will wrap native tokens is not constraining the use cases. This is because assetsToPark > 0 and collateralSupplies[0].assets > 0 are disjoint: the former is for buying and the latter is for selling.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
     /// @dev The new root may contain offers for multiple markets.
@@ -105,16 +105,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         }
 
         for (uint256 i; i < collateralSupplies.length; i++) {
-            CollateralSupply memory collateralSupply = collateralSupplies[i];
-            if (collateralSupply.assets > 0) {
-                address collateralToken = market.collateralParams[collateralSupply.collateralIndex].token;
-                TokenLib.transferFromOrWrapNative(
-                    collateralToken, msg.sender, collateralSupply.assets, msg.value > 0 && assetsToPark == 0 && i == 0
+            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            TokenLib.transferFromOrWrapNative(
+                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && assetsToPark == 0 && i == 0
+            );
+            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(
+                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
                 );
-                TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-                IMidnight(MIDNIGHT)
-                    .supplyCollateral(market, collateralSupply.collateralIndex, collateralSupply.assets, msg.sender);
-            }
         }
         // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
@@ -262,9 +261,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
         uint256 nativeBefore = address(this).balance;
         for (uint256 i; i < collateralSupplies.length; i++) {
-            address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            TokenLib.transferFromOrWrapNative(token, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0);
-            TokenLib.forceApproveMax(token, MIDNIGHT);
+            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            TokenLib.transferFromOrWrapNative(
+                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
+            );
+            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
             IMidnight(MIDNIGHT)
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }
@@ -418,9 +419,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
         uint256 nativeBefore = address(this).balance;
         for (uint256 i; i < collateralSupplies.length; i++) {
-            address token = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            TokenLib.transferFromOrWrapNative(token, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0);
-            TokenLib.forceApproveMax(token, MIDNIGHT);
+            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            TokenLib.transferFromOrWrapNative(
+                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
+            );
+            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
             IMidnight(MIDNIGHT)
                 .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
         }

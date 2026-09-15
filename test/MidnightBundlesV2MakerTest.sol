@@ -262,8 +262,8 @@ contract MidnightBundlesV2MakerTest is Test {
         groupsToCancel[2] = bytes32(0);
         CollateralSupply[] memory supplies = new CollateralSupply[](2);
         supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
-        // Zero supplies must be skipped even if their collateral index is invalid.
-        supplies[1] = CollateralSupply({collateralIndex: type(uint256).max, assets: 0});
+        // Zero supplies are no-ops, but their collateral index must still be valid.
+        supplies[1] = CollateralSupply({collateralIndex: 0, assets: 0});
         deal(address(collateralToken), lender, PARKED_ASSETS);
 
         vm.startPrank(lender);
