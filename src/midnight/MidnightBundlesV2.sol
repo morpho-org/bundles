@@ -7,9 +7,9 @@ import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
 import {
-    IPriceRatifierV1,
+    ISetterRatifierV1,
     SET_IS_ROOT_RATIFIED_SUCCESS
-} from "../../lib/midnight/src/ratifiers/interfaces/IPriceRatifierV1.sol";
+} from "../../lib/midnight/src/ratifiers/interfaces/ISetterRatifierV1.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {IdLib} from "../../lib/midnight/src/libraries/IdLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
@@ -120,11 +120,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             IMidnight(MIDNIGHT).setIsAuthorized(ratifier, true, msg.sender);
             bytes32 ratificationResult;
             if (rootSignature.length == 0) {
-                ratificationResult = IPriceRatifierV1(ratifier).setIsRootRatified(msg.sender, newRoot, true);
+                ratificationResult = ISetterRatifierV1(ratifier).setIsRootRatified(msg.sender, newRoot, true);
             } else {
                 (uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) =
                     abi.decode(rootSignature, (uint128, uint256, uint8, bytes32, bytes32));
-                ratificationResult = IPriceRatifierV1(ratifier)
+                ratificationResult = ISetterRatifierV1(ratifier)
                     .setIsRootRatifiedWithSig(msg.sender, newRoot, true, nonce, signatureDeadline, v, r, s);
             }
             require(ratificationResult == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
