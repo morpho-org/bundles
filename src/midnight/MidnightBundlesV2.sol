@@ -30,6 +30,7 @@ import {
 /// @dev All the entrypoints are payable and share the same handling of native tokens: when msg.value is non-zero, the first transfer of the call is funded by wrapping msg.value instead of pulling its token, which must then be the wrapped-native token and whose amount must equal msg.value.
 /// @dev Order matters: the native amount must come first, as the transfers after it are pulled.
 /// @dev The entrypoints don't strand native tokens: balance is compared before and after transfers and the function reverts unless msg.value was consumed, and the buy functions always transfer the buyer assets.
+// forge-lint: disable-start(reentrancy-balance) balance checks only guard against misuse of msg.value.
 contract MidnightBundlesV2 is IMidnightBundlesV2 {
     using UtilsLib for uint256;
 
