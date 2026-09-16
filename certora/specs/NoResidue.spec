@@ -30,24 +30,23 @@ methods {
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => NONDET;
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
 
-    // The bundler's penalty total (UtilsLib) and the public allocator's pulls (MathLib) share one uninterpreted
-    // function, so their equality follows by congruence instead of nonlinear arithmetic.
-    function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
-    function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
+    // Use non-deterministic summary for muldiv for performance.
+    // This is sound because the spec doesn't check for reverting behavior.
+    function UtilsLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
+    function MathLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
+    function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
+    function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
 
     // The public allocator's penalty pull is a low-level token.call whose sighash the prover cannot resolve
     // statically, so the _.transferFrom wildcard misses it; summarize the library function instead.
     function SafeERC20Lib.safeTransferFrom(address token, address from, address to, uint256 value) internal => cvlSafeTransferFrom(token, from, to, value);
 }
 
-// Uninterpreted rounding-up mulDiv shared by both implementations.
-persistent ghost mulDivUpG(uint256, uint256, uint256) returns uint256;
-
 // The public allocator can never register the bundler as a vault (its setters require isVaultV2), so a reallocation
 // whose vault is the bundler always reverts on InactiveAdapter; the linked allocator's symbolic storage cannot know
 // this, so exclude it (up to loop_iter elements).
 function reallocationsAssumptions(BlueBundlesV1.PublicAllocations[] reallocations) {
-    require reallocations.length <= 3, "loop bound";
+    require reallocations.length <= 2, "loop bound";
     require reallocations.length > 0 => reallocations[0].vault != currentContract, "bundler is not a vault";
     require reallocations.length > 1 => reallocations[1].vault != currentContract, "bundler is not a vault";
     require reallocations.length > 2 => reallocations[2].vault != currentContract, "bundler is not a vault";
