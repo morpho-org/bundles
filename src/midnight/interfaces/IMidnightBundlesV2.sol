@@ -42,7 +42,6 @@ interface IMidnightBundlesV2 {
     error OutOfOffers();
     error PctExceeded();
     error SellerAssetsTooLow();
-    error Unauthorized();
     error UnitsTooHigh();
     error UnitsTooLow();
     error UnusedNative();
@@ -72,7 +71,6 @@ interface IMidnightBundlesV2 {
         Market memory market,
         uint256 targetUnits,
         uint256 maxBuyerAssets,
-        address taker,
         bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
@@ -88,7 +86,6 @@ interface IMidnightBundlesV2 {
         Market memory market,
         uint256 targetUnits,
         uint256 minSellerAssets,
-        address taker,
         bool reduceOnly,
         address receiver,
         CollateralSupply[] memory collateralSupplies,
@@ -103,7 +100,6 @@ interface IMidnightBundlesV2 {
         Market memory market,
         uint256 targetBuyerAssets,
         uint256 minUnits,
-        address taker,
         bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
@@ -119,7 +115,6 @@ interface IMidnightBundlesV2 {
         Market memory market,
         uint256 targetSellerAssets,
         uint256 maxUnits,
-        address taker,
         bool reduceOnly,
         address receiver,
         CollateralSupply[] memory collateralSupplies,

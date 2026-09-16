@@ -31,7 +31,7 @@ Taker-side:
 Repaying and withdrawing collateral (only) is done through the buy functions with `repayEnabled`, a nonzero target and an empty `offerFills` array.
 Withdrawing credit (only) can be done through the sell functions with a nonzero target and an empty `offerFills` array.
 
-The taker (or msg.sender if authorized by the taker) must be authorized by the taker on Midnight for these functions, and the bundle must have an allowance to pull the tokens it needs from msg.sender.
+The taker is msg.sender and must authorize the bundle on Midnight and approve it to pull the tokens it needs.
 
 ### [BlueBundlesV1](src/blue/BlueBundlesV1.sol)
 
