@@ -260,15 +260,9 @@ contract MidnightBundlesV2MakerTest is Test {
         groupsToCancel[0] = oldRoot;
         groupsToCancel[1] = keccak256("second group");
         groupsToCancel[2] = bytes32(0);
-        CollateralSupply[] memory supplies = new CollateralSupply[](2);
-        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
-        // Zero supplies are no-ops, but their collateral index must still be valid.
-        supplies[1] = CollateralSupply({collateralIndex: 0, assets: 0});
-        deal(address(collateralToken), lender, PARKED_ASSETS);
 
         vm.startPrank(lender);
         setterRatifier.setIsRootRatified(lender, oldRoot, true);
-        collateralToken.approve(address(midnightBundles), PARKED_ASSETS);
         vm.expectEmit(address(offerLog));
         emit Log.Data("combined payload");
         midnightBundles.midnightBundlesV2CancelAndMake(
@@ -276,7 +270,7 @@ contract MidnightBundlesV2MakerTest is Test {
             PARKED_ASSETS,
             CALLBACK_SALT,
             midnightMarket,
-            supplies,
+            noCollateralSupplies(),
             newRoot,
             groupsToCancel,
             "combined payload",
@@ -285,7 +279,6 @@ contract MidnightBundlesV2MakerTest is Test {
         vm.stopPrank();
 
         assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS);
-        assertEq(midnight.collateral(IdLib.toId(midnightMarket), lender, 0), PARKED_ASSETS);
         assertTrue(setterRatifier.isRootRatified(lender, oldRoot));
         assertFalse(ecrecoverRatifier.isRootCanceled(lender, oldRoot));
         for (uint256 i; i < groupsToCancel.length; i++) {
@@ -622,9 +615,11 @@ contract MidnightBundlesV2MakerTest is Test {
         midnight.setIsAuthorized(address(midnightBundles), true, borrower);
         vm.stopPrank();
 
-        CollateralSupply[] memory collateralSupplies = new CollateralSupply[](2);
+        CollateralSupply[] memory collateralSupplies = new CollateralSupply[](3);
         collateralSupplies[0] = CollateralSupply({collateralIndex: firstCollateralIndex, assets: firstAssets});
         collateralSupplies[1] = CollateralSupply({collateralIndex: secondCollateralIndex, assets: secondAssets});
+        // Zero supplies are no-ops, but their collateral index must still be valid.
+        collateralSupplies[2] = CollateralSupply({collateralIndex: firstCollateralIndex, assets: 0});
 
         Offer memory offer = makeBorrowOffer(market, keccak256("borrow group"), PARKED_ASSETS, MAX_TICK);
         bytes32 root = HashLib.hashOffer(offer);
@@ -1016,30 +1011,15 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
     }
 
-    function testMakeParksNativeAndPullsCollateral() public {
-        WETHMock weth = new WETHMock();
-        MarketParams memory wethBlueMarket = MarketParams({
-            loanToken: address(weth),
-            collateralToken: address(collateralToken),
-            oracle: address(blueOracle),
-            irm: address(0),
-            lltv: LLTV
-        });
-        morpho.createMarket(wethBlueMarket);
-        bytes32 midnightId = midnight.touchMarket(midnightMarket);
-
+    function testMakeRevertsWhenParkingAndSupplyingCollateral() public {
         CollateralSupply[] memory supplies = new CollateralSupply[](1);
-        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
+        supplies[0] = CollateralSupply({collateralIndex: 0, assets: 0});
 
-        deal(lender, PARKED_ASSETS);
-        deal(address(collateralToken), lender, PARKED_ASSETS);
+        // Parking is for buying and supplying collateral is for selling: both at once is rejected, even for zero supplies.
         vm.prank(lender);
-        collateralToken.approve(address(midnightBundles), PARKED_ASSETS);
-
-        // msg.value funds the parked assets; the collateral supply is pulled.
-        vm.prank(lender);
-        midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
-            wethBlueMarket,
+        vm.expectRevert(IMidnightBundlesV2.InconsistentInputs.selector);
+        midnightBundles.midnightBundlesV2CancelAndMake(
+            blueMarket,
             PARKED_ASSETS,
             CALLBACK_SALT,
             midnightMarket,
@@ -1049,13 +1029,6 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             block.timestamp
         );
-
-        assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
-        assertEq(midnight.collateral(midnightId, lender, 0), PARKED_ASSETS, "collateral supplied");
-        assertEq(lender.balance, 0, "lender native residual");
-        assertEq(collateralToken.balanceOf(lender), 0, "lender collateral residual");
-        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
-        assertEq(collateralToken.balanceOf(address(midnightBundles)), 0, "bundler collateral residual");
     }
 
     function testMakeSuppliesNativeFirstCollateralAndPullsSecond() public {
