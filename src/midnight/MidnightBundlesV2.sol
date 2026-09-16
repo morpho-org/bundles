@@ -58,11 +58,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev After a group is cancelled, later occurrences of its ID in groupsToCancel revert unless their maxConsumed is type(uint128).max.
     /// @dev Each group's maxConsumed is the maximum acceptable Midnight consumption before cancellation, in the group's units or assets.
     /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
-    /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports PriceRatifierV1 and RateRatifierV1; the selected root setter must return SET_IS_ROOT_RATIFIED_SUCCESS.
     /// @dev SECURITY: If newRoot is non-zero, this call grants ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
     /// @dev A wrong ratifier address may authorize a malicious contract that can move funds, modify positions, and authorize other accounts on behalf of msg.sender, potentially causing loss of funds. Interface compatibility and the expected success value do not establish trustworthiness.
-    /// @dev Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig.
-    /// @dev The EIP-712 signature must authorize (msg.sender, newRoot, true, nonce, signatureDeadline) for the selected ratifier and current chain, signed by msg.sender or an address authorized by msg.sender on Midnight. Its deadline is independent of the bundle's deadline. Invalid signed ratifications revert.
+    /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports PriceRatifierV1 and RateRatifierV1; the selected root setter must return SET_IS_ROOT_RATIFIED_SUCCESS.
+    /// - Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig.
+    /// - The EIP-712 signature must authorize (msg.sender, newRoot, true, nonce, signatureDeadline) for the selected ratifier and current chain, signed by msg.sender or an address authorized by msg.sender on Midnight. Its deadline is independent of the bundle's deadline. Invalid signed ratifications revert.
     /// @dev If newRoot is zero, ratifier, rootSignature, and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero; market is unused when all collateral supplies are zero.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
