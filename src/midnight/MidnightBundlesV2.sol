@@ -28,7 +28,7 @@ import {
 /// @dev Inherits the token safety requirements of Midnight and Morpho Blue.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev All the entrypoints are payable and share the same handling of native tokens: when msg.value is non-zero, the first transfer of the call is funded by wrapping msg.value instead of pulling its token, which must then be the wrapped-native token and whose amount must equal msg.value.
-/// @dev Order matters: the native amount must come first, as the transfers after it are pulled.
+/// @dev Order matters: msg.value can only fund the call's first transfer; all later transfers are pulled.
 /// @dev The entrypoints don't strand native tokens: balance is compared before and after transfers and the function reverts unless msg.value was consumed, and the buy functions always transfer the buyer assets.
 // forge-lint: disable-start(reentrancy-balance) balance checks only guard against misuse of msg.value.
 // forge-lint: disable-start(msg-value-loop) msg.value is used only once, even when there is a loop.
