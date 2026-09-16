@@ -102,9 +102,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         if (assetsToPark > 0) {
             address blueBuyCallback =
                 IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).createBlueBuyCallback(msg.sender, callbackSalt);
-            TokenLib.transferFromOrWrapNative(
-                blueMarket.loanToken, msg.sender, assetsToPark, msg.value > 0 && collateralSupplies.length == 0
-            );
+            TokenLib.transferFromOrWrapNative(blueMarket.loanToken, msg.sender, assetsToPark, msg.value > 0);
             TokenLib.forceApproveMax(blueMarket.loanToken, BLUE);
             IMorpho(BLUE).supply(blueMarket, assetsToPark, 0, blueBuyCallback, "");
         }
