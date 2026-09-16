@@ -30,17 +30,22 @@ methods {
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => NONDET;
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
 
-    // Use non-deterministic summary for muldiv for performance.
-    // This is sound because the spec doesn't check for reverting behavior.
+    // Avoid non-linear arithmetic by using summary/non-determinism (reverts are not checked by the specification)
+    // For mulDivUp, a functional summary is needed to ensure the bundler's penalty total (UtilsLib)
+    // and the public allocator's pulls (MathLib) compute the same value.
+    // For mulDivDown a non-deterministic summary is enough.
     function UtilsLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
     function MathLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
-    function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
-    function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
+    function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
+    function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
 
     // The public allocator's penalty pull is a low-level token.call whose sighash the prover cannot resolve
     // statically, so the _.transferFrom wildcard misses it; summarize the library function instead.
     function SafeERC20Lib.safeTransferFrom(address token, address from, address to, uint256 value) internal => cvlSafeTransferFrom(token, from, to, value);
 }
+
+// Uninterpreted rounding-up mulDiv shared by both implementations.
+persistent ghost mulDivUpG(uint256, uint256, uint256) returns uint256;
 
 // The public allocator can never register the bundler as a vault (its setters require isVaultV2), so a reallocation
 // whose vault is the bundler always reverts on InactiveAdapter; the linked allocator's symbolic storage cannot know
