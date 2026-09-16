@@ -1515,7 +1515,7 @@ contract MidnightBundlesV2MakerTest is Test {
 
         deal(lender, PARKED_ASSETS);
 
-        // With assetsToPark zero, msg.value funds the single collateral supply instead.
+        // The collateral supply is the call's first transfer, so msg.value funds it.
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
             blueMarket,
