@@ -18,7 +18,7 @@ Maker-side:
 
 Parking loan assets (to fund buy offers) and supplying collateral (to back sell offers) are mutually exclusive.
 Supports `PriceRatifierV1` and `RateRatifierV1`, with optional signed root activation.
-The maker must authorize `MidnightBundlesV2` on Midnight (it executes the Midnight operations on the maker's behalf). When msg.sender is not the maker, the maker must also authorize msg.sender on Midnight. The bundle must have an allowance to pull any supplied loan or collateral assets from msg.sender.
+The maker must authorize the bundle and msg.sender (if different from the maker) on Midnight. msg.sender must approve the bundle to pull any supplied loan or collateral assets.
 See the entrypoint's NatSpec for parameters, validation limits, and ratifier authorization requirements.
 
 Taker-side:
@@ -31,7 +31,7 @@ Taker-side:
 Repaying and withdrawing collateral (only) is done through the buy functions with `repayEnabled`, a nonzero target and an empty `offerFills` array.
 Withdrawing credit (only) can be done through the sell functions with a nonzero target and an empty `offerFills` array.
 
-The taker must authorize `MidnightBundlesV2` on Midnight (it executes the Midnight operations on the taker's behalf). When msg.sender is not the taker, the taker must also authorize msg.sender on Midnight. The bundle must have an allowance to pull the tokens it needs from msg.sender.
+The taker must authorize the bundle and msg.sender (if different from the taker) on Midnight. msg.sender must approve the bundle to pull the tokens it needs.
 
 ### [BlueBundlesV1](src/blue/BlueBundlesV1.sol)
 
