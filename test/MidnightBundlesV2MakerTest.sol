@@ -8,12 +8,9 @@ import {EcrecoverRatifier} from "../lib/midnight/src/ratifiers/EcrecoverRatifier
 import {Signature, EIP712_DOMAIN_TYPEHASH} from "../lib/midnight/src/ratifiers/interfaces/IEcrecoverRatifier.sol";
 import {RateRatifierV1} from "../lib/midnight/src/ratifiers/RateRatifierV1.sol";
 import {PriceRatifierV1} from "../lib/midnight/src/ratifiers/PriceRatifierV1.sol";
-import {
-    IPriceRatifierV1,
-    SET_IS_ROOT_RATIFIED_TYPEHASH
-} from "../lib/midnight/src/ratifiers/interfaces/IPriceRatifierV1.sol";
+import {IPriceRatifierV1} from "../lib/midnight/src/ratifiers/interfaces/IPriceRatifierV1.sol";
 import {IRateRatifierV1} from "../lib/midnight/src/ratifiers/interfaces/IRateRatifierV1.sol";
-import {ISetterRatifierV1} from "../lib/midnight/src/ratifiers/interfaces/ISetterRatifierV1.sol";
+import {IRatifiersV1Common} from "../lib/midnight/src/ratifiers/interfaces/IRatifiersV1Common.sol";
 import {HashLib} from "../lib/midnight/src/ratifiers/libraries/HashLib.sol";
 import {IdLib} from "../lib/midnight/src/libraries/IdLib.sol";
 import {MAX_TICK} from "../lib/midnight/src/libraries/TickLib.sol";
@@ -256,8 +253,8 @@ contract MidnightBundlesV2MakerTest is Test {
 
     function offerRoot(Offer memory offer) internal view returns (bytes32) {
         return offer.ratifier == address(rateRatifier)
-            ? HashLib.hashRateOffer(offer, RATE, borrower)
-            : HashLib.hashPriceOffer(offer, address(0));
+            ? HashLib.hashRateRatifierV1Offer(offer, RATE, borrower)
+            : HashLib.hashPriceRatifierV1Offer(offer, address(0));
     }
 
     function offerPayload(Offer memory offer) internal view returns (bytes memory) {
@@ -295,12 +292,27 @@ contract MidnightBundlesV2MakerTest is Test {
         uint256 signatureDeadline,
         uint256 signerPrivateKey
     ) internal view returns (bytes memory) {
-        bytes32 hashStruct = keccak256(
-            abi.encode(SET_IS_ROOT_RATIFIED_TYPEHASH, maker, root, newIsRootRatified, nonce, signatureDeadline)
-        );
+        return signRoot(ratifier, maker, root, 0, newIsRootRatified, nonce, signatureDeadline, signerPrivateKey);
+    }
+
+    function signRoot(
+        address ratifier,
+        address maker,
+        bytes32 root,
+        uint256 height,
+        bool newIsRootRatified,
+        uint128 nonce,
+        uint256 signatureDeadline,
+        uint256 signerPrivateKey
+    ) internal view returns (bytes memory) {
+        bytes32 treeTypeHash = ratifier == address(rateRatifier)
+            ? HashLib.rateRatifierV1OfferTreeTypeHash(height)
+            : HashLib.priceRatifierV1OfferTreeTypeHash(height);
+        bytes32 hashStruct =
+            keccak256(abi.encode(treeTypeHash, maker, root, newIsRootRatified, nonce, signatureDeadline));
         bytes32 digest = keccak256(bytes.concat("\x19\x01", IPriceRatifierV1(ratifier).DOMAIN_SEPARATOR(), hashStruct));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPrivateKey, digest);
-        return abi.encode(nonce, signatureDeadline, v, r, s);
+        return abi.encode(height, nonce, signatureDeadline, v, r, s);
     }
 
     function makeRootWithSignature(address ratifier, bytes32 root, bytes memory rootSignature) internal {
@@ -344,7 +356,7 @@ contract MidnightBundlesV2MakerTest is Test {
         groupsToCancel[2] = GroupCancellation({group: bytes32(0), maxConsumed: 0});
 
         vm.startPrank(lender);
-        ISetterRatifierV1(ratifier).setIsRootRatified(lender, oldRoot, true);
+        IRatifiersV1Common(ratifier).setIsRootRatified(lender, oldRoot, true);
         vm.expectEmit(address(offerLog));
         emit Log.Data("combined payload");
         midnightBundles.midnightBundlesV2CancelAndMake(
@@ -363,18 +375,18 @@ contract MidnightBundlesV2MakerTest is Test {
         vm.stopPrank();
 
         assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS);
-        assertTrue(ISetterRatifierV1(ratifier).isRootRatified(lender, oldRoot));
+        assertTrue(IRatifiersV1Common(ratifier).isRootRatified(lender, oldRoot));
         assertFalse(ecrecoverRatifier.isRootCanceled(lender, oldRoot));
         for (uint256 i; i < groupsToCancel.length; i++) {
             assertEq(midnight.consumed(lender, groupsToCancel[i].group), type(uint128).max);
             assertEq(midnight.consumed(borrower, groupsToCancel[i].group), 0);
         }
-        assertTrue(ISetterRatifierV1(ratifier).isRootRatified(lender, newRoot));
+        assertTrue(IRatifiersV1Common(ratifier).isRootRatified(lender, newRoot));
         (, uint128 nonce) = IPriceRatifierV1(ratifier).ratification(lender, newRoot);
         assertEq(nonce, useSignature ? 1 : 0);
         assertTrue(midnight.isAuthorized(lender, ratifier));
         assertFalse(midnight.isAuthorized(lender, otherRatifier));
-        assertFalse(ISetterRatifierV1(otherRatifier).isRootRatified(lender, newRoot));
+        assertFalse(IRatifiersV1Common(otherRatifier).isRootRatified(lender, newRoot));
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0);
         assertEq(collateralToken.balanceOf(address(midnightBundles)), 0);
     }
@@ -461,7 +473,8 @@ contract MidnightBundlesV2MakerTest is Test {
     function testMakeRejectsInvalidRootSignature(bool useRateRatifier) public {
         address ratifier = useRateRatifier ? address(rateRatifier) : address(priceRatifier);
         bytes32 root = keccak256("signed root");
-        bytes memory rootSignature = abi.encode(uint128(0), block.timestamp, uint8(0), bytes32(0), bytes32(0));
+        bytes memory rootSignature =
+            abi.encode(uint256(0), uint128(0), block.timestamp, uint8(0), bytes32(0), bytes32(0));
 
         vm.expectRevert(IPriceRatifierV1.InvalidSignature.selector);
         makeRootWithSignature(ratifier, root, rootSignature);
@@ -499,23 +512,23 @@ contract MidnightBundlesV2MakerTest is Test {
         address ratifier = useRateRatifier ? address(rateRatifier) : address(priceRatifier);
         bytes32 root = keccak256("signed root");
         bytes memory rootSignature = signRoot(ratifier, lender, root, true, 0, block.timestamp, lenderPrivateKey);
-        (, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) =
-            abi.decode(rootSignature, (uint128, uint256, uint8, bytes32, bytes32));
+        (,, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) =
+            abi.decode(rootSignature, (uint256, uint128, uint256, uint8, bytes32, bytes32));
         // An authorized actor may submit the signature before the bundle.
         vm.prank(lender);
-        ISetterRatifierV1(ratifier).setIsRootRatifiedWithSig(lender, root, true, 0, signatureDeadline, v, r, s);
+        IRatifiersV1Common(ratifier).setIsRootRatifiedWithSig(lender, root, 0, true, 0, signatureDeadline, v, r, s);
 
         makeRootWithSignature(ratifier, root, rootSignature);
 
         (, uint128 nonce) = IPriceRatifierV1(ratifier).ratification(lender, root);
         assertEq(nonce, 1, "an already submitted signature does not increment the nonce");
         vm.prank(lender);
-        ISetterRatifierV1(ratifier).setIsRootRatified(lender, root, false);
+        IRatifiersV1Common(ratifier).setIsRootRatified(lender, root, false);
 
         vm.expectRevert(IPriceRatifierV1.RatifiedStatusChanged.selector);
         makeRootWithSignature(ratifier, root, rootSignature);
 
-        assertFalse(ISetterRatifierV1(ratifier).isRootRatified(lender, root));
+        assertFalse(IRatifiersV1Common(ratifier).isRootRatified(lender, root));
         assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS);
         // A fresh signature at the current nonce can reactivate the root.
         rootSignature = signRoot(ratifier, lender, root, true, 1, block.timestamp, lenderPrivateKey);
@@ -527,10 +540,28 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), 2 * PARKED_ASSETS);
     }
 
+    function testMakeWithSignatureRatifiesOfferTree(bool useRateRatifier) public {
+        address ratifier = useRateRatifier ? address(rateRatifier) : address(priceRatifier);
+        Offer memory firstOffer = makeOffer(keccak256("first group"), PARKED_ASSETS, MAX_TICK);
+        Offer memory secondOffer = makeOffer(keccak256("second group"), PARKED_ASSETS, MAX_TICK - 1);
+        firstOffer.ratifier = ratifier;
+        secondOffer.ratifier = ratifier;
+        bytes32 root = HashLib.hashNode(offerRoot(firstOffer), offerRoot(secondOffer));
+        // The signature commits to a two-leaf offer tree: the bundle must forward height 1 untouched.
+        bytes memory rootSignature = signRoot(ratifier, lender, root, 1, true, 0, block.timestamp, lenderPrivateKey);
+
+        makeRootWithSignature(ratifier, root, rootSignature);
+
+        assertTrue(IRatifiersV1Common(ratifier).isRootRatified(lender, root), "tree root ratified");
+        (, uint128 nonce) = IPriceRatifierV1(ratifier).ratification(lender, root);
+        assertEq(nonce, 1, "nonce consumed");
+    }
+
     function testMakeRejectsUnexpectedRatifierResponse(bool useSignature) public {
         address ratifier = address(new InvalidResponseRatifier());
-        bytes memory rootSignature =
-            useSignature ? abi.encode(uint128(0), block.timestamp, uint8(0), bytes32(0), bytes32(0)) : bytes("");
+        bytes memory rootSignature = useSignature
+            ? abi.encode(uint256(0), uint128(0), block.timestamp, uint8(0), bytes32(0), bytes32(0))
+            : bytes("");
 
         vm.expectRevert(IMidnightBundlesV2.InvalidRatifierResponse.selector);
         makeRootWithSignature(ratifier, keccak256("root"), rootSignature);
@@ -658,7 +689,7 @@ contract MidnightBundlesV2MakerTest is Test {
         );
 
         assertEq(midnight.consumed(lender, oldOffer.group), consumed);
-        assertTrue(ISetterRatifierV1(oldOffer.ratifier).isRootRatified(lender, oldRoot));
+        assertTrue(IRatifiersV1Common(oldOffer.ratifier).isRootRatified(lender, oldRoot));
         assertFalse(priceRatifier.isRootRatified(lender, newRoot));
         assertEq(midnight.isAuthorized(lender, newOffer.ratifier), authorizedBefore);
         assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), supplyBefore);
@@ -777,7 +808,7 @@ contract MidnightBundlesV2MakerTest is Test {
 
     function testMakePublishesPayload() public {
         Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
-        bytes32 root = HashLib.hashPriceOffer(offer, address(0));
+        bytes32 root = HashLib.hashPriceRatifierV1Offer(offer, address(0));
         bytes memory payload = abi.encode(offer, address(0));
 
         vm.expectEmit(address(offerLog));
@@ -833,7 +864,7 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(callbackOf(lender).code.length, 0, "callback deployment rolled back");
         assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), 0, "supply rolled back");
         assertFalse(midnight.isAuthorized(lender, ratifier), "ratifier authorization rolled back");
-        assertFalse(ISetterRatifierV1(ratifier).isRootRatified(lender, root), "root rolled back");
+        assertFalse(IRatifiersV1Common(ratifier).isRootRatified(lender, root), "root rolled back");
         (, uint128 nonce) = IPriceRatifierV1(ratifier).ratification(lender, root);
         assertEq(nonce, 0, "nonce rolled back");
         assertEq(midnight.consumed(lender, cancelledGroup), 0, "cancellation rolled back");
@@ -879,7 +910,7 @@ contract MidnightBundlesV2MakerTest is Test {
         );
 
         assertTrue(midnight.isAuthorized(lender, ratifier));
-        assertTrue(ISetterRatifierV1(ratifier).isRootRatified(lender, root));
+        assertTrue(IRatifiersV1Common(ratifier).isRootRatified(lender, root));
         assertEq(midnight.consumed(lender, group), type(uint128).max);
         assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS);
     }
@@ -947,13 +978,13 @@ contract MidnightBundlesV2MakerTest is Test {
         );
 
         assertEq(blueBuyCallbackFactory.callbackOf(lender, CALLBACK_SALT), callback, "reused callback");
-        assertTrue(ISetterRatifierV1(oldOffer.ratifier).isRootRatified(lender, oldRoot), "old root retained");
-        assertTrue(ISetterRatifierV1(newOffer.ratifier).isRootRatified(lender, newRoot), "new root");
+        assertTrue(IRatifiersV1Common(oldOffer.ratifier).isRootRatified(lender, oldRoot), "old root retained");
+        assertTrue(IRatifiersV1Common(newOffer.ratifier).isRootRatified(lender, newRoot), "new root");
         assertTrue(midnight.isAuthorized(lender, oldOffer.ratifier), "old authorization retained");
         assertTrue(midnight.isAuthorized(lender, newOffer.ratifier), "new authorization");
         assertEq(midnight.consumed(lender, group), type(uint128).max, "old group cancelled");
         if (oldOffer.ratifier != newOffer.ratifier) {
-            assertFalse(ISetterRatifierV1(oldOffer.ratifier).isRootRatified(lender, newRoot), "new root isolated");
+            assertFalse(IRatifiersV1Common(oldOffer.ratifier).isRootRatified(lender, newRoot), "new root isolated");
         }
         assertEq(morpho.expectedSupplyAssets(blueMarket, callback), supplyBeforeRepost, "reused Blue position");
 
@@ -970,7 +1001,7 @@ contract MidnightBundlesV2MakerTest is Test {
         bytes32 oldRoot = makeLendLimit(oldOffer, PARKED_ASSETS);
 
         Offer memory newOffer = makeOffer(keccak256("new group"), PARKED_ASSETS, MAX_TICK - 4);
-        bytes32 newRoot = HashLib.hashPriceOffer(newOffer, address(0));
+        bytes32 newRoot = HashLib.hashPriceRatifierV1Offer(newOffer, address(0));
 
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake(
@@ -1005,7 +1036,7 @@ contract MidnightBundlesV2MakerTest is Test {
         Offer memory offer = makeOffer(keccak256("unauthorized"), PARKED_ASSETS, MAX_TICK);
         offer.maker = unauthorizedLender;
         offer.callback = callbackOf(unauthorizedLender);
-        bytes32 root = HashLib.hashPriceOffer(offer, address(0));
+        bytes32 root = HashLib.hashPriceRatifierV1Offer(offer, address(0));
 
         vm.startPrank(unauthorizedLender);
         loanToken.approve(address(midnightBundles), type(uint256).max);
@@ -1080,7 +1111,7 @@ contract MidnightBundlesV2MakerTest is Test {
         collateralSupplies[2] = CollateralSupply({collateralIndex: firstCollateralIndex, assets: 0});
 
         Offer memory offer = makeBorrowOffer(market, keccak256("borrow group"), PARKED_ASSETS, MAX_TICK);
-        bytes32 root = HashLib.hashPriceOffer(offer, address(0));
+        bytes32 root = HashLib.hashPriceRatifierV1Offer(offer, address(0));
         bytes memory payload = abi.encode(offer, address(0));
 
         vm.expectEmit(address(offerLog));
@@ -1121,7 +1152,7 @@ contract MidnightBundlesV2MakerTest is Test {
         midnight.setIsAuthorized(address(midnightBundles), true, borrower);
 
         Offer memory oldOffer = makeBorrowOffer(midnightMarket, keccak256("borrow group"), PARKED_ASSETS, MAX_TICK);
-        bytes32 oldRoot = HashLib.hashPriceOffer(oldOffer, address(0));
+        bytes32 oldRoot = HashLib.hashPriceRatifierV1Offer(oldOffer, address(0));
 
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2CancelAndMake(
@@ -1140,7 +1171,7 @@ contract MidnightBundlesV2MakerTest is Test {
 
         Offer memory newOffer = oldOffer;
         newOffer.tick = MAX_TICK - 4;
-        bytes32 newRoot = HashLib.hashPriceOffer(newOffer, address(0));
+        bytes32 newRoot = HashLib.hashPriceRatifierV1Offer(newOffer, address(0));
 
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2CancelAndMake(
@@ -1177,8 +1208,8 @@ contract MidnightBundlesV2MakerTest is Test {
             makeBorrowOffer(midnightMarket, keccak256("first borrow group"), PARKED_ASSETS, MAX_TICK);
         Offer memory secondOffer =
             makeBorrowOffer(secondMarket, keccak256("second borrow group"), PARKED_ASSETS, MAX_TICK - 4);
-        bytes32 firstHash = HashLib.hashPriceOffer(firstOffer, address(0));
-        bytes32 secondHash = HashLib.hashPriceOffer(secondOffer, address(0));
+        bytes32 firstHash = HashLib.hashPriceRatifierV1Offer(firstOffer, address(0));
+        bytes32 secondHash = HashLib.hashPriceRatifierV1Offer(secondOffer, address(0));
         bytes32 root = HashLib.hashNode(firstHash, secondHash);
 
         vm.prank(borrower);
@@ -1256,7 +1287,7 @@ contract MidnightBundlesV2MakerTest is Test {
         Offer memory offer = makeOffer(keccak256("Price offer"), PARKED_ASSETS, MAX_TICK);
         offer.callback = address(0);
         offer.callbackData = "";
-        bytes32 root = HashLib.hashPriceOffer(offer, address(0));
+        bytes32 root = HashLib.hashPriceRatifierV1Offer(offer, address(0));
 
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake(
@@ -1294,7 +1325,7 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(ecrecoverRatifier.isRatified(oldOffer, oldEcrecoverData, address(0)), CALLBACK_SUCCESS);
 
         Offer memory newOffer = makeOffer(keccak256("replacement group"), PARKED_ASSETS, MAX_TICK - 4);
-        bytes32 newRoot = HashLib.hashPriceOffer(newOffer, address(0));
+        bytes32 newRoot = HashLib.hashPriceRatifierV1Offer(newOffer, address(0));
 
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake(
@@ -1399,7 +1430,7 @@ contract MidnightBundlesV2MakerTest is Test {
 
     function testMakeRevertsAfterDeadline() public {
         Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
-        bytes32 root = HashLib.hashPriceOffer(offer, address(0));
+        bytes32 root = HashLib.hashPriceRatifierV1Offer(offer, address(0));
         uint256 deadline = block.timestamp - 1;
 
         vm.prank(lender);

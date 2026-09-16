@@ -7,9 +7,9 @@ import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
 import {
-    ISetterRatifierV1,
+    IRatifiersV1Common,
     SET_IS_ROOT_RATIFIED_SUCCESS
-} from "../../lib/midnight/src/ratifiers/interfaces/ISetterRatifierV1.sol";
+} from "../../lib/midnight/src/ratifiers/interfaces/IRatifiersV1Common.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {IdLib} from "../../lib/midnight/src/libraries/IdLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
@@ -69,8 +69,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev SECURITY: If newRoot is non-zero, this call grants ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
     /// @dev A wrong ratifier address may authorize a malicious contract that can move funds, modify positions, and authorize other accounts on behalf of msg.sender, potentially causing loss of funds. Interface compatibility and the expected success value do not establish trustworthiness.
     /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports PriceRatifierV1 and RateRatifierV1; the selected root setter must return SET_IS_ROOT_RATIFIED_SUCCESS.
-    /// - Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig.
-    /// - The EIP-712 signature must authorize (msg.sender, newRoot, true, nonce, signatureDeadline) for the selected ratifier and current chain, signed by msg.sender or an address authorized by msg.sender on Midnight. Its deadline is independent of the bundle's deadline. Invalid signed ratifications revert.
+    /// - Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig.
+    /// - The EIP-712 signature must authorize (msg.sender, newRoot, true, nonce, signatureDeadline) under the selected ratifier's offer-tree typehash for height, for the current chain, signed by msg.sender or an address authorized by msg.sender on Midnight. Its deadline is independent of the bundle's deadline. Invalid signed ratifications revert.
     /// @dev If newRoot is zero, ratifier, rootSignature, and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
     /// @dev This function is meant to be used for buying (collateralSupplies.length == 0) or selling (assetsToPark == 0).
@@ -134,12 +134,12 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             IMidnight(MIDNIGHT).setIsAuthorized(ratifier, true, msg.sender);
             bytes32 ratificationResult;
             if (rootSignature.length == 0) {
-                ratificationResult = ISetterRatifierV1(ratifier).setIsRootRatified(msg.sender, newRoot, true);
+                ratificationResult = IRatifiersV1Common(ratifier).setIsRootRatified(msg.sender, newRoot, true);
             } else {
-                (uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) =
-                    abi.decode(rootSignature, (uint128, uint256, uint8, bytes32, bytes32));
-                ratificationResult = ISetterRatifierV1(ratifier)
-                    .setIsRootRatifiedWithSig(msg.sender, newRoot, true, nonce, signatureDeadline, v, r, s);
+                (uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) =
+                    abi.decode(rootSignature, (uint256, uint128, uint256, uint8, bytes32, bytes32));
+                ratificationResult = IRatifiersV1Common(ratifier)
+                    .setIsRootRatifiedWithSig(msg.sender, newRoot, height, true, nonce, signatureDeadline, v, r, s);
             }
             require(ratificationResult == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
 
