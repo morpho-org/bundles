@@ -110,22 +110,14 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         }
 
         uint256 nativeBefore = address(this).balance;
+        supplyCollaterals(market, collateralSupplies, maker);
+
         if (assetsToPark > 0) {
             address blueBuyCallback =
                 IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).createBlueBuyCallback(maker, callbackSalt);
             TokenLib.transferFromOrWrapNative(blueMarket.loanToken, msg.sender, assetsToPark, msg.value > 0);
             TokenLib.forceApproveMax(blueMarket.loanToken, BLUE);
             IMorpho(BLUE).supply(blueMarket, assetsToPark, 0, blueBuyCallback, "");
-        }
-
-        for (uint256 i; i < collateralSupplies.length; i++) {
-            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            TokenLib.transferFromOrWrapNative(
-                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && assetsToPark == 0 && i == 0
-            );
-            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-            IMidnight(MIDNIGHT)
-                .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, maker);
         }
         // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
@@ -277,15 +269,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
         uint256 nativeBefore = address(this).balance;
-        for (uint256 i; i < collateralSupplies.length; i++) {
-            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            TokenLib.transferFromOrWrapNative(
-                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
-            );
-            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-            IMidnight(MIDNIGHT)
-                .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
-        }
+        supplyCollaterals(market, collateralSupplies, taker);
         // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
@@ -435,15 +419,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
         uint256 nativeBefore = address(this).balance;
-        for (uint256 i; i < collateralSupplies.length; i++) {
-            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            TokenLib.transferFromOrWrapNative(
-                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
-            );
-            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-            IMidnight(MIDNIGHT)
-                .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
-        }
+        supplyCollaterals(market, collateralSupplies, taker);
         // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
@@ -490,6 +466,22 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     }
 
     /// INTERNAL FUNCTIONS ///
+
+    /// @dev Supplies each collateralSupplies entry to onBehalf on Midnight, pulling the assets from msg.sender.
+    /// @dev The first supply is funded by wrapping msg.value when it is non-zero.
+    function supplyCollaterals(Market memory market, CollateralSupply[] memory collateralSupplies, address onBehalf)
+        internal
+    {
+        for (uint256 i; i < collateralSupplies.length; i++) {
+            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            TokenLib.transferFromOrWrapNative(
+                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
+            );
+            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, onBehalf);
+        }
+    }
 
     /// @dev Returns min(x, y, z).
     function min(uint256 x, uint256 y, uint256 z) internal pure returns (uint256) {

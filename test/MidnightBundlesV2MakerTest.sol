@@ -1181,7 +1181,7 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(bound, PARKED_ASSETS);
     }
 
-    function testBorrowLimitSuppliesMultipleCollateralAndMakesSellOffer() public {
+    function testBorrowLimitSuppliesMultipleCollateralAndMakesSellOffer(bool useDelegate) public {
         ERC20Permit firstCollateral = new ERC20Permit("first collateral", "FIRST");
         ERC20Permit secondCollateral = new ERC20Permit("second collateral", "SECOND");
         (Market memory market, uint256 firstCollateralIndex, uint256 secondCollateralIndex) =
@@ -1190,13 +1190,18 @@ contract MidnightBundlesV2MakerTest is Test {
 
         uint256 firstAssets = 400e18;
         uint256 secondAssets = 600e18;
-        deal(address(firstCollateral), borrower, firstAssets);
-        deal(address(secondCollateral), borrower, secondAssets);
+        address payer = useDelegate ? makeAddr("operator") : borrower;
+        deal(address(firstCollateral), payer, firstAssets);
+        deal(address(secondCollateral), payer, secondAssets);
 
         vm.startPrank(borrower);
+        midnight.setIsAuthorized(address(midnightBundles), true, borrower);
+        if (useDelegate) midnight.setIsAuthorized(payer, true, borrower);
+        vm.stopPrank();
+
+        vm.startPrank(payer);
         firstCollateral.approve(address(midnightBundles), type(uint256).max);
         secondCollateral.approve(address(midnightBundles), type(uint256).max);
-        midnight.setIsAuthorized(address(midnightBundles), true, borrower);
         vm.stopPrank();
 
         CollateralSupply[] memory collateralSupplies = new CollateralSupply[](3);
@@ -1211,7 +1216,7 @@ contract MidnightBundlesV2MakerTest is Test {
 
         vm.expectEmit(address(offerLog));
         emit Log.Data(payload);
-        vm.prank(borrower);
+        vm.prank(payer);
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             0,
@@ -1229,6 +1234,12 @@ contract MidnightBundlesV2MakerTest is Test {
 
         assertEq(midnight.collateral(id, borrower, firstCollateralIndex), firstAssets, "first collateral");
         assertEq(midnight.collateral(id, borrower, secondCollateralIndex), secondAssets, "second collateral");
+        assertEq(firstCollateral.balanceOf(payer), 0, "payer funded first collateral");
+        assertEq(secondCollateral.balanceOf(payer), 0, "payer funded second collateral");
+        if (useDelegate) {
+            assertEq(midnight.collateral(id, payer, firstCollateralIndex), 0, "operator has no first collateral");
+            assertEq(midnight.collateral(id, payer, secondCollateralIndex), 0, "operator has no second collateral");
+        }
         assertEq(firstCollateral.balanceOf(address(midnightBundles)), 0, "first bundle balance");
         assertEq(secondCollateral.balanceOf(address(midnightBundles)), 0, "second bundle balance");
         assertTrue(priceRatifier.isRootRatified(borrower, root), "root ratification");
@@ -1623,7 +1634,7 @@ contract MidnightBundlesV2MakerTest is Test {
 
         deal(lender, PARKED_ASSETS);
 
-        // With assetsToPark zero, msg.value funds the single collateral supply instead.
+        // The collateral supply is the call's first transfer, so msg.value funds it.
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
             blueMarket,
