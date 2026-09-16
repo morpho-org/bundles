@@ -4,7 +4,6 @@ pragma solidity >=0.8.0;
 
 import {Offer, Market} from "../../../lib/midnight/src/interfaces/IMidnight.sol";
 import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
-import {TokenPermit} from "../../libraries/TokenLib.sol";
 
 struct GroupCancellation {
     bytes32 group;
@@ -14,12 +13,6 @@ struct GroupCancellation {
 struct CollateralSupply {
     uint256 collateralIndex;
     uint256 assets;
-}
-
-struct CollateralSupplyWithPermit {
-    uint256 collateralIndex;
-    uint256 assets;
-    TokenPermit permit;
 }
 
 struct CollateralWithdrawal {
@@ -42,7 +35,9 @@ interface IMidnightBundlesV2 {
     error InconsistentMarket();
     error InconsistentMidnight();
     error InconsistentSide();
+    error InconsistentInputs();
     error InvalidRatifierResponse();
+    error NativeTransferFailed();
     error NotReduceOnly();
     error OutOfOffers();
     error PctExceeded();
@@ -50,6 +45,7 @@ interface IMidnightBundlesV2 {
     error Unauthorized();
     error UnitsTooHigh();
     error UnitsTooLow();
+    error UnusedNative();
 
     /// STORAGE GETTERS ///
     function MIDNIGHT() external view returns (address);
@@ -70,7 +66,7 @@ interface IMidnightBundlesV2 {
         GroupCancellation[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
-    ) external;
+    ) external payable;
 
     function midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
         Market memory market,
@@ -79,7 +75,6 @@ interface IMidnightBundlesV2 {
         address taker,
         bool reduceOnly,
         bool repayEnabled,
-        TokenPermit memory loanTokenPermit,
         OfferFill[] memory offerFills,
         CollateralWithdrawal[] memory collateralWithdrawals,
         address collateralReceiver,
@@ -87,7 +82,7 @@ interface IMidnightBundlesV2 {
         address referralFeeRecipient,
         uint256 maxContinuousFee,
         uint256 deadline
-    ) external;
+    ) external payable;
 
     function midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
         Market memory market,
@@ -96,13 +91,13 @@ interface IMidnightBundlesV2 {
         address taker,
         bool reduceOnly,
         address receiver,
-        CollateralSupplyWithPermit[] memory collateralSupplies,
+        CollateralSupply[] memory collateralSupplies,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 maxContinuousFee,
         uint256 deadline
-    ) external;
+    ) external payable;
 
     function midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
         Market memory market,
@@ -111,7 +106,6 @@ interface IMidnightBundlesV2 {
         address taker,
         bool reduceOnly,
         bool repayEnabled,
-        TokenPermit memory loanTokenPermit,
         OfferFill[] memory offerFills,
         CollateralWithdrawal[] memory collateralWithdrawals,
         address collateralReceiver,
@@ -119,7 +113,7 @@ interface IMidnightBundlesV2 {
         address referralFeeRecipient,
         uint256 maxContinuousFee,
         uint256 deadline
-    ) external;
+    ) external payable;
 
     function midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
         Market memory market,
@@ -128,11 +122,11 @@ interface IMidnightBundlesV2 {
         address taker,
         bool reduceOnly,
         address receiver,
-        CollateralSupplyWithPermit[] memory collateralSupplies,
+        CollateralSupply[] memory collateralSupplies,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 maxContinuousFee,
         uint256 deadline
-    ) external;
+    ) external payable;
 }

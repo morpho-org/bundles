@@ -16,6 +16,7 @@ Maker-side:
 
 - `midnightBundlesV2CancelAndMake` — cancel offer groups, optionally park loan assets on Blue or supply collateral on Midnight, and publish new maker offers.
 
+Parking loan assets (to fund buy offers) and supplying collateral (to back sell offers) are mutually exclusive.
 Supports `PriceRatifierV1` and `RateRatifierV1`, with optional signed root activation.
 The maker must authorize the bundle on Midnight and approve it to pull any supplied loan or collateral assets.
 See the entrypoint's NatSpec for parameters, validation limits, and ratifier authorization requirements.
