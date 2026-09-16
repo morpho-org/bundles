@@ -997,7 +997,7 @@ contract MidnightBundlesV2MakerTest is Test {
 
         deal(lender, PARKED_ASSETS);
 
-        // With assetsToPark zero, msg.value funds the single collateral supply instead.
+        // The collateral supply is the call's first transfer, so msg.value funds it.
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
             blueMarket,
@@ -1016,33 +1016,37 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
     }
 
-    function testMakeParksNativeAndPullsCollateral() public {
+    function testMakeSuppliesNativeCollateralAndPullsParkedAssets() public {
         WETHMock weth = new WETHMock();
-        MarketParams memory wethBlueMarket = MarketParams({
-            loanToken: address(weth),
-            collateralToken: address(collateralToken),
-            oracle: address(blueOracle),
-            irm: address(0),
-            lltv: LLTV
+
+        CollateralParams[] memory collateralParams = new CollateralParams[](1);
+        collateralParams[0] = CollateralParams({
+            token: address(weth), lltv: LLTV, liquidationCursor: 0.25e18, oracle: address(midnightOracle)
         });
-        morpho.createMarket(wethBlueMarket);
-        bytes32 midnightId = midnight.touchMarket(midnightMarket);
+        Market memory wethCollateralMarket = Market({
+            chainId: block.chainid,
+            midnight: address(midnight),
+            loanToken: address(loanToken),
+            collateralParams: collateralParams,
+            maturity: block.timestamp + 100 days,
+            rcfThreshold: 0,
+            enterGate: address(0),
+            liquidatorGate: address(0)
+        });
+        bytes32 wethCollateralId = midnight.touchMarket(wethCollateralMarket);
 
         CollateralSupply[] memory supplies = new CollateralSupply[](1);
         supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
 
         deal(lender, PARKED_ASSETS);
-        deal(address(collateralToken), lender, PARKED_ASSETS);
-        vm.prank(lender);
-        collateralToken.approve(address(midnightBundles), PARKED_ASSETS);
 
-        // msg.value funds the parked assets; the collateral supply is pulled.
+        // The collateral supply comes before the parking, so msg.value funds it and the parked assets are pulled.
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
-            wethBlueMarket,
+            blueMarket,
             PARKED_ASSETS,
             CALLBACK_SALT,
-            midnightMarket,
+            wethCollateralMarket,
             supplies,
             bytes32(0),
             new bytes32[](0),
@@ -1050,12 +1054,12 @@ contract MidnightBundlesV2MakerTest is Test {
             block.timestamp
         );
 
-        assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
-        assertEq(midnight.collateral(midnightId, lender, 0), PARKED_ASSETS, "collateral supplied");
+        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
+        assertEq(midnight.collateral(wethCollateralId, lender, 0), PARKED_ASSETS, "collateral supplied");
         assertEq(lender.balance, 0, "lender native residual");
-        assertEq(collateralToken.balanceOf(lender), 0, "lender collateral residual");
+        assertEq(loanToken.balanceOf(lender), PARKED_ASSETS, "lender loan residual");
         assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
-        assertEq(collateralToken.balanceOf(address(midnightBundles)), 0, "bundler collateral residual");
+        assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler loan residual");
     }
 
     function testMakeSuppliesNativeFirstCollateralAndPullsSecond() public {

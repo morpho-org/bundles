@@ -74,6 +74,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev If newRoot is non-zero, authorizes SETTER_RATIFIER, activates newRoot, and publishes payload. Otherwise payload is ignored and SETTER_RATIFIER authorization is unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
     /// @dev The fact that only the first transfer will wrap native tokens is not constraining the use cases. This is because assetsToPark > 0 and collateralSupplies[0].assets > 0 are disjoint: the former is for buying and the latter is for selling.
+    /// @dev Collateral is supplied before assets are parked, so msg.value funds the first collateral supply when collateralSupplies is non-empty, and the parked assets otherwise.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
     /// @dev The new root may contain offers for multiple markets.
     /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected against supply-share-price inflation attacks.
@@ -96,24 +97,16 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         require(block.timestamp <= deadline, DeadlinePassed());
 
         uint256 nativeBefore = address(this).balance;
+        supplyCollaterals(market, collateralSupplies, msg.sender);
+
         if (assetsToPark > 0) {
             address blueBuyCallback =
                 IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).createBlueBuyCallback(msg.sender, callbackSalt);
-            TokenLib.transferFromOrWrapNative(blueMarket.loanToken, msg.sender, assetsToPark, msg.value > 0);
+            TokenLib.transferFromOrWrapNative(
+                blueMarket.loanToken, msg.sender, assetsToPark, msg.value > 0 && collateralSupplies.length == 0
+            );
             TokenLib.forceApproveMax(blueMarket.loanToken, BLUE);
             IMorpho(BLUE).supply(blueMarket, assetsToPark, 0, blueBuyCallback, "");
-        }
-
-        for (uint256 i; i < collateralSupplies.length; i++) {
-            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            TokenLib.transferFromOrWrapNative(
-                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && assetsToPark == 0 && i == 0
-            );
-            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-            IMidnight(MIDNIGHT)
-                .supplyCollateral(
-                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
-                );
         }
         // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
@@ -260,15 +253,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
         uint256 nativeBefore = address(this).balance;
-        for (uint256 i; i < collateralSupplies.length; i++) {
-            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            TokenLib.transferFromOrWrapNative(
-                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
-            );
-            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-            IMidnight(MIDNIGHT)
-                .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
-        }
+        supplyCollaterals(market, collateralSupplies, taker);
         // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
@@ -418,15 +403,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
         uint256 nativeBefore = address(this).balance;
-        for (uint256 i; i < collateralSupplies.length; i++) {
-            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            TokenLib.transferFromOrWrapNative(
-                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
-            );
-            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-            IMidnight(MIDNIGHT)
-                .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, taker);
-        }
+        supplyCollaterals(market, collateralSupplies, taker);
         // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
@@ -473,6 +450,22 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     }
 
     /// INTERNAL FUNCTIONS ///
+
+    /// @dev Supplies each collateralSupplies entry to onBehalf on Midnight, pulling the assets from msg.sender.
+    /// @dev The first supply is funded by wrapping msg.value when it is non-zero.
+    function supplyCollaterals(Market memory market, CollateralSupply[] memory collateralSupplies, address onBehalf)
+        internal
+    {
+        for (uint256 i; i < collateralSupplies.length; i++) {
+            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            TokenLib.transferFromOrWrapNative(
+                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
+            );
+            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, onBehalf);
+        }
+    }
 
     /// @dev Returns min(x, y, z).
     function min(uint256 x, uint256 y, uint256 z) internal pure returns (uint256) {
