@@ -73,8 +73,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Cancels each group in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
     /// @dev If newRoot is non-zero, authorizes SETTER_RATIFIER, activates newRoot, and publishes payload. Otherwise payload is ignored and SETTER_RATIFIER authorization is unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
-    /// @dev The fact that only the first transfer will wrap native tokens is not constraining the use cases. This is because assetsToPark > 0 and collateralSupplies[0].assets > 0 are disjoint: the former is for buying and the latter is for selling.
-    /// @dev Collateral is supplied before assets are parked, so msg.value funds the first collateral supply when collateralSupplies is non-empty, and the parked assets otherwise.
+    /// @dev This function is meant to be used for buying (collateralSupplies.length == 0) or selling (assetsToPark == 0).
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
     /// @dev The new root may contain offers for multiple markets.
     /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected against supply-share-price inflation attacks.
@@ -95,6 +94,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 deadline
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
+        require(collateralSupplies.length == 0 || assetsToPark == 0, InconsistentInputs());
 
         uint256 nativeBefore = address(this).balance;
         supplyCollaterals(market, collateralSupplies, msg.sender);
