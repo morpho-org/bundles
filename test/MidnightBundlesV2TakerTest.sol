@@ -180,30 +180,98 @@ contract MidnightBundlesV2TakerTest is Test {
         return arr;
     }
 
-    function testUnauthorized() public {
+    function testBuyRequiresBundleAuthorization(bool assetsTarget, bool repayEnabled) public {
+        uint256 units = 100e18;
         offers[0].buy = false;
         offers[0].maker = borrower;
+        offers[0].receiverIfMakerIsSeller = borrower;
+        offers[0].maxUnits = units.toUint128();
+        offers[0].tick = MAX_TICK / 2;
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+        collateralize(market, borrower, units);
+        uint256 buyerAssets = units.mulDivUp(TickLib.tickToPrice(offers[0].tick), WAD);
 
         OfferFill[] memory offerFills = new OfferFill[](1);
-        offerFills[0] = OfferFill({offer: offers[0], units: 100, ratifierData: hex""});
+        offerFills[0] = OfferFill({offer: offers[0], units: units, ratifierData: hex""});
 
-        vm.prank(address(0xdead));
-        vm.expectRevert(IMidnightBundlesV2.Unauthorized.selector);
-        midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
-            market,
-            100,
-            0,
-            lender,
-            false,
-            true,
-            offerFills,
-            new CollateralWithdrawal[](0),
-            address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp
-        );
+        vm.startPrank(lender);
+        midnight.setIsAuthorized(address(midnightBundles), false, lender);
+        // Unauthorized takes are skipped; the optional repay bubbles Midnight's authorization error.
+        vm.expectRevert(repayEnabled ? IMidnight.Unauthorized.selector : IMidnightBundlesV2.OutOfOffers.selector);
+        if (assetsTarget) {
+            midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
+                market,
+                buyerAssets,
+                units,
+                false,
+                repayEnabled,
+                offerFills,
+                new CollateralWithdrawal[](0),
+                address(0),
+                0,
+                address(0),
+                type(uint256).max,
+                block.timestamp
+            );
+        } else {
+            midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
+                market,
+                units,
+                buyerAssets,
+                false,
+                repayEnabled,
+                offerFills,
+                new CollateralWithdrawal[](0),
+                address(0),
+                0,
+                address(0),
+                type(uint256).max,
+                block.timestamp
+            );
+        }
+        vm.stopPrank();
+
+        assertEq(midnight.credit(id, lender), 0, "caller credit unchanged");
+        assertEq(midnight.debt(id, borrower), 0, "maker debt unchanged");
+        assertEq(loanToken.balanceOf(lender), type(uint256).max, "funding rolled back");
+    }
+
+    function testSellRequiresBundleAuthorization(bool assetsTarget) public {
+        vm.startPrank(borrower);
+        midnight.setIsAuthorized(address(midnightBundles), false, borrower);
+        vm.expectRevert(IMidnight.Unauthorized.selector);
+        if (assetsTarget) {
+            midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
+                market,
+                1,
+                type(uint256).max,
+                false,
+                borrower,
+                new CollateralSupply[](0),
+                new OfferFill[](0),
+                0,
+                address(0),
+                type(uint256).max,
+                block.timestamp
+            );
+        } else {
+            midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
+                market,
+                1,
+                0,
+                false,
+                borrower,
+                new CollateralSupply[](0),
+                new OfferFill[](0),
+                0,
+                address(0),
+                type(uint256).max,
+                block.timestamp
+            );
+        }
+        vm.stopPrank();
     }
 
     function testBuyUnitsTargetRevertsAboveMaxContinuousFee() public {
@@ -227,7 +295,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             type(uint256).max,
-            lender,
             false,
             true,
             offerFills,
@@ -275,7 +342,6 @@ contract MidnightBundlesV2TakerTest is Test {
             fakeMarket,
             targetUnits,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -307,7 +373,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 units,
                 0,
-                borrower,
                 false,
                 borrower,
                 new CollateralSupply[](0),
@@ -330,7 +395,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 units,
                 0,
-                borrower,
                 false,
                 borrower,
                 new CollateralSupply[](0),
@@ -379,7 +443,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 targetBuyerAssets,
                 0,
-                lender,
                 false,
                 true,
                 offerFills,
@@ -403,7 +466,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 targetBuyerAssets,
                 0,
-                lender,
                 false,
                 true,
                 offerFills,
@@ -441,7 +503,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             2,
             type(uint256).max,
-            lender,
             false,
             true,
             offerFills,
@@ -472,7 +533,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             2,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -512,7 +572,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1000,
             0,
-            lender,
             false,
             true,
             offerFills,
@@ -559,7 +618,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 targetSellerAssets,
                 type(uint256).max,
-                borrower,
                 false,
                 borrower,
                 new CollateralSupply[](0),
@@ -582,7 +640,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 targetSellerAssets,
                 type(uint256).max,
-                borrower,
                 false,
                 borrower,
                 new CollateralSupply[](0),
@@ -613,7 +670,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1000,
             type(uint256).max,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -645,7 +701,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             debtUnits,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -681,7 +736,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 buyUnits,
                 maxBuyerAssets,
-                borrower,
                 true,
                 true,
                 buyOfferFills,
@@ -698,7 +752,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 buyUnits,
                 maxBuyerAssets,
-                borrower,
                 true,
                 false,
                 buyOfferFills,
@@ -743,7 +796,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             type(uint256).max,
-            lender,
             false,
             true,
             offerFills,
@@ -789,7 +841,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            borrower,
             false,
             receiver,
             new CollateralSupply[](0),
@@ -836,7 +887,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetBuyerAssets,
             0,
-            lender,
             false,
             true,
             offerFills,
@@ -883,7 +933,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetSellerAssets,
             type(uint256).max,
-            borrower,
             false,
             receiver,
             new CollateralSupply[](0),
@@ -920,7 +969,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -948,7 +996,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             repayUnits,
             assets,
-            borrower,
             false,
             true,
             offerFills,
@@ -987,7 +1034,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             debt,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1016,7 +1062,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             debt,
             assets,
-            borrower,
             false,
             true,
             offerFills,
@@ -1066,7 +1111,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1103,7 +1147,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             buyUnits + repayUnits,
             maxBuyerAssets,
-            borrower,
             false,
             true,
             buyOfferFills,
@@ -1150,7 +1193,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             debtUnits,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1182,7 +1224,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetBuyerAssets,
             0,
-            borrower,
             false,
             true,
             buyOfferFills,
@@ -1221,7 +1262,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1258,7 +1298,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             buyUnits,
             maxBuyerAssets,
-            borrower,
             false,
             false,
             buyOfferFills,
@@ -1299,7 +1338,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1324,7 +1362,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             repayUnits,
             assets,
-            borrower,
             false,
             false,
             new OfferFill[](0),
@@ -1365,7 +1402,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1387,7 +1423,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetBuyerAssets,
             0,
-            borrower,
             false,
             false,
             new OfferFill[](0),
@@ -1432,7 +1467,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1468,7 +1502,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             sellUnits + withdrawUnits,
             0,
-            lender,
             false,
             receiver,
             new CollateralSupply[](0),
@@ -1519,7 +1552,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             creditUnits,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1549,7 +1581,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetSellerAssets,
             type(uint256).max,
-            lender,
             false,
             receiver,
             new CollateralSupply[](0),
@@ -1586,7 +1617,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1620,7 +1650,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             storedCredit,
             0,
-            lender,
             false,
             receiver,
             new CollateralSupply[](0),
@@ -1661,7 +1690,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1695,7 +1723,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             storedCredit,
             type(uint256).max,
-            lender,
             false,
             receiver,
             new CollateralSupply[](0),
@@ -1726,7 +1753,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1,
             0,
-            lender,
             false,
             true,
             buyOfferFills,
@@ -1742,7 +1768,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1,
             0,
-            lender,
             false,
             true,
             buyOfferFills,
@@ -1761,7 +1786,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1776,7 +1800,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1,
             type(uint256).max,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1800,7 +1823,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1,
             0,
-            lender,
             false,
             true,
             offerFills,
@@ -1816,7 +1838,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1,
             0,
-            lender,
             false,
             true,
             offerFills,
@@ -1832,25 +1853,13 @@ contract MidnightBundlesV2TakerTest is Test {
         vm.startPrank(borrower);
         vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
-            market,
-            1,
-            0,
-            borrower,
-            false,
-            borrower,
-            new CollateralSupply[](0),
-            offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            past
+            market, 1, 0, false, borrower, new CollateralSupply[](0), offerFills, 0, address(0), type(uint256).max, past
         );
         vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
             market,
             1,
             type(uint256).max,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -1919,7 +1928,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             maxBuyerAssets,
-            lender,
             false,
             true,
             offerFills,
@@ -1970,7 +1978,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetBuyerAssets,
             0,
-            lender,
             false,
             true,
             offerFills,
@@ -2008,18 +2015,7 @@ contract MidnightBundlesV2TakerTest is Test {
 
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
-            market,
-            units,
-            0,
-            borrower,
-            false,
-            borrower,
-            supplies,
-            offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp
+            market, units, 0, false, borrower, supplies, offerFills, 0, address(0), type(uint256).max, block.timestamp
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -2050,7 +2046,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -2081,7 +2076,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             repayUnits,
             repayUnits,
-            borrower,
             false,
             true,
             offerFills,
@@ -2132,7 +2126,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetSellerAssets,
             type(uint256).max,
-            borrower,
             false,
             borrower,
             supplies,
@@ -2176,7 +2169,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             price - 1,
-            lender,
             false,
             true,
             offerFills,
@@ -2212,7 +2204,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             minSellerAssets,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -2249,7 +2240,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units.mulDivUp(price, WAD),
             units + 2,
-            lender,
             false,
             true,
             offerFills,
@@ -2285,7 +2275,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetSellerAssets,
             price + 1,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -2319,7 +2308,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             100,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -2361,7 +2349,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetSellerAssets,
             type(uint256).max,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
@@ -2414,7 +2401,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             100,
             maxBuyerAssets,
-            lender,
             false,
             true,
             offerFills,
@@ -2464,7 +2450,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetBuyerAssets,
             0,
-            lender,
             false,
             true,
             offerFills,
@@ -2536,7 +2521,6 @@ contract MidnightBundlesV2TakerTest is Test {
             wethMarket,
             units,
             maxBuyerAssets,
-            lender,
             false,
             false,
             offerFills,
@@ -2575,7 +2559,6 @@ contract MidnightBundlesV2TakerTest is Test {
             wethMarket,
             targetBuyerAssets,
             0,
-            lender,
             false,
             false,
             offerFills,
@@ -2637,7 +2620,6 @@ contract MidnightBundlesV2TakerTest is Test {
             wethCollateralMarket,
             units,
             0,
-            borrower,
             false,
             borrower,
             supplies,
@@ -2719,7 +2701,6 @@ contract MidnightBundlesV2TakerTest is Test {
             wethCollateralMarket,
             units,
             0,
-            borrower,
             false,
             borrower,
             supplies,
@@ -2766,7 +2747,6 @@ contract MidnightBundlesV2TakerTest is Test {
             wethCollateralMarket,
             targetSellerAssets,
             units,
-            borrower,
             false,
             borrower,
             supplies,
@@ -2807,7 +2787,6 @@ contract MidnightBundlesV2TakerTest is Test {
             wethMarket,
             units,
             maxBuyerAssets,
-            lender,
             false,
             false,
             offerFills,
@@ -2830,7 +2809,6 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             0,
             0,
-            borrower,
             false,
             borrower,
             new CollateralSupply[](0),
