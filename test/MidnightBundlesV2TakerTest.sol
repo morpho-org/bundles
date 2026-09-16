@@ -19,14 +19,14 @@ import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
+import {TokenLib} from "../src/libraries/TokenLib.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
 import {
     IMidnightBundlesV2,
     OfferFill,
     CollateralWithdrawal,
-    CollateralSupplyWithPermit
+    CollateralSupply
 } from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
-import {TokenPermit} from "../src/libraries/TokenLib.sol";
 
 contract MidnightBundlesV2TakerTest is Test {
     using UtilsLib for uint256;
@@ -182,8 +182,6 @@ contract MidnightBundlesV2TakerTest is Test {
         return arr;
     }
 
-    function _noPermit() internal pure returns (TokenPermit memory) {}
-
     function testUnauthorized() public {
         offers[0].buy = false;
         offers[0].maker = borrower;
@@ -200,7 +198,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -235,7 +232,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -286,7 +282,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             0,
             address(0),
@@ -318,7 +314,7 @@ contract MidnightBundlesV2TakerTest is Test {
                 borrower,
                 false,
                 borrower,
-                new CollateralSupplyWithPermit[](0),
+                new CollateralSupply[](0),
                 offerFills,
                 0,
                 address(0),
@@ -341,7 +337,7 @@ contract MidnightBundlesV2TakerTest is Test {
                 borrower,
                 false,
                 borrower,
-                new CollateralSupplyWithPermit[](0),
+                new CollateralSupply[](0),
                 offerFills,
                 0,
                 address(0),
@@ -390,7 +386,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 lender,
                 false,
                 true,
-                _noPermit(),
                 offerFills,
                 new CollateralWithdrawal[](0),
                 address(0),
@@ -415,7 +410,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 lender,
                 false,
                 true,
-                _noPermit(),
                 offerFills,
                 new CollateralWithdrawal[](0),
                 address(0),
@@ -454,7 +448,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -486,7 +479,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             0,
             address(0),
@@ -526,7 +519,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -574,7 +566,7 @@ contract MidnightBundlesV2TakerTest is Test {
                 borrower,
                 false,
                 borrower,
-                new CollateralSupplyWithPermit[](0),
+                new CollateralSupply[](0),
                 offerFills,
                 0,
                 address(0),
@@ -597,7 +589,7 @@ contract MidnightBundlesV2TakerTest is Test {
                 borrower,
                 false,
                 borrower,
-                new CollateralSupplyWithPermit[](0),
+                new CollateralSupply[](0),
                 offerFills,
                 0,
                 address(0),
@@ -628,7 +620,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             0,
             address(0),
@@ -660,7 +652,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -696,7 +688,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 borrower,
                 true,
                 true,
-                _noPermit(),
                 buyOfferFills,
                 new CollateralWithdrawal[](0),
                 address(0),
@@ -714,7 +705,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 borrower,
                 true,
                 false,
-                _noPermit(),
                 buyOfferFills,
                 new CollateralWithdrawal[](0),
                 address(0),
@@ -760,7 +750,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -807,7 +796,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             receiver,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             referralFeePct,
             referrer,
@@ -854,7 +843,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -902,7 +890,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             receiver,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             referralFeePct,
             referrer,
@@ -939,7 +927,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -967,7 +955,6 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -1007,7 +994,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -1036,7 +1023,6 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             true,
-            _noPermit(),
             offerFills,
             withdrawals,
             collateralReceiver,
@@ -1087,7 +1073,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -1124,7 +1110,6 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             true,
-            _noPermit(),
             buyOfferFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -1172,7 +1157,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -1204,7 +1189,6 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             true,
-            _noPermit(),
             buyOfferFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -1244,7 +1228,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -1281,7 +1265,6 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             false,
-            _noPermit(),
             buyOfferFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -1323,7 +1306,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -1348,7 +1331,6 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             false,
-            _noPermit(),
             new OfferFill[](0),
             new CollateralWithdrawal[](0),
             address(0),
@@ -1390,7 +1372,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -1412,7 +1394,6 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             false,
-            _noPermit(),
             new OfferFill[](0),
             new CollateralWithdrawal[](0),
             address(0),
@@ -1458,7 +1439,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -1494,7 +1475,7 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             receiver,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             referralFeePct,
             referrer,
@@ -1545,7 +1526,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -1575,7 +1556,7 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             receiver,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             referralFeePct,
             referrer,
@@ -1612,7 +1593,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -1646,7 +1627,7 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             receiver,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             0,
             address(0),
@@ -1687,7 +1668,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -1721,7 +1702,7 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             receiver,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             0,
             address(0),
@@ -1752,7 +1733,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             buyOfferFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -1769,7 +1749,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             buyOfferFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -1789,7 +1768,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             WAD,
             address(0),
@@ -1804,7 +1783,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             WAD,
             address(0),
@@ -1828,7 +1807,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -1845,7 +1823,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -1865,7 +1842,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             0,
             address(0),
@@ -1880,7 +1857,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             0,
             address(0),
@@ -1949,7 +1926,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             withdrawals,
             receiver,
@@ -2001,7 +1977,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             withdrawals,
             receiver,
@@ -2023,13 +1998,13 @@ contract MidnightBundlesV2TakerTest is Test {
 
         offers[0].maxUnits = units.toUint128();
 
-        CollateralSupplyWithPermit[] memory supplies = new CollateralSupplyWithPermit[](numCollaterals);
+        CollateralSupply[] memory supplies = new CollateralSupply[](numCollaterals);
         for (uint256 i; i < numCollaterals; i++) {
             uint256 amount = _collateralAmount(i, units / numCollaterals + 1);
             deal(market.collateralParams[i].token, borrower, amount);
             vm.prank(borrower);
             ERC20(market.collateralParams[i].token).approve(address(midnightBundles), amount);
-            supplies[i] = CollateralSupplyWithPermit({collateralIndex: i, assets: amount, permit: _noPermit()});
+            supplies[i] = CollateralSupply({collateralIndex: i, assets: amount});
         }
 
         OfferFill[] memory offerFills = new OfferFill[](1);
@@ -2082,7 +2057,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             sellOfferFills,
             0,
             address(0),
@@ -2113,7 +2088,6 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             true,
-            _noPermit(),
             offerFills,
             withdrawals,
             collateralReceiver,
@@ -2145,13 +2119,13 @@ contract MidnightBundlesV2TakerTest is Test {
         uint256 sellerPrice = price - _settlementFee;
         uint256 targetSellerAssets = units.mulDivDown(sellerPrice, WAD);
 
-        CollateralSupplyWithPermit[] memory supplies = new CollateralSupplyWithPermit[](numCollaterals);
+        CollateralSupply[] memory supplies = new CollateralSupply[](numCollaterals);
         for (uint256 i; i < numCollaterals; i++) {
             uint256 amount = _collateralAmount(i, units / numCollaterals + 1);
             deal(market.collateralParams[i].token, borrower, amount);
             vm.prank(borrower);
             ERC20(market.collateralParams[i].token).approve(address(midnightBundles), amount);
-            supplies[i] = CollateralSupplyWithPermit({collateralIndex: i, assets: amount, permit: _noPermit()});
+            supplies[i] = CollateralSupply({collateralIndex: i, assets: amount});
         }
 
         OfferFill[] memory offerFills = new OfferFill[](1);
@@ -2209,7 +2183,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -2246,7 +2219,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             0,
             address(0),
@@ -2283,7 +2256,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -2320,7 +2292,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             0,
             address(0),
@@ -2354,7 +2326,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             0,
             address(0),
@@ -2396,7 +2368,7 @@ contract MidnightBundlesV2TakerTest is Test {
             borrower,
             false,
             borrower,
-            new CollateralSupplyWithPermit[](0),
+            new CollateralSupply[](0),
             offerFills,
             0,
             address(0),
@@ -2449,7 +2421,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -2500,7 +2471,6 @@ contract MidnightBundlesV2TakerTest is Test {
             lender,
             false,
             true,
-            _noPermit(),
             offerFills,
             new CollateralWithdrawal[](0),
             address(0),
@@ -2514,6 +2484,369 @@ contract MidnightBundlesV2TakerTest is Test {
         uint256 consumed1 = midnight.consumed(offers[1].maker, offers[1].group);
         assertEq(consumed0, 100, "consumed offer 0");
         assertEq(consumed0 - 30 + consumed1, midnight.debt(id, borrower), "total consumed");
+    }
+
+    // Native wrapping.
+
+    /// @dev Market whose loan token is the wrapped-native token, so buys can be funded with native tokens.
+    function wethLoanMarket(WETHMock weth) internal returns (Market memory wethMarket) {
+        CollateralParams[] memory collateralParams = new CollateralParams[](1);
+        collateralParams[0] = CollateralParams({
+            token: address(collateralToken1), lltv: 0.77e18, liquidationCursor: 0.25e18, oracle: address(oracle1)
+        });
+
+        wethMarket.chainId = block.chainid;
+        wethMarket.midnight = address(midnight);
+        wethMarket.loanToken = address(weth);
+        wethMarket.maturity = vm.getBlockTimestamp() + 100;
+        wethMarket.collateralParams = collateralParams;
+
+        bytes32 wethId = midnight.touchMarket(wethMarket);
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(wethId, i, 0);
+        }
+    }
+
+    function sellOfferOn(Market memory _market, uint256 units) internal view returns (Offer memory offer) {
+        offer.buy = false;
+        offer.maker = borrower;
+        offer.receiverIfMakerIsSeller = borrower;
+        offer.market = _market;
+        offer.ratifier = address(dummyRatifier);
+        offer.expiry = vm.getBlockTimestamp() + 200;
+        offer.tick = MAX_TICK;
+        offer.maxUnits = units.toUint128();
+    }
+
+    function testBuyUnitsTargetWrapNativeAndUnwrapRemainder(uint256 extraAssets) public {
+        extraAssets = bound(extraAssets, 0, 1e24);
+        uint256 units = 100e18;
+
+        WETHMock weth = new WETHMock();
+        Market memory wethMarket = wethLoanMarket(weth);
+        Offer memory offer = sellOfferOn(wethMarket, units);
+        collateralize(wethMarket, borrower, units);
+
+        OfferFill[] memory offerFills = new OfferFill[](1);
+        offerFills[0] = OfferFill({offer: offer, units: units, ratifierData: hex""});
+
+        uint256 expectedFilledBuyerAssets = units.mulDivUp(TickLib.tickToPrice(MAX_TICK), WAD);
+        uint256 maxBuyerAssets = expectedFilledBuyerAssets + extraAssets;
+        deal(lender, maxBuyerAssets);
+
+        // The native tokens are wrapped instead of pulled, and the unfilled remainder is unwrapped back.
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral{value: maxBuyerAssets}(
+            wethMarket,
+            units,
+            maxBuyerAssets,
+            lender,
+            false,
+            false,
+            offerFills,
+            new CollateralWithdrawal[](0),
+            address(0),
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+
+        assertEq(midnight.debt(IdLib.toId(wethMarket), borrower), units, "units bought");
+        assertEq(weth.balanceOf(borrower), expectedFilledBuyerAssets, "maker receipt");
+        assertEq(lender.balance, extraAssets, "native remainder unwrapped");
+        assertEq(weth.balanceOf(lender), 0, "no wrapped refund");
+        assertEq(address(midnightBundles).balance, 0, "bundler native residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+    }
+
+    function testBuyAssetsTargetWrapNative() public {
+        uint256 units = 100e18;
+
+        WETHMock weth = new WETHMock();
+        Market memory wethMarket = wethLoanMarket(weth);
+        Offer memory offer = sellOfferOn(wethMarket, units);
+        collateralize(wethMarket, borrower, units);
+
+        OfferFill[] memory offerFills = new OfferFill[](1);
+        offerFills[0] = OfferFill({offer: offer, units: units, ratifierData: hex""});
+
+        uint256 targetBuyerAssets = units.mulDivDown(TickLib.tickToPrice(MAX_TICK), WAD);
+        deal(lender, targetBuyerAssets);
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral{value: targetBuyerAssets}(
+            wethMarket,
+            targetBuyerAssets,
+            0,
+            lender,
+            false,
+            false,
+            offerFills,
+            new CollateralWithdrawal[](0),
+            address(0),
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+
+        assertEq(weth.balanceOf(borrower), targetBuyerAssets, "maker receipt");
+        assertEq(lender.balance, 0, "lender native residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+    }
+
+    function testSellUnitsTargetWrapNativeCollateral() public {
+        uint256 units = 100e18;
+        WETHMock weth = new WETHMock();
+
+        CollateralParams[] memory collateralParams = new CollateralParams[](1);
+        collateralParams[0] = CollateralParams({
+            token: address(weth), lltv: 0.77e18, liquidationCursor: 0.25e18, oracle: address(oracle1)
+        });
+
+        Market memory wethCollateralMarket;
+        wethCollateralMarket.chainId = block.chainid;
+        wethCollateralMarket.midnight = address(midnight);
+        wethCollateralMarket.loanToken = address(loanToken);
+        wethCollateralMarket.maturity = vm.getBlockTimestamp() + 100;
+        wethCollateralMarket.collateralParams = collateralParams;
+
+        bytes32 wethCollateralId = midnight.touchMarket(wethCollateralMarket);
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(wethCollateralId, i, 0);
+        }
+
+        Offer memory buyOffer;
+        buyOffer.buy = true;
+        buyOffer.maker = lender;
+        buyOffer.market = wethCollateralMarket;
+        buyOffer.ratifier = address(dummyRatifier);
+        buyOffer.expiry = vm.getBlockTimestamp() + 200;
+        buyOffer.tick = MAX_TICK;
+        buyOffer.maxUnits = units.toUint128();
+
+        uint256 collateralAssets = units.mulDivUp(WAD, 0.77e18).mulDivUp(ORACLE_PRICE_SCALE, oracle1.price());
+        CollateralSupply[] memory supplies = new CollateralSupply[](1);
+        supplies[0] = CollateralSupply({collateralIndex: 0, assets: collateralAssets});
+
+        OfferFill[] memory offerFills = new OfferFill[](1);
+        offerFills[0] = OfferFill({offer: buyOffer, units: units, ratifierData: hex""});
+
+        deal(borrower, collateralAssets);
+
+        // The collateral is funded with native tokens, wrapped by the bundler before being supplied.
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget{value: collateralAssets}(
+            wethCollateralMarket,
+            units,
+            0,
+            borrower,
+            false,
+            borrower,
+            supplies,
+            offerFills,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+
+        assertEq(midnight.collateral(wethCollateralId, borrower, 0), collateralAssets, "collateral supplied");
+        assertEq(midnight.debt(wethCollateralId, borrower), units, "debt");
+        assertEq(borrower.balance, 0, "borrower native residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+    }
+
+    /// @dev Market with two collaterals: the wrapped-native token and collateralToken1, sorted by address.
+    function wethAndTokenCollateralMarket(WETHMock weth)
+        internal
+        returns (Market memory wethCollateralMarket, uint256 wethIndex)
+    {
+        CollateralParams memory wethParams = CollateralParams({
+            token: address(weth), lltv: 0.77e18, liquidationCursor: 0.25e18, oracle: address(oracle1)
+        });
+        CollateralParams memory tokenParams = CollateralParams({
+            token: address(collateralToken1), lltv: 0.77e18, liquidationCursor: 0.25e18, oracle: address(oracle1)
+        });
+
+        CollateralParams[] memory collateralParams = new CollateralParams[](2);
+        wethIndex = address(weth) < address(collateralToken1) ? 0 : 1;
+        collateralParams[wethIndex] = wethParams;
+        collateralParams[1 - wethIndex] = tokenParams;
+
+        wethCollateralMarket.chainId = block.chainid;
+        wethCollateralMarket.midnight = address(midnight);
+        wethCollateralMarket.loanToken = address(loanToken);
+        wethCollateralMarket.maturity = vm.getBlockTimestamp() + 100;
+        wethCollateralMarket.collateralParams = collateralParams;
+
+        bytes32 wethCollateralId = midnight.touchMarket(wethCollateralMarket);
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(wethCollateralId, i, 0);
+        }
+    }
+
+    function buyOfferOn(Market memory _market, uint256 units) internal view returns (Offer memory offer) {
+        offer.buy = true;
+        offer.maker = lender;
+        offer.market = _market;
+        offer.ratifier = address(dummyRatifier);
+        offer.expiry = vm.getBlockTimestamp() + 200;
+        offer.tick = MAX_TICK;
+        offer.maxUnits = units.toUint128();
+    }
+
+    function testSellUnitsTargetWrapNativeFirstCollateralAndPullSecond() public {
+        uint256 units = 100e18;
+        WETHMock weth = new WETHMock();
+        (Market memory wethCollateralMarket, uint256 wethIndex) = wethAndTokenCollateralMarket(weth);
+        bytes32 wethCollateralId = IdLib.toId(wethCollateralMarket);
+
+        // Each collateral covers half of the debt.
+        uint256 collateralAssets = (units / 2 + 1).mulDivUp(WAD, 0.77e18).mulDivUp(ORACLE_PRICE_SCALE, oracle1.price());
+        // The native supply must come first; the second supply is pulled.
+        CollateralSupply[] memory supplies = new CollateralSupply[](2);
+        supplies[0] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
+        supplies[1] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+
+        OfferFill[] memory offerFills = new OfferFill[](1);
+        offerFills[0] = OfferFill({offer: buyOfferOn(wethCollateralMarket, units), units: units, ratifierData: hex""});
+
+        deal(borrower, collateralAssets);
+        deal(address(collateralToken1), borrower, collateralAssets);
+        vm.prank(borrower);
+        collateralToken1.approve(address(midnightBundles), collateralAssets);
+
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget{value: collateralAssets}(
+            wethCollateralMarket,
+            units,
+            0,
+            borrower,
+            false,
+            borrower,
+            supplies,
+            offerFills,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+
+        assertEq(midnight.collateral(wethCollateralId, borrower, wethIndex), collateralAssets, "wrapped collateral");
+        assertEq(midnight.collateral(wethCollateralId, borrower, 1 - wethIndex), collateralAssets, "pulled collateral");
+        assertEq(midnight.debt(wethCollateralId, borrower), units, "debt");
+        assertEq(borrower.balance, 0, "borrower native residual");
+        assertEq(collateralToken1.balanceOf(borrower), 0, "borrower token residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+        assertEq(collateralToken1.balanceOf(address(midnightBundles)), 0, "bundler token residual");
+    }
+
+    function testSellSellerAssetsTargetWrapNativeFirstCollateralAndPullSecond() public {
+        uint256 units = 100e18;
+        WETHMock weth = new WETHMock();
+        (Market memory wethCollateralMarket, uint256 wethIndex) = wethAndTokenCollateralMarket(weth);
+        bytes32 wethCollateralId = IdLib.toId(wethCollateralMarket);
+
+        // Each collateral covers half of the debt.
+        uint256 collateralAssets = (units / 2 + 1).mulDivUp(WAD, 0.77e18).mulDivUp(ORACLE_PRICE_SCALE, oracle1.price());
+        // The native supply must come first; the second supply is pulled.
+        CollateralSupply[] memory supplies = new CollateralSupply[](2);
+        supplies[0] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
+        supplies[1] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+
+        OfferFill[] memory offerFills = new OfferFill[](1);
+        offerFills[0] = OfferFill({offer: buyOfferOn(wethCollateralMarket, units), units: units, ratifierData: hex""});
+
+        deal(borrower, collateralAssets);
+        deal(address(collateralToken1), borrower, collateralAssets);
+        vm.prank(borrower);
+        collateralToken1.approve(address(midnightBundles), collateralAssets);
+
+        uint256 targetSellerAssets = units.mulDivDown(TickLib.tickToPrice(MAX_TICK), WAD);
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget{value: collateralAssets}(
+            wethCollateralMarket,
+            targetSellerAssets,
+            units,
+            borrower,
+            false,
+            borrower,
+            supplies,
+            offerFills,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+
+        assertEq(midnight.collateral(wethCollateralId, borrower, wethIndex), collateralAssets, "wrapped collateral");
+        assertEq(midnight.collateral(wethCollateralId, borrower, 1 - wethIndex), collateralAssets, "pulled collateral");
+        assertEq(loanToken.balanceOf(borrower), targetSellerAssets, "seller assets");
+        assertEq(borrower.balance, 0, "borrower native residual");
+        assertEq(collateralToken1.balanceOf(borrower), 0, "borrower token residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+        assertEq(collateralToken1.balanceOf(address(midnightBundles)), 0, "bundler token residual");
+    }
+
+    function testBuyUnitsTargetNativeAmountMismatch() public {
+        uint256 units = 100e18;
+
+        WETHMock weth = new WETHMock();
+        Market memory wethMarket = wethLoanMarket(weth);
+        Offer memory offer = sellOfferOn(wethMarket, units);
+        collateralize(wethMarket, borrower, units);
+
+        OfferFill[] memory offerFills = new OfferFill[](1);
+        offerFills[0] = OfferFill({offer: offer, units: units, ratifierData: hex""});
+
+        uint256 maxBuyerAssets = units.mulDivUp(TickLib.tickToPrice(MAX_TICK), WAD);
+        deal(lender, maxBuyerAssets);
+
+        // msg.value must cover exactly maxBuyerAssets.
+        vm.prank(lender);
+        vm.expectRevert(TokenLib.InconsistentAmountAndNative.selector);
+        midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral{value: maxBuyerAssets - 1}(
+            wethMarket,
+            units,
+            maxBuyerAssets,
+            lender,
+            false,
+            false,
+            offerFills,
+            new CollateralWithdrawal[](0),
+            address(0),
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+    }
+
+    function testSellUnitsTargetRevertsWhenNativeIsNotConsumed() public {
+        deal(borrower, 1 ether);
+
+        // There is no collateral supply to wrap into, so the native tokens would otherwise be stranded in the bundle.
+        vm.prank(borrower);
+        vm.expectRevert(IMidnightBundlesV2.UnusedNative.selector);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget{value: 1 ether}(
+            market,
+            0,
+            0,
+            borrower,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            new OfferFill[](0),
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp
+        );
+
+        assertEq(address(midnightBundles).balance, 0, "no native left in the bundle");
+        assertEq(borrower.balance, 1 ether, "native returned to the borrower");
     }
 }
 
@@ -2570,5 +2903,19 @@ contract BlueBuyCallbackFactoryStub {
     constructor(address _midnight, address _blue) {
         MIDNIGHT = _midnight;
         BLUE = _blue;
+    }
+}
+
+/// @dev Minimal wrapped-native token: deposit() mints 1:1 for the native tokens sent.
+contract WETHMock is ERC20 {
+    constructor() ERC20("Wrapped Ether", "WETH") {}
+
+    function deposit() external payable {
+        balanceOf[msg.sender] += msg.value;
+    }
+
+    function withdraw(uint256 amount) external {
+        balanceOf[msg.sender] -= amount;
+        payable(msg.sender).transfer(amount);
     }
 }
