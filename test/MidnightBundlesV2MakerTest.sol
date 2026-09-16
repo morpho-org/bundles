@@ -433,8 +433,8 @@ contract MidnightBundlesV2MakerTest is Test {
     function testMakeWithSignatureRejectsExpiredSignature(bool useRateRatifier) public {
         address ratifier = useRateRatifier ? address(rateRatifier) : address(priceRatifier);
         bytes32 root = keccak256("signed root");
-        bytes memory rootSignature = signRoot(ratifier, lender, root, true, 0, block.timestamp, lenderPrivateKey);
-        vm.warp(block.timestamp + 1);
+        bytes memory rootSignature = signRoot(ratifier, lender, root, true, 0, vm.getBlockTimestamp(), lenderPrivateKey);
+        vm.warp(vm.getBlockTimestamp() + 1);
 
         vm.expectRevert(IPriceRatifierV1.DeadlineExpired.selector);
         makeRootWithSignature(ratifier, root, rootSignature);
