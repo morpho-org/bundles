@@ -29,7 +29,7 @@ New roots made through `midnightBundlesV2CancelAndMake` are expected to use its 
 Offer roots may contain multi-market offers.
 Roots and publication payloads are constructed offchain and are not checked against each other, against `SETTER_RATIFIER`, or against markets passed to the bundle.
 
-The maker must authorize `MidnightBundlesV2` on Midnight and approve it to pull any supplied loan or collateral assets.
+The maker must authorize `MidnightBundlesV2` on Midnight (it executes the Midnight operations on the maker's behalf). When msg.sender is not the maker, the maker must also authorize msg.sender on Midnight. The bundle must have an allowance to pull any supplied loan or collateral assets from msg.sender.
 
 Taker-side:
 
@@ -41,7 +41,7 @@ Taker-side:
 Repaying and withdrawing collateral (only) is done through the buy functions with `repayEnabled`, a nonzero target and an empty `offerFills` array.
 Withdrawing credit (only) can be done through the sell functions with a nonzero target and an empty `offerFills` array.
 
-The taker (or msg.sender if authorized by the taker) must be authorized by the taker on Midnight for these functions, and the bundle must have an allowance to pull the tokens it needs from msg.sender.
+The taker must authorize `MidnightBundlesV2` on Midnight (it executes the Midnight operations on the taker's behalf). When msg.sender is not the taker, the taker must also authorize msg.sender on Midnight. The bundle must have an allowance to pull the tokens it needs from msg.sender.
 
 ### [BlueBundlesV1](src/blue/BlueBundlesV1.sol)
 

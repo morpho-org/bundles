@@ -67,10 +67,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// MAKE-SIDE EXTERNAL FUNCTIONS ///
 
-    /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback.
+    /// @dev Optionally parks loan assets on Blue for the maker's derived callback.
     /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
-    /// @dev Optionally supplies collateral to msg.sender on Midnight.
-    /// @dev Cancels each group in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
+    /// @dev Optionally supplies collateral to the maker on Midnight.
+    /// @dev Cancels each group in groupsToCancel for the maker. Pass an empty array to skip cancellation.
     /// @dev If newRoot is non-zero, authorizes SETTER_RATIFIER, activates newRoot, and publishes payload. Otherwise payload is ignored and SETTER_RATIFIER authorization is unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
     /// @dev This function is meant to be used for buying (collateralSupplies.length == 0) or selling (assetsToPark == 0).
@@ -82,24 +82,27 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// - newRoot corresponds to the offers described by payload. The payload posted to LOG is not validated against any on-chain state or bundle inputs.
     /// @dev Cancel prior offers before reposting to avoid leaving both old and new offers takeable. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers.
     /// @dev The maker must authorize this contract on Midnight beforehand.
+    /// @dev msg.sender must be the maker or authorized by the maker on Midnight, and is always the tokens payer.
     function midnightBundlesV2CancelAndMake(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
         bytes32 callbackSalt,
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
+        address maker,
         bytes32 newRoot,
         bytes32[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
+        require(maker == msg.sender || IMidnight(MIDNIGHT).isAuthorized(maker, msg.sender), Unauthorized());
         require(collateralSupplies.length == 0 || assetsToPark == 0, InconsistentInputs());
 
         uint256 nativeBefore = address(this).balance;
         if (assetsToPark > 0) {
             address blueBuyCallback =
-                IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).createBlueBuyCallback(msg.sender, callbackSalt);
+                IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).createBlueBuyCallback(maker, callbackSalt);
             TokenLib.transferFromOrWrapNative(blueMarket.loanToken, msg.sender, assetsToPark, msg.value > 0);
             TokenLib.forceApproveMax(blueMarket.loanToken, BLUE);
             IMorpho(BLUE).supply(blueMarket, assetsToPark, 0, blueBuyCallback, "");
@@ -112,20 +115,18 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             );
             TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
             IMidnight(MIDNIGHT)
-                .supplyCollateral(
-                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
-                );
+                .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, maker);
         }
         // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
         for (uint256 i; i < groupsToCancel.length; i++) {
-            IMidnight(MIDNIGHT).setConsumed(groupsToCancel[i], type(uint128).max, msg.sender);
+            IMidnight(MIDNIGHT).setConsumed(groupsToCancel[i], type(uint128).max, maker);
         }
 
         if (newRoot != bytes32(0)) {
-            IMidnight(MIDNIGHT).setIsAuthorized(SETTER_RATIFIER, true, msg.sender);
-            ISetterRatifier(SETTER_RATIFIER).setIsRootRatified(msg.sender, newRoot, true);
+            IMidnight(MIDNIGHT).setIsAuthorized(SETTER_RATIFIER, true, maker);
+            ISetterRatifier(SETTER_RATIFIER).setIsRootRatified(maker, newRoot, true);
 
             (bool success, bytes memory returndata) = LOG.call(payload);
             if (!success) {

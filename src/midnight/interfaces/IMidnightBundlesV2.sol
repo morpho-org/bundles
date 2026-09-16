@@ -54,6 +54,7 @@ interface IMidnightBundlesV2 {
         bytes32 callbackSalt,
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
+        address maker,
         bytes32 newRoot,
         bytes32[] memory groupsToCancel,
         bytes memory payload,

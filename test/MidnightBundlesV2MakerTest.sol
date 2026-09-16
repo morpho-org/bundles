@@ -228,6 +228,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -271,6 +272,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             newRoot,
             groupsToCancel,
             "combined payload",
@@ -311,6 +313,7 @@ contract MidnightBundlesV2MakerTest is Test {
             bytes32(0),
             unusedMarket,
             noCollateralSupplies(),
+            lender,
             root,
             oneGroup(root),
             "ignored payload",
@@ -332,6 +335,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             bytes32(0),
             new bytes32[](0),
             "",
@@ -381,6 +385,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             root,
             new bytes32[](0),
             payload,
@@ -410,6 +415,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -492,6 +498,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             newRoot,
             oneGroup(group),
             abi.encode(newOffer),
@@ -525,6 +532,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             newRoot,
             oneGroup(group),
             abi.encode(newOffer),
@@ -560,6 +568,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            unauthorizedLender,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -572,6 +581,55 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(morpho.expectedSupplyAssets(blueMarket, callback), 0, "rolled-back supply");
         assertEq(loanToken.balanceOf(unauthorizedLender), PARKED_ASSETS, "rolled-back transfer");
         assertFalse(setterRatifier.isRootRatified(unauthorizedLender, root), "rolled-back root");
+    }
+
+    function testMakeDelegatedByAuthorizedOperator() public {
+        address operator = makeAddr("operator");
+        deal(address(loanToken), operator, PARKED_ASSETS);
+        vm.prank(lender);
+        midnight.setIsAuthorized(operator, true, lender);
+
+        Offer memory offer = makeOffer(keccak256("delegated group"), PARKED_ASSETS, MAX_TICK);
+        bytes32 root = HashLib.hashOffer(offer);
+
+        vm.startPrank(operator);
+        loanToken.approve(address(midnightBundles), PARKED_ASSETS);
+        midnightBundles.midnightBundlesV2CancelAndMake(
+            blueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            lender,
+            root,
+            oneGroup(keccak256("cancelled group")),
+            abi.encode(offer),
+            block.timestamp
+        );
+        vm.stopPrank();
+
+        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS, "parked for the maker");
+        assertTrue(setterRatifier.isRootRatified(lender, root), "maker root ratified");
+        assertEq(midnight.consumed(lender, keccak256("cancelled group")), type(uint128).max, "maker group cancelled");
+        assertEq(loanToken.balanceOf(operator), 0, "operator paid");
+        assertEq(loanToken.balanceOf(lender), 2 * PARKED_ASSETS, "maker balance untouched");
+    }
+
+    function testMakeRevertsWhenCallerIsNotAuthorizedByMaker() public {
+        vm.prank(makeAddr("operator"));
+        vm.expectRevert(IMidnightBundlesV2.Unauthorized.selector);
+        midnightBundles.midnightBundlesV2CancelAndMake(
+            blueMarket,
+            0,
+            CALLBACK_SALT,
+            midnightMarket,
+            noCollateralSupplies(),
+            lender,
+            bytes32(0),
+            new bytes32[](0),
+            "",
+            block.timestamp
+        );
     }
 
     function testTakeRevertsWhenParkedAssetsAreInsufficient() public {
@@ -629,7 +687,16 @@ contract MidnightBundlesV2MakerTest is Test {
         emit Log.Data(payload);
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2CancelAndMake(
-            blueMarket, 0, CALLBACK_SALT, market, collateralSupplies, root, new bytes32[](0), payload, block.timestamp
+            blueMarket,
+            0,
+            CALLBACK_SALT,
+            market,
+            collateralSupplies,
+            borrower,
+            root,
+            new bytes32[](0),
+            payload,
+            block.timestamp
         );
 
         assertEq(midnight.collateral(id, borrower, firstCollateralIndex), firstAssets, "first collateral");
@@ -662,6 +729,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            borrower,
             oldRoot,
             new bytes32[](0),
             abi.encode(oldOffer),
@@ -679,6 +747,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            borrower,
             newRoot,
             new bytes32[](0),
             abi.encode(newOffer),
@@ -716,6 +785,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            borrower,
             root,
             new bytes32[](0),
             abi.encode(firstOffer, secondOffer),
@@ -744,6 +814,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             oldRoot,
             new bytes32[](0),
             abi.encode("old payload"),
@@ -763,6 +834,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             newRoot,
             oneGroup(cancelledGroup),
             payload,
@@ -787,6 +859,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -823,6 +896,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             newRoot,
             oneGroup(oldOffer.group),
             abi.encode(newOffer),
@@ -850,6 +924,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             setterRoot,
             new bytes32[](0),
             abi.encode("payload"),
@@ -866,6 +941,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             bytes32(0),
             oneGroup(group),
             "",
@@ -888,6 +964,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             bytes32(0),
             oneGroup(group),
             "",
@@ -922,6 +999,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -955,6 +1033,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             root,
             new bytes32[](0),
             abi.encode(offer),
@@ -1000,6 +1079,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             wethCollateralMarket,
             supplies,
+            lender,
             bytes32(0),
             new bytes32[](0),
             "",
@@ -1024,6 +1104,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             supplies,
+            lender,
             bytes32(0),
             new bytes32[](0),
             "",
@@ -1049,7 +1130,7 @@ contract MidnightBundlesV2MakerTest is Test {
 
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
-            blueMarket, 0, CALLBACK_SALT, market, supplies, bytes32(0), new bytes32[](0), "", block.timestamp
+            blueMarket, 0, CALLBACK_SALT, market, supplies, lender, bytes32(0), new bytes32[](0), "", block.timestamp
         );
 
         assertEq(midnight.collateral(id, lender, wethIndex), PARKED_ASSETS, "wrapped collateral");
@@ -1072,6 +1153,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             bytes32(0),
             new bytes32[](0),
             "",
@@ -1104,6 +1186,7 @@ contract MidnightBundlesV2MakerTest is Test {
             CALLBACK_SALT,
             midnightMarket,
             noCollateralSupplies(),
+            lender,
             bytes32(0),
             new bytes32[](0),
             "",
