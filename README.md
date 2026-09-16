@@ -14,22 +14,12 @@ Users should expect tokens left to the bundles as lost.
 
 Maker-side:
 
-- `midnightBundlesV2CancelAndMake` — optionally park loan assets on Blue through a Midnight `BlueBuyCallback` or supply collateral on Midnight, cancel a group, and publish new maker offers in one call.
+- `midnightBundlesV2CancelAndMake` — cancel offer groups, optionally park loan assets on Blue or supply collateral on Midnight, and publish new maker offers.
 
-Pass an empty `groupsToCancel` array to skip cancellation. Set `assetsToPark` to zero to skip parking and pass an empty `collateralSupplies` array to skip collateral supply.
 Parking loan assets (to fund buy offers) and supplying collateral (to back sell offers) are mutually exclusive.
-Pass a non-zero `newRoot` to authorize the Setter ratifier, activate the root, and publish `payload`. Passing `bytes32(0)` skips those steps and ignores `payload`.
-Cancellation-only calls skip both funding steps and pass `bytes32(0)` as `newRoot`.
-
-Reposting cancels selected groups before activating the new Setter root and publishing its payload.
-Group cancellation applies to offers using any ratifier and is permanent; existing roots remain unchanged.
-Replacement offers must use fresh group IDs when their predecessors' groups are cancelled.
-
-New roots made through `midnightBundlesV2CancelAndMake` are expected to use its `SETTER_RATIFIER`.
-Offer roots may contain multi-market offers.
-Roots and publication payloads are constructed offchain and are not checked against each other, against `SETTER_RATIFIER`, or against markets passed to the bundle.
-
-The maker must authorize `MidnightBundlesV2` on Midnight and approve it to pull any supplied loan or collateral assets.
+Supports `PriceRatifierV1` and `RateRatifierV1`, with optional signed root activation.
+The maker must authorize the bundle on Midnight and approve it to pull any supplied loan or collateral assets.
+See the entrypoint's NatSpec for parameters, validation limits, and ratifier authorization requirements.
 
 Taker-side:
 

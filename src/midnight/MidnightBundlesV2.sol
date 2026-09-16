@@ -6,7 +6,10 @@ import {IMidnight, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol
 import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
-import {ISetterRatifier} from "../../lib/midnight/src/ratifiers/interfaces/ISetterRatifier.sol";
+import {
+    IRatifiersV1Common,
+    SET_IS_ROOT_RATIFIED_SUCCESS
+} from "../../lib/midnight/src/ratifiers/interfaces/IRatifiersV1Common.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {IdLib} from "../../lib/midnight/src/libraries/IdLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
@@ -18,6 +21,7 @@ import {TokenLib} from "../libraries/TokenLib.sol";
 import {IWNative} from "../libraries/interfaces/IWNative.sol";
 import {
     IMidnightBundlesV2,
+    GroupCancellation,
     CollateralSupply,
     CollateralWithdrawal,
     OfferFill
@@ -39,27 +43,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     address public immutable BLUE;
     address public immutable BLUE_BUY_CALLBACK_FACTORY;
     address public immutable LOG;
-    address public immutable SETTER_RATIFIER;
 
-    constructor(
-        address _midnight,
-        address _blue,
-        address _blueBuyCallbackFactory,
-        address _log,
-        address _setterRatifier
-    ) {
-        require(
-            IBlueBuyCallbackFactory(_blueBuyCallbackFactory).MIDNIGHT() == _midnight
-                && ISetterRatifier(_setterRatifier).MIDNIGHT() == _midnight,
-            InconsistentMidnight()
-        );
+    constructor(address _midnight, address _blue, address _blueBuyCallbackFactory, address _log) {
+        require(IBlueBuyCallbackFactory(_blueBuyCallbackFactory).MIDNIGHT() == _midnight, InconsistentMidnight());
         require(IBlueBuyCallbackFactory(_blueBuyCallbackFactory).BLUE() == _blue, InconsistentBlue());
 
         MIDNIGHT = _midnight;
         BLUE = _blue;
         BLUE_BUY_CALLBACK_FACTORY = _blueBuyCallbackFactory;
         LOG = _log;
-        SETTER_RATIFIER = _setterRatifier;
     }
 
     /// @dev Receives the native tokens unwrapped from the wrapped-native token when reimbursing a native buy.
@@ -70,15 +62,23 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback.
     /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
     /// @dev Optionally supplies collateral to msg.sender on Midnight.
-    /// @dev Cancels each group in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
-    /// @dev If newRoot is non-zero, authorizes SETTER_RATIFIER, activates newRoot, and publishes payload. Otherwise payload is ignored and SETTER_RATIFIER authorization is unchanged.
+    /// @dev First checks consumption limits and cancels the groups in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
+    /// @dev After a group is cancelled, later occurrences of its ID in groupsToCancel revert unless their maxConsumed is type(uint128).max.
+    /// @dev Each group's maxConsumed is the maximum acceptable Midnight consumption before cancellation, in the group's units or assets.
+    /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
+    /// @dev SECURITY: If newRoot is non-zero, this call grants ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
+    /// @dev A wrong ratifier address may authorize a malicious contract that can move funds, modify positions, and authorize other accounts on behalf of msg.sender, potentially causing loss of funds. Interface compatibility and the expected success value do not establish trustworthiness.
+    /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports PriceRatifierV1 and RateRatifierV1; the selected root setter must return SET_IS_ROOT_RATIFIED_SUCCESS.
+    /// - Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig.
+    /// - The EIP-712 signature must authorize (msg.sender, newRoot, true, nonce, signatureDeadline) under the selected ratifier's offer-tree typehash for height, for the current chain, signed by msg.sender or an address authorized by msg.sender on Midnight. Its deadline is independent of the bundle's deadline. Invalid signed ratifications revert.
+    /// @dev If newRoot is zero, ratifier, rootSignature, and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
     /// @dev This function is meant to be used for buying (collateralSupplies.length == 0) or selling (assetsToPark == 0).
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
     /// @dev The new root may contain offers for multiple markets.
     /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected against supply-share-price inflation attacks.
     /// @dev This bundle does not check that:
-    /// - Offers in newRoot or payload match the intended use case (lend limit or borrow limit) and the supplied funding or collateral inputs.
+    /// - Offers in newRoot or payload match the selected ratifier, the intended use case (lend limit or borrow limit), and the supplied funding or collateral inputs.
     /// - newRoot corresponds to the offers described by payload. The payload posted to LOG is not validated against any on-chain state or bundle inputs.
     /// @dev Cancel prior offers before reposting to avoid leaving both old and new offers takeable. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers.
     /// @dev The maker must authorize this contract on Midnight beforehand.
@@ -88,13 +88,24 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bytes32 callbackSalt,
         Market memory market,
         CollateralSupply[] memory collateralSupplies,
+        address ratifier,
         bytes32 newRoot,
-        bytes32[] memory groupsToCancel,
+        bytes memory rootSignature,
+        GroupCancellation[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(collateralSupplies.length == 0 || assetsToPark == 0, InconsistentInputs());
+
+        for (uint256 i; i < groupsToCancel.length; i++) {
+            GroupCancellation memory cancellation = groupsToCancel[i];
+            require(
+                IMidnight(MIDNIGHT).consumed(msg.sender, cancellation.group) <= cancellation.maxConsumed,
+                ConsumedAboveMax()
+            );
+            IMidnight(MIDNIGHT).setConsumed(cancellation.group, type(uint128).max, msg.sender);
+        }
 
         uint256 nativeBefore = address(this).balance;
         if (assetsToPark > 0) {
@@ -119,13 +130,18 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
-        for (uint256 i; i < groupsToCancel.length; i++) {
-            IMidnight(MIDNIGHT).setConsumed(groupsToCancel[i], type(uint128).max, msg.sender);
-        }
-
         if (newRoot != bytes32(0)) {
-            IMidnight(MIDNIGHT).setIsAuthorized(SETTER_RATIFIER, true, msg.sender);
-            ISetterRatifier(SETTER_RATIFIER).setIsRootRatified(msg.sender, newRoot, true);
+            IMidnight(MIDNIGHT).setIsAuthorized(ratifier, true, msg.sender);
+            bytes32 ratificationResult;
+            if (rootSignature.length == 0) {
+                ratificationResult = IRatifiersV1Common(ratifier).setIsRootRatified(msg.sender, newRoot, true);
+            } else {
+                (uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) =
+                    abi.decode(rootSignature, (uint256, uint128, uint256, uint8, bytes32, bytes32));
+                ratificationResult = IRatifiersV1Common(ratifier)
+                    .setIsRootRatifiedWithSig(msg.sender, newRoot, height, true, nonce, signatureDeadline, v, r, s);
+            }
+            require(ratificationResult == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
 
             (bool success, bytes memory returndata) = LOG.call(payload);
             if (!success) {
