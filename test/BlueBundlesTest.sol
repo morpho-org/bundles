@@ -357,7 +357,7 @@ contract BlueBundlesTest is Test {
         uint256 collateral = _collateralFor(borrowAssets);
         deal(address(collateralToken), sigUser, collateral);
 
-        vm.warp(block.timestamp + 1000);
+        vm.warp(vm.getBlockTimestamp() + 1000);
         SignedAuthorization memory authSig = _signAuthorization(sigUserKey, sigUser, block.timestamp - 1);
 
         vm.startPrank(sigUser);
@@ -768,7 +768,7 @@ contract BlueBundlesTest is Test {
     /// @dev A pure collateral supply still enforces maxLtv against the resulting position.
     function testSupplyCollateralWithoutBorrowEnforcesMaxLtv() public {
         _openBorrow(user, 100e18);
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(vm.getBlockTimestamp() + 1 days);
 
         // Resulting LTV after supplying 20e18 more collateral is 100e18 / 220e18 = 0.45, above the 0.3 maxLtv.
         deal(address(collateralToken), user, 20e18);
@@ -1707,6 +1707,8 @@ contract BlueBundlesTest is Test {
 
 /// @dev Minimal wrapped-native token: deposit() mints 1:1 for the native tokens sent.
 contract WETHMock is ERC20 {
+    uint256 public totalSupply;
+
     constructor() ERC20("Wrapped Ether", "WETH") {}
 
     function deposit() external payable {

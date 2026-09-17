@@ -1,29 +1,39 @@
-# morpho-bundles
+# Morpho Bundles
 
-Opinionated bundle contracts wrapping Morpho protocols.
-Each bundle exposes a small set of high-level entry points that chain several protocol calls into a single transaction.
-Entry-points are user-facing: they should be usable out of the box and are not meant to be called by other contracts.
-Compared to bundler3, bundles are not modular, but are meant to reproduce its identified core functionalities with greater safety.
-Notably, there is no crafting of bundles offchain, instead the way calls are chained is fixed and this can be audited.
-Users are still expected to look at the inputs of the entry-points, to decide whether they want to sign it or not.
+Opinionated bundles to interact with the Morpho protocols.
+Each entry-point execute a chain of calls, enabling to do multiple interactions in a single transaction.
+Bundles have other benefits as well: being able to do atomic checks, being able to receive callbacks (e.g. to use flashloans), and simplifying calldata verification.
+Entry-points are end-user-facing: they should be usable out of the box and are not meant to be called by other contracts.
+
 Bundles are not meant to hold token balances (including native tokens) between transactions.
 Users should expect tokens left to the bundles as lost.
 
 ## Bundles
 
-### Midnight bundles
+### [MidnightBundlesV2](src/midnight/MidnightBundlesV2.sol)
 
-[MidnightBundlesV1](src/midnight/MidnightBundlesV1.sol) contains:
+Maker-side:
 
-- `midnightBundlesV1BuyWithUnitsTargetAndWithdrawCollateral` — buy a target number of units across offers, then withdraw collateral.
-- `midnightBundlesV1BuyWithAssetsTargetAndWithdrawCollateral` — buy a target loan-asset amount across offers, then withdraw collateral.
-- `midnightBundlesV1SupplyCollateralAndSellWithUnitsTarget` — supply collateral, then sell a target number of units across offers.
-- `midnightBundlesV1SupplyCollateralAndSellWithAssetsTarget` — supply collateral, then sell a target loan-asset amount across offers.
-- `midnightBundlesV1RepayAndWithdrawCollateral` — repay debt and withdraw collateral.
+- `midnightBundlesV2CancelAndMake` — cancel offer groups, optionally park loan assets on Blue or supply collateral on Midnight, and publish new maker offers.
 
-### Blue bundles
+Parking loan assets (to fund buy offers) and supplying collateral (to back sell offers) are mutually exclusive.
+Supports `PriceRatifierV1` and `RateRatifierV1`, with optional signed root activation.
+The maker must authorize the bundle on Midnight and approve it to pull any supplied loan or collateral assets.
+See the entrypoint's NatSpec for parameters, validation limits, and ratifier authorization requirements.
 
-[BlueBundlesV1](src/blue/BlueBundlesV1.sol) contains:
+Taker-side:
+
+- `midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral` — buy a target number of units across offers and, repay debt if `repayEnabled` and target is not reached, then withdraw collateral.
+- `midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral` — buy a target loan-asset amount across offers and, repay debt if `repayEnabled` and target is not reached, then withdraw collateral.
+- `midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget` — supply collateral, then sell a target number of units, filling it first by withdrawing credit and then across offers.
+- `midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget` — supply collateral, then sell a target loan-asset amount, filling it first by withdrawing credit and then across offers.
+
+Repaying and withdrawing collateral (only) is done through the buy functions with `repayEnabled`, a nonzero target and an empty `offerFills` array.
+Withdrawing credit (only) can be done through the sell functions with a nonzero target and an empty `offerFills` array.
+
+The taker is msg.sender and must authorize the bundle on Midnight and approve it to pull the tokens it needs.
+
+### [BlueBundlesV1](src/blue/BlueBundlesV1.sol)
 
 - `blueBundlesV1SupplyCollateralAndBorrow` — supply collateral and borrow.
 - `blueBundlesV1RepayAndWithdrawCollateral` — repay debt (optionally by shares) and withdraw collateral.
@@ -33,20 +43,13 @@ Users should expect tokens left to the bundles as lost.
 
 The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollateralAndBorrow`, `blueBundlesV1Withdraw`, and `blueBundlesV1MigrateBorrowPosition`) support VaultV2's BluePublicAllocator.
 
-`blueBundlesV1SupplyCollateralAndBorrow` allows supplying collateral without borrowing and borrowing without supplying collateral.
-`blueBundlesV1RepayAndWithdrawCollateral` allows withdrawing collateral without repaying and repaying without withdrawing collateral.
-
-### Vault bundles
-
-[VaultBundlesV1](src/vault/VaultBundlesV1.sol) contains:
+### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 
 - `vaultBundlesV1Deposit` — deposit assets into a vault.
 - `vaultBundlesV1Withdraw` — withdraw assets from a vault.
 - `vaultBundlesV1Migrate` — migrate assets from one vault to another.
 
-### Vault exit bundles
-
-[VaultExitBundlesV1](src/vault-exit/VaultExitBundlesV1.sol) contains:
+### [VaultExitBundlesV1](src/vault-exit/VaultExitBundlesV1.sol)
 
 - `vaultExitBundlesV1InKindRedemptionVaultV1` — in-kind redeem from an illiquid Vault V1.
 - `vaultExitBundlesV1InKindRedemptionVaultV2` — withdraw idle assets and redeem the remainder in kind from an illiquid Vault V2.

@@ -256,6 +256,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         address sender
     ) internal {
         executePublicAllocations(marketParams.loanToken, reallocations);
+        // forge-lint: disable-next-item(missing-events-arithmetic) transient plumbing.
         (withdrawnAssetsTransient,) =
             IMorpho(BLUE).withdraw(marketParams, withdrawAssets, withdrawShares, sender, address(this));
     }
@@ -439,6 +440,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         bool emptySignature = signature.v == 0 && signature.r == 0 && signature.s == 0;
 
         if (!emptySignature && IMorpho(BLUE).nonce(msg.sender) <= signedAuthorization.nonce) {
+            // forge-lint: disable-next-item(named-struct-fields) ack.
             IMorpho(BLUE)
                 .setAuthorizationWithSig(
                     Authorization(
