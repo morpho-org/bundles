@@ -15,7 +15,7 @@ import {IERC4626} from "../lib/vault-v2/src/interfaces/IERC4626.sol";
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IVaultV2Factory} from "../lib/vault-v2/src/interfaces/IVaultV2Factory.sol";
 import {ErrorsLib} from "../lib/vault-v2/src/libraries/ErrorsLib.sol";
-import {IWhitelistSendAssetsGate} from "../lib/vault-v2/src/periphery/interfaces/IWhitelistSendAssetsGate.sol";
+import {IWhitelistSendAssetsGate} from "../lib/vault-v2/src/periphery/gates/interfaces/IWhitelistSendAssetsGate.sol";
 
 // Vault V1 (MetaMorpho) is set up over its own (nested) morpho-blue, so Morpho, MetaMorpho and this test share a
 // single market type.
@@ -740,7 +740,7 @@ contract VaultBundlesTest is Test {
             deployCode("WhitelistSendAssetsGate.sol:WhitelistSendAssetsGate", abi.encode(roleSetter))
         );
         vm.prank(roleSetter);
-        gate.setWhitelister(whitelister);
+        gate.setIsWhitelister(whitelister, true);
 
         vm.startPrank(whitelister);
         gate.setIsIntermediary(address(bundles), true);
@@ -776,39 +776,61 @@ contract VaultBundlesTest is Test {
     }
 
     /// @dev Without a reset, the initiator stays set after the first call, so a second guarded call in the same
-    /// transaction reverts.
+    /// transaction reverts. The initiator is transient, so each pair of calls has to be issued from a single external
+    /// call to this contract: two top-level calls straddle a transaction boundary, which clears it. The first call is
+    /// expected to succeed, so only the second one is inspected.
     function testDepositAlreadyInitiated() public {
         uint256 assets = 100e18;
         deal(address(loanToken), user, 2 * assets);
 
-        bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp);
+        this.depositTwice(assets);
+    }
 
-        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+    function depositTwice(uint256 assets) external {
         bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp);
+        try bundles.vaultBundlesV1Deposit(address(vaultV1), assets, RAY, noPermit, 0, address(0), block.timestamp) {
+            revert("second call did not revert");
+        } catch (bytes memory returnData) {
+            assertEq(returnData, abi.encodeWithSelector(IVaultBundlesV1.AlreadyInitiated.selector));
+        }
     }
 
     function testWithdrawAlreadyInitiated() public {
         uint256 assets = 100e18;
         _deposited(vaultV1, 2 * assets);
 
-        bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, noSharesPermit, 0, address(0), block.timestamp);
+        this.withdrawTwice(assets);
+    }
 
-        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+    function withdrawTwice(uint256 assets) external {
         bundles.vaultBundlesV1Withdraw(address(vaultV1), assets, 0, noSharesPermit, 0, address(0), block.timestamp);
+        try bundles.vaultBundlesV1Withdraw(
+            address(vaultV1), assets, 0, noSharesPermit, 0, address(0), block.timestamp
+        ) {
+            revert("second call did not revert");
+        } catch (bytes memory returnData) {
+            assertEq(returnData, abi.encodeWithSelector(IVaultBundlesV1.AlreadyInitiated.selector));
+        }
     }
 
     function testMigrateAlreadyInitiated() public {
         uint256 assets = 100e18;
         _deposited(vaultV1, 2 * assets);
 
-        bundles.vaultBundlesV1Migrate(
-            address(vaultV1), address(vaultV2), assets, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
-        );
+        this.migrateTwice(assets);
+    }
 
-        vm.expectRevert(IVaultBundlesV1.AlreadyInitiated.selector);
+    function migrateTwice(uint256 assets) external {
         bundles.vaultBundlesV1Migrate(
             address(vaultV1), address(vaultV2), assets, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
         );
+        try bundles.vaultBundlesV1Migrate(
+            address(vaultV1), address(vaultV2), assets, 0, RAY, noSharesPermit, 0, address(0), block.timestamp
+        ) {
+            revert("second call did not revert");
+        } catch (bytes memory returnData) {
+            assertEq(returnData, abi.encodeWithSelector(IVaultBundlesV1.AlreadyInitiated.selector));
+        }
     }
 }
 
