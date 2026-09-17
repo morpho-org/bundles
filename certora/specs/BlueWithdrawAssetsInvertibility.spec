@@ -22,12 +22,12 @@ methods {
     function TokenLib.pullToken(address token, address from, uint256 amount, TokenLib.TokenPermit memory permit) internal => NONDET;
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
 
+    // UtilsLib.mulDivUp and MathLib.mulDivUp are summarised with same ghost as the functions are identical.
     function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpGhost(x, y, d);
     function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpGhost(x, y, d);
     function UtilsLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => summaryMulDivDown(x, y, d);
 }
 
-// UtilsLib.mulDivUp and MathLib.mulDivUp are summarised with same ghost as the functions are identical.
 persistent ghost mulDivUpGhost(uint256, uint256, uint256) returns uint256;
 
 // Track direct ERC20 transfers from the bundler.
@@ -109,7 +109,7 @@ rule borrowReferralFeeInversion(uint256 targetAssets, uint256 referralFeePct, ui
 
 // Check that withdrawing transfers the target amount.
 rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetAssets) {
-    require referralFeeRecipient != e.msg.sender, "separate fee recipient";
+    require referralFeeRecipient != e.msg.sender, "fee recipient is distinct";
     require reallocations.length <= 2, "assume two allocations";
 
     uint256 penaltyAssets = sumPenaltyAssets(reallocations);
@@ -124,8 +124,8 @@ rule blueBundlesV1WithdrawReturnsTargetNet(env e, BlueBundlesV1.MarketParams mar
 
 // Check that borrowing transfers the target amount.
 rule blueBundlesV1SupplyCollateralAndBorrowReturnsTargetNet(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAssets, uint256 maxLtv, TokenLib.TokenPermit collateralPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, uint256 targetAssets) {
-    require referralFeeRecipient != e.msg.sender, "separate fee recipient";
-    require reallocations.length <= 2, "loop bound";
+    require referralFeeRecipient != e.msg.sender, "fee recipient is distinct";
+    require reallocations.length <= 2, "assume two allocations";
 
     uint256 penaltyAssets = sumPenaltyAssets(reallocations);
     uint256 borrowAssets;
