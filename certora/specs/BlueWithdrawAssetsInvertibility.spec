@@ -23,12 +23,12 @@ methods {
     function TokenLib.pullToken(address token, address from, uint256 amount, TokenLib.TokenPermit memory permit) internal => NONDET;
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
 
-    function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
+    function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpGhost(x, y, d);
     function UtilsLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => summaryMulDivDown(x, y, d);
 }
 
 // Keep the bundler's penalty calculation consistent with the summarized public allocator calls.
-persistent ghost mulDivUpG(uint256, uint256, uint256) returns uint256;
+persistent ghost mulDivUpGhost(uint256, uint256, uint256) returns uint256;
 
 // Track outgoing transfers separately from recipients' unrelated balance changes.
 persistent ghost mapping(address => mapping(address => mathint)) transferredFromBundler;
@@ -59,7 +59,7 @@ function summaryTransfer(address token, address from, address to, uint256 amount
 }
 
 function summaryPublicAllocation(address vault, address loanToken, uint128 assets, uint64 penalty) {
-    summaryTransfer(loanToken, currentContract, vault, mulDivUpG(assets, penalty, WAD()));
+    summaryTransfer(loanToken, currentContract, vault, mulDivUpGhost(assets, penalty, WAD()));
 }
 
 function summaryBorrow(address token, uint256 assets, uint256 shares, address receiver) returns (uint256, uint256) {
@@ -81,9 +81,9 @@ function summaryFlashLoan(address token, uint256 assets, bytes data) {
 
 function sumPenaltyAssets(BlueBundlesV1.PublicAllocations[] reallocations) returns uint256 {
     if (reallocations.length > 1) {
-        return require_uint256(mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD()) + mulDivUpG(reallocations[1].assets, reallocations[1].penalty, WAD()));
+        return require_uint256(mulDivUpGhost(reallocations[0].assets, reallocations[0].penalty, WAD()) + mulDivUpGhost(reallocations[1].assets, reallocations[1].penalty, WAD()));
     } else if (reallocations.length > 0) {
-        return mulDivUpG(reallocations[0].assets, reallocations[0].penalty, WAD());
+        return mulDivUpGhost(reallocations[0].assets, reallocations[0].penalty, WAD());
     } else {
         return 0;
     }
