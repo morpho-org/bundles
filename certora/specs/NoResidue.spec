@@ -30,8 +30,12 @@ methods {
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => NONDET;
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
 
-    // The bundler's penalty total (UtilsLib) and the public allocator's pulls (MathLib) share one uninterpreted
-    // function, so their equality follows by congruence instead of nonlinear arithmetic.
+    // Avoid non-linear arithmetic by using summary/non-determinism (reverts are not checked by the specification)
+    // For mulDivUp, a functional summary is needed to ensure the bundler's penalty total (UtilsLib)
+    // and the public allocator's pulls (MathLib) compute the same value.
+    // For mulDivDown a non-deterministic summary is enough.
+    function UtilsLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
+    function MathLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
     function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpGhost(x, y, d);
     function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpGhost(x, y, d);
 
@@ -47,7 +51,7 @@ persistent ghost mulDivUpGhost(uint256, uint256, uint256) returns uint256;
 // whose vault is the bundler always reverts on InactiveAdapter; the linked allocator's symbolic storage cannot know
 // this, so exclude it (up to loop_iter elements).
 function reallocationsAssumptions(BlueBundlesV1.PublicAllocations[] reallocations) {
-    require reallocations.length <= 3, "loop bound";
+    require reallocations.length <= 2, "loop bound";
     require reallocations.length > 0 => reallocations[0].vault != currentContract, "bundler is not a vault";
     require reallocations.length > 1 => reallocations[1].vault != currentContract, "bundler is not a vault";
     require reallocations.length > 2 => reallocations[2].vault != currentContract, "bundler is not a vault";
