@@ -17,7 +17,6 @@ methods {
     // Token modeling.
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
-    function TokenLib.pullToken(address token, address from, uint256 amount, MidnightBundlesV2.TokenPermit memory permit) internal => summaryPullToken(token, from, amount);
     function _.take(MidnightBundlesV2.Offer offer, bytes ratifierData, uint256 units, address taker, address receiverIfTakerIsSeller, address takerCallback, bytes takerCallbackData) external with(env e) => summaryTake(e.msg.sender, offer, taker, receiverIfTakerIsSeller, takerCallback) expect(uint256, uint256);
     function _.repay(Utils.Market, uint256 units, address, address, bytes) external => summaryRepay(units) expect void;
 }
