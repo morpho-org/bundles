@@ -91,8 +91,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 deadline,
         address wrappedNative
     ) external payable {
-        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(block.timestamp <= deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(collateralSupplies.length == 0 || assetsToPark == 0, InconsistentInputs());
 
         for (uint256 i; i < groupsToCancel.length; i++) {
@@ -168,8 +168,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 deadline,
         address wrappedNative
     ) external payable {
-        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(block.timestamp <= deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
@@ -245,8 +245,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 deadline,
         address wrappedNative
     ) external payable {
-        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(block.timestamp <= deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
@@ -317,8 +317,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 deadline,
         address wrappedNative
     ) external payable {
-        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(block.timestamp <= deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
@@ -398,8 +398,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 deadline,
         address wrappedNative
     ) external payable {
-        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(block.timestamp <= deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
