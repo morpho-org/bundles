@@ -91,10 +91,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 deadline,
         address wrappedNative
     ) external payable {
-        if (msg.value > 0) {
-            IWNative(wrappedNative).deposit{value: msg.value}();
-            SafeTransferLib.safeTransfer(wrappedNative, msg.sender, msg.value);
-        }
+        if (msg.value > 0) wrapNative(wrappedNative);
         require(block.timestamp <= deadline, DeadlinePassed());
         require(collateralSupplies.length == 0 || assetsToPark == 0, InconsistentInputs());
 
@@ -171,10 +168,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 deadline,
         address wrappedNative
     ) external payable {
-        if (msg.value > 0) {
-            IWNative(wrappedNative).deposit{value: msg.value}();
-            SafeTransferLib.safeTransfer(wrappedNative, msg.sender, msg.value);
-        }
+        if (msg.value > 0) wrapNative(wrappedNative);
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
@@ -251,10 +245,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 deadline,
         address wrappedNative
     ) external payable {
-        if (msg.value > 0) {
-            IWNative(wrappedNative).deposit{value: msg.value}();
-            SafeTransferLib.safeTransfer(wrappedNative, msg.sender, msg.value);
-        }
+        if (msg.value > 0) wrapNative(wrappedNative);
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
@@ -326,10 +317,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 deadline,
         address wrappedNative
     ) external payable {
-        if (msg.value > 0) {
-            IWNative(wrappedNative).deposit{value: msg.value}();
-            SafeTransferLib.safeTransfer(wrappedNative, msg.sender, msg.value);
-        }
+        if (msg.value > 0) wrapNative(wrappedNative);
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
@@ -410,10 +398,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 deadline,
         address wrappedNative
     ) external payable {
-        if (msg.value > 0) {
-            IWNative(wrappedNative).deposit{value: msg.value}();
-            SafeTransferLib.safeTransfer(wrappedNative, msg.sender, msg.value);
-        }
+        if (msg.value > 0) wrapNative(wrappedNative);
         require(block.timestamp <= deadline, DeadlinePassed());
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
@@ -470,6 +455,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     }
 
     /// INTERNAL FUNCTIONS ///
+
+    /// @dev Wraps msg.value into wrappedNative and transfers it to msg.sender.
+    // forge-lint: disable-next-item(arbitrary-send-eth) wrappedNative is chosen by msg.sender, who also receives the wrapped tokens.
+    function wrapNative(address wrappedNative) internal {
+        IWNative(wrappedNative).deposit{value: msg.value}();
+        SafeTransferLib.safeTransfer(wrappedNative, msg.sender, msg.value);
+    }
 
     /// @dev Supplies each collateralSupplies entry to onBehalf on Midnight, pulling the assets from msg.sender.
     function supplyCollaterals(Market memory market, CollateralSupply[] memory collateralSupplies, address onBehalf)

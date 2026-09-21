@@ -2779,10 +2779,10 @@ contract MidnightBundlesV2TakerTest is Test {
 
         // Each collateral covers half of the debt.
         uint256 collateralAssets = (units / 2 + 1).mulDivUp(WAD, 0.77e18).mulDivUp(ORACLE_PRICE_SCALE, oracle1.price());
-        // The wrapped-native and regular collateral are both pulled from the borrower.
+        // Both collaterals are pulled from the borrower; the wrapped-native one need not come first.
         CollateralSupply[] memory supplies = new CollateralSupply[](2);
-        supplies[0] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
-        supplies[1] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+        supplies[0] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+        supplies[1] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
 
         OfferFill[] memory offerFills = new OfferFill[](1);
         offerFills[0] = OfferFill({offer: buyOfferOn(wethCollateralMarket, units), units: units, ratifierData: hex""});
@@ -2827,10 +2827,10 @@ contract MidnightBundlesV2TakerTest is Test {
 
         // Each collateral covers half of the debt.
         uint256 collateralAssets = (units / 2 + 1).mulDivUp(WAD, 0.77e18).mulDivUp(ORACLE_PRICE_SCALE, oracle1.price());
-        // The wrapped-native and regular collateral are both pulled from the borrower.
+        // Both collaterals are pulled from the borrower; the wrapped-native one need not come first.
         CollateralSupply[] memory supplies = new CollateralSupply[](2);
-        supplies[0] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
-        supplies[1] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+        supplies[0] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+        supplies[1] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
 
         OfferFill[] memory offerFills = new OfferFill[](1);
         offerFills[0] = OfferFill({offer: buyOfferOn(wethCollateralMarket, units), units: units, ratifierData: hex""});

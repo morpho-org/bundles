@@ -1599,10 +1599,10 @@ contract MidnightBundlesV2MakerTest is Test {
             makeMultiCollateralMarket(ERC20Permit(address(weth)), collateralToken);
         bytes32 id = midnight.touchMarket(market);
 
-        // The wrapped-native and regular collateral are both pulled from the lender.
+        // Both collaterals are pulled from the lender; the wrapped-native one need not come first.
         CollateralSupply[] memory supplies = new CollateralSupply[](2);
-        supplies[0] = CollateralSupply({collateralIndex: wethIndex, assets: PARKED_ASSETS});
-        supplies[1] = CollateralSupply({collateralIndex: tokenIndex, assets: 2 * PARKED_ASSETS});
+        supplies[0] = CollateralSupply({collateralIndex: tokenIndex, assets: 2 * PARKED_ASSETS});
+        supplies[1] = CollateralSupply({collateralIndex: wethIndex, assets: PARKED_ASSETS});
 
         deal(lender, PARKED_ASSETS);
         deal(address(collateralToken), lender, 2 * PARKED_ASSETS);
