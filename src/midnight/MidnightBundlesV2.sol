@@ -65,7 +65,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
     /// @dev Optionally supplies collateral to msg.sender on Midnight.
     /// @dev First checks consumption limits and cancels the groups in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
-    /// @dev Consumption limits are useful to prevent making a too big offer after a cancellation just after a take.
+    /// @dev Use consumption limits to avoid reposting oversized offers if additional fills occur before cancellation.
     /// @dev Each group's maxConsumed is the maximum acceptable Midnight consumption before cancellation, in the group's units or assets.
     /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
     /// @dev If newRoot is non-zero, this call grants the ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
