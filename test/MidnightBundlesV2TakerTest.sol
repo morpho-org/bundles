@@ -19,7 +19,6 @@ import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
-import {TokenLib} from "../src/libraries/TokenLib.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
 import {
     IMidnightBundlesV2,
@@ -213,7 +212,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
         } else {
             midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
@@ -228,7 +228,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
         }
         vm.stopPrank();
@@ -254,7 +255,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
         } else {
             midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
@@ -268,7 +270,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
         }
         vm.stopPrank();
@@ -303,7 +306,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             continuousFee - 1,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -349,7 +353,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             MAX_CONTINUOUS_FEE - 1,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -380,7 +385,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
 
             uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
@@ -402,7 +408,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
         }
     }
@@ -451,7 +458,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
 
             uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
@@ -474,7 +482,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
         }
     }
@@ -511,7 +520,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -540,7 +550,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -580,7 +591,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -625,7 +637,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
 
             uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
@@ -647,7 +660,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
         }
     }
@@ -677,7 +691,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -708,7 +723,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         assertEq(midnight.debt(id, borrower), debtUnits, "initial debt");
 
@@ -744,7 +760,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
         } else {
             vm.prank(borrower);
@@ -760,7 +777,8 @@ contract MidnightBundlesV2TakerTest is Test {
                 0,
                 address(0),
                 type(uint256).max,
-                block.timestamp
+                block.timestamp,
+                address(0)
             );
             assertEq(midnight.debt(id, borrower), debtUnits - buyUnits, "debt reduced");
         }
@@ -804,7 +822,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.debt(id, borrower), units, "units filled");
@@ -848,7 +867,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.debt(id, borrower), units, "units sold");
@@ -895,7 +915,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(type(uint256).max - loanToken.balanceOf(lender), targetBuyerAssets, "taker total cost");
@@ -940,7 +961,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(loanToken.balanceOf(receiver), targetSellerAssets, "receiver net");
@@ -976,7 +998,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         uint256 expectedFee = repayUnits.mulDivDown(referralFeePct, WAD - referralFeePct);
@@ -1004,7 +1027,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.debt(id, borrower), units - repayUnits, "debt");
@@ -1041,7 +1065,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         uint256 expectedFee = debt.mulDivDown(referralFeePct, WAD - referralFeePct);
@@ -1070,7 +1095,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.debt(id, borrower), 0, "debt fully repaid");
@@ -1118,7 +1144,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         // Offer for the borrower to buy back units from.
@@ -1155,7 +1182,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.debt(id, borrower), units - buyUnits - repayUnits, "debt");
@@ -1200,7 +1228,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         // Offer for the borrower to buy back units from.
@@ -1232,7 +1261,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.debt(id, borrower), 0, "debt fully repaid");
@@ -1269,7 +1299,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         // Offer for the borrower to buy back units from.
@@ -1306,7 +1337,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.debt(id, borrower), units - buyUnits, "debt");
@@ -1345,7 +1377,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         uint256 expectedFee = repayUnits.mulDivDown(referralFeePct, WAD - referralFeePct);
@@ -1370,7 +1403,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.debt(id, borrower), units, "debt untouched");
@@ -1409,7 +1443,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         deal(address(loanToken), borrower, targetBuyerAssets);
@@ -1431,7 +1466,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.debt(id, borrower), units, "debt untouched");
@@ -1474,7 +1510,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         uint256 price = TickLib.tickToPrice(MAX_TICK);
@@ -1509,7 +1546,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.credit(id, lender), units - sellUnits - withdrawUnits, "lender credit");
@@ -1559,7 +1597,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         // Borrower repays withdrawUnits to make them withdrawable, and buys back the units sold by the lender.
@@ -1588,7 +1627,8 @@ contract MidnightBundlesV2TakerTest is Test {
             referralFeePct,
             referrer,
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.credit(id, lender), 0, "lender credit");
@@ -1624,7 +1664,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         deal(address(loanToken), borrower, 2 * units);
         vm.prank(borrower);
@@ -1657,7 +1698,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         uint256 price = TickLib.tickToPrice(MAX_TICK);
@@ -1697,7 +1739,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         deal(address(loanToken), borrower, 2 * units);
         vm.prank(borrower);
@@ -1730,7 +1773,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         uint256 price = TickLib.tickToPrice(MAX_TICK);
@@ -1761,7 +1805,8 @@ contract MidnightBundlesV2TakerTest is Test {
             WAD,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         vm.expectRevert(IMidnightBundlesV2.PctExceeded.selector);
         midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
@@ -1776,7 +1821,8 @@ contract MidnightBundlesV2TakerTest is Test {
             WAD,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         vm.stopPrank();
 
@@ -1793,7 +1839,8 @@ contract MidnightBundlesV2TakerTest is Test {
             WAD,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         vm.expectRevert(IMidnightBundlesV2.PctExceeded.selector);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
@@ -1807,7 +1854,8 @@ contract MidnightBundlesV2TakerTest is Test {
             WAD,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         vm.stopPrank();
     }
@@ -1831,7 +1879,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            past
+            past,
+            address(0)
         );
         vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
@@ -1846,14 +1895,26 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            past
+            past,
+            address(0)
         );
         vm.stopPrank();
 
         vm.startPrank(borrower);
         vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
-            market, 1, 0, false, borrower, new CollateralSupply[](0), offerFills, 0, address(0), type(uint256).max, past
+            market,
+            1,
+            0,
+            false,
+            borrower,
+            new CollateralSupply[](0),
+            offerFills,
+            0,
+            address(0),
+            type(uint256).max,
+            past,
+            address(0)
         );
         vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
@@ -1867,7 +1928,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            past
+            past,
+            address(0)
         );
         vm.stopPrank();
     }
@@ -1936,7 +1998,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -1986,7 +2049,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -2015,7 +2079,18 @@ contract MidnightBundlesV2TakerTest is Test {
 
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
-            market, units, 0, false, borrower, supplies, offerFills, 0, address(0), type(uint256).max, block.timestamp
+            market,
+            units,
+            0,
+            false,
+            borrower,
+            supplies,
+            offerFills,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp,
+            address(0)
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -2053,7 +2128,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         uint256 maxWithdrawable = collateralAmount - _collateralAmount(0, units - repayUnits);
@@ -2084,7 +2160,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.debt(id, borrower), units - repayUnits, "debt");
@@ -2133,7 +2210,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -2177,7 +2255,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -2211,7 +2290,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -2248,7 +2328,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -2282,7 +2363,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -2315,7 +2397,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.consumed(offers[0].maker, offers[0].group), 100, "consumed offer 0");
@@ -2356,7 +2439,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
@@ -2409,7 +2493,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.consumed(offers[0].maker, offers[0].group), 100, "consumed offer 0");
@@ -2458,7 +2543,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
@@ -2499,7 +2585,7 @@ contract MidnightBundlesV2TakerTest is Test {
         offer.maxUnits = units.toUint128();
     }
 
-    function testBuyUnitsTargetWrapNativeAndUnwrapRemainder(uint256 extraAssets) public {
+    function testBuyUnitsTargetWrapNativeAndReturnWrappedRemainder(uint256 extraAssets) public {
         extraAssets = bound(extraAssets, 0, 1e24);
         uint256 units = 100e18;
 
@@ -2514,8 +2600,10 @@ contract MidnightBundlesV2TakerTest is Test {
         uint256 expectedFilledBuyerAssets = units.mulDivUp(TickLib.tickToPrice(MAX_TICK), WAD);
         uint256 maxBuyerAssets = expectedFilledBuyerAssets + extraAssets;
         deal(lender, maxBuyerAssets);
+        vm.prank(lender);
+        weth.approve(address(midnightBundles), type(uint256).max);
 
-        // The native tokens are wrapped instead of pulled, and the unfilled remainder is unwrapped back.
+        // The native tokens are wrapped for the lender before the regular token pull.
         vm.prank(lender);
         midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral{value: maxBuyerAssets}(
             wethMarket,
@@ -2529,13 +2617,14 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
 
         assertEq(midnight.debt(IdLib.toId(wethMarket), borrower), units, "units bought");
         assertEq(weth.balanceOf(borrower), expectedFilledBuyerAssets, "maker receipt");
-        assertEq(lender.balance, extraAssets, "native remainder unwrapped");
-        assertEq(weth.balanceOf(lender), 0, "no wrapped refund");
+        assertEq(lender.balance, 0, "native wrapped");
+        assertEq(weth.balanceOf(lender), extraAssets, "wrapped refund");
         assertEq(address(midnightBundles).balance, 0, "bundler native residual");
         assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
     }
@@ -2553,6 +2642,8 @@ contract MidnightBundlesV2TakerTest is Test {
 
         uint256 targetBuyerAssets = units.mulDivDown(TickLib.tickToPrice(MAX_TICK), WAD);
         deal(lender, targetBuyerAssets);
+        vm.prank(lender);
+        weth.approve(address(midnightBundles), type(uint256).max);
 
         vm.prank(lender);
         midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral{value: targetBuyerAssets}(
@@ -2567,7 +2658,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
 
         assertEq(weth.balanceOf(borrower), targetBuyerAssets, "maker receipt");
@@ -2613,6 +2705,8 @@ contract MidnightBundlesV2TakerTest is Test {
         offerFills[0] = OfferFill({offer: buyOffer, units: units, ratifierData: hex""});
 
         deal(borrower, collateralAssets);
+        vm.prank(borrower);
+        weth.approve(address(midnightBundles), type(uint256).max);
 
         // The collateral is funded with native tokens, wrapped by the bundler before being supplied.
         vm.prank(borrower);
@@ -2627,7 +2721,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
 
         assertEq(midnight.collateral(wethCollateralId, borrower, 0), collateralAssets, "collateral supplied");
@@ -2675,7 +2770,7 @@ contract MidnightBundlesV2TakerTest is Test {
         offer.maxUnits = units.toUint128();
     }
 
-    function testSellUnitsTargetWrapNativeFirstCollateralAndPullSecond() public {
+    function testSellUnitsTargetWrapNativeAndPullBothCollaterals() public {
         uint256 units = 100e18;
         WETHMock weth = new WETHMock();
         (Market memory wethCollateralMarket, uint256 wethIndex) = wethAndTokenCollateralMarket(weth);
@@ -2683,16 +2778,18 @@ contract MidnightBundlesV2TakerTest is Test {
 
         // Each collateral covers half of the debt.
         uint256 collateralAssets = (units / 2 + 1).mulDivUp(WAD, 0.77e18).mulDivUp(ORACLE_PRICE_SCALE, oracle1.price());
-        // The native supply must come first; the second supply is pulled.
+        // Both collaterals are pulled from the borrower; the wrapped-native one need not come first.
         CollateralSupply[] memory supplies = new CollateralSupply[](2);
-        supplies[0] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
-        supplies[1] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+        supplies[0] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+        supplies[1] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
 
         OfferFill[] memory offerFills = new OfferFill[](1);
         offerFills[0] = OfferFill({offer: buyOfferOn(wethCollateralMarket, units), units: units, ratifierData: hex""});
 
         deal(borrower, collateralAssets);
         deal(address(collateralToken1), borrower, collateralAssets);
+        vm.prank(borrower);
+        weth.approve(address(midnightBundles), type(uint256).max);
         vm.prank(borrower);
         collateralToken1.approve(address(midnightBundles), collateralAssets);
 
@@ -2708,7 +2805,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
 
         assertEq(midnight.collateral(wethCollateralId, borrower, wethIndex), collateralAssets, "wrapped collateral");
@@ -2720,7 +2818,7 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(collateralToken1.balanceOf(address(midnightBundles)), 0, "bundler token residual");
     }
 
-    function testSellSellerAssetsTargetWrapNativeFirstCollateralAndPullSecond() public {
+    function testSellSellerAssetsTargetWrapNativeAndPullBothCollaterals() public {
         uint256 units = 100e18;
         WETHMock weth = new WETHMock();
         (Market memory wethCollateralMarket, uint256 wethIndex) = wethAndTokenCollateralMarket(weth);
@@ -2728,16 +2826,18 @@ contract MidnightBundlesV2TakerTest is Test {
 
         // Each collateral covers half of the debt.
         uint256 collateralAssets = (units / 2 + 1).mulDivUp(WAD, 0.77e18).mulDivUp(ORACLE_PRICE_SCALE, oracle1.price());
-        // The native supply must come first; the second supply is pulled.
+        // Both collaterals are pulled from the borrower; the wrapped-native one need not come first.
         CollateralSupply[] memory supplies = new CollateralSupply[](2);
-        supplies[0] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
-        supplies[1] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+        supplies[0] = CollateralSupply({collateralIndex: 1 - wethIndex, assets: collateralAssets});
+        supplies[1] = CollateralSupply({collateralIndex: wethIndex, assets: collateralAssets});
 
         OfferFill[] memory offerFills = new OfferFill[](1);
         offerFills[0] = OfferFill({offer: buyOfferOn(wethCollateralMarket, units), units: units, ratifierData: hex""});
 
         deal(borrower, collateralAssets);
         deal(address(collateralToken1), borrower, collateralAssets);
+        vm.prank(borrower);
+        weth.approve(address(midnightBundles), type(uint256).max);
         vm.prank(borrower);
         collateralToken1.approve(address(midnightBundles), collateralAssets);
 
@@ -2754,7 +2854,8 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
 
         assertEq(midnight.collateral(wethCollateralId, borrower, wethIndex), collateralAssets, "wrapped collateral");
@@ -2766,7 +2867,7 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(collateralToken1.balanceOf(address(midnightBundles)), 0, "bundler token residual");
     }
 
-    function testBuyUnitsTargetNativeAmountMismatch() public {
+    function testBuyUnitsTargetCombinesNativeAndExistingWrappedNative() public {
         uint256 units = 100e18;
 
         WETHMock weth = new WETHMock();
@@ -2779,10 +2880,11 @@ contract MidnightBundlesV2TakerTest is Test {
 
         uint256 maxBuyerAssets = units.mulDivUp(TickLib.tickToPrice(MAX_TICK), WAD);
         deal(lender, maxBuyerAssets);
-
-        // msg.value must cover exactly maxBuyerAssets.
+        deal(address(weth), lender, 1);
         vm.prank(lender);
-        vm.expectRevert(TokenLib.InconsistentAmountAndNative.selector);
+        weth.approve(address(midnightBundles), type(uint256).max);
+
+        vm.prank(lender);
         midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral{value: maxBuyerAssets - 1}(
             wethMarket,
             units,
@@ -2795,16 +2897,18 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
+
+        assertEq(weth.balanceOf(lender), 0, "existing wrapped native used");
     }
 
-    function testSellUnitsTargetRevertsWhenNativeIsNotConsumed() public {
+    function testSellUnitsTargetWrapsNativeWithoutAssetMovement() public {
+        WETHMock weth = new WETHMock();
         deal(borrower, 1 ether);
 
-        // There is no collateral supply to wrap into, so the native tokens would otherwise be stranded in the bundle.
         vm.prank(borrower);
-        vm.expectRevert(IMidnightBundlesV2.UnusedNative.selector);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget{value: 1 ether}(
             market,
             0,
@@ -2816,11 +2920,13 @@ contract MidnightBundlesV2TakerTest is Test {
             0,
             address(0),
             type(uint256).max,
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
 
         assertEq(address(midnightBundles).balance, 0, "no native left in the bundle");
-        assertEq(borrower.balance, 1 ether, "native returned to the borrower");
+        assertEq(borrower.balance, 0, "native wrapped");
+        assertEq(weth.balanceOf(borrower), 1 ether, "wrapped native sent to the borrower");
     }
 }
 

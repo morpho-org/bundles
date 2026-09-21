@@ -37,14 +37,12 @@ interface IMidnightBundlesV2 {
     error InconsistentSide();
     error InconsistentInputs();
     error InvalidRatifierResponse();
-    error NativeTransferFailed();
     error NotReduceOnly();
     error OutOfOffers();
     error PctExceeded();
     error SellerAssetsTooLow();
     error UnitsTooHigh();
     error UnitsTooLow();
-    error UnusedNative();
 
     /// STORAGE GETTERS ///
     function MIDNIGHT() external view returns (address);
@@ -64,7 +62,8 @@ interface IMidnightBundlesV2 {
         bytes memory rootSignature,
         GroupCancellation[] memory groupsToCancel,
         bytes memory payload,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable;
 
     function midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
@@ -79,7 +78,8 @@ interface IMidnightBundlesV2 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable;
 
     function midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
@@ -93,7 +93,8 @@ interface IMidnightBundlesV2 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable;
 
     function midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
@@ -108,7 +109,8 @@ interface IMidnightBundlesV2 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable;
 
     function midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
@@ -122,6 +124,7 @@ interface IMidnightBundlesV2 {
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable;
 }
