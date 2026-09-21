@@ -70,7 +70,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
     /// @dev If newRoot is non-zero, this call grants the ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
     /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports PriceRatifierV1 and RateRatifierV1; the selected root setter must return SET_IS_ROOT_RATIFIED_SUCCESS.
-    /// @dev Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig.
+    /// @dev Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig. The signature deadline is independent of the bundle's deadline.
+    /// @dev If newRoot is zero, ratifier, rootSignature, and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
     /// @dev This function is meant to be used for buying (collateralSupplies.length == 0) and selling (assetsToPark == 0).
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
@@ -79,6 +80,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev This bundle notably does not check that:
     /// - Offers in newRoot or payload match the selected ratifier, the intended use case (lend limit or borrow limit), and the supplied funding or collateral inputs.
     /// - newRoot corresponds to the offers described by payload. The payload posted to LOG is not validated against any on-chain state or bundle inputs.
+    /// - Prior offers are cancelled when reposting. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers, otherwise both old and new offers remain takeable.
     function midnightBundlesV2CancelAndMake(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
