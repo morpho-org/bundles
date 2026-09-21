@@ -111,9 +111,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
             );
             TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-            IMidnight(MIDNIGHT).supplyCollateral(
-                market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
-            );
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(
+                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
+                );
         }
 
         if (assetsToPark > 0) {
@@ -138,9 +139,9 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 (uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) =
                     abi.decode(rootSignature, (uint256, uint128, uint256, uint8, bytes32, bytes32));
                 require(
-                    IRatifiersV1Common(ratifier).setIsRootRatifiedWithSig(
-                        msg.sender, newRoot, height, true, nonce, signatureDeadline, v, r, s
-                    ) == SET_IS_ROOT_RATIFIED_SUCCESS,
+                    IRatifiersV1Common(ratifier)
+                        .setIsRootRatifiedWithSig(msg.sender, newRoot, height, true, nonce, signatureDeadline, v, r, s)
+                    == SET_IS_ROOT_RATIFIED_SUCCESS,
                     InvalidRatifierResponse()
                 );
             }
@@ -275,9 +276,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
             );
             TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-            IMidnight(MIDNIGHT).supplyCollateral(
-                market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
-            );
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(
+                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
+                );
         }
         // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
@@ -436,9 +438,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
             );
             TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-            IMidnight(MIDNIGHT).supplyCollateral(
-                market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
-            );
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(
+                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
+                );
         }
         // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
         require(address(this).balance == nativeBefore - msg.value, UnusedNative());
