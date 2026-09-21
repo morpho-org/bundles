@@ -1570,27 +1570,100 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
     }
 
-    function testMakeRevertsWhenParkingAndSupplyingCollateral() public {
+    function testMakeParksAssetsAndSuppliesCollateral() public {
         CollateralSupply[] memory supplies = new CollateralSupply[](1);
-        supplies[0] = CollateralSupply({collateralIndex: 0, assets: 0});
+        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
 
-        // Parking is for buying and supplying collateral is for selling: both at once is rejected, even for zero supplies.
+        Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
+        bytes32 root = HashLib.hashOffer(offer);
+
+        deal(address(collateralToken), lender, PARKED_ASSETS);
         vm.prank(lender);
-        vm.expectRevert(IMidnightBundlesV2.InconsistentInputs.selector);
+        collateralToken.approve(address(midnightBundles), type(uint256).max);
+
+        vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             PARKED_ASSETS,
             CALLBACK_SALT,
             midnightMarket,
             supplies,
-            address(0),
-            bytes32(0),
+            address(priceRatifier),
+            root,
             "",
             new GroupCancellation[](0),
-            "",
+            abi.encode(offer),
             block.timestamp,
             address(0)
         );
+
+        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
+        assertEq(midnight.collateral(IdLib.toId(midnightMarket), lender, 0), PARKED_ASSETS, "collateral supplied");
+        assertTrue(priceRatifier.isRootRatified(lender, root), "root ratification");
+        assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundle loan residual");
+        assertEq(collateralToken.balanceOf(address(midnightBundles)), 0, "bundle collateral residual");
+    }
+
+    function testMakeParksNativeAndSuppliesNativeCollateral() public {
+        WETHMock weth = new WETHMock();
+        MarketParams memory wethBlueMarket = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(blueOracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethBlueMarket);
+
+        CollateralParams[] memory collateralParams = new CollateralParams[](1);
+        collateralParams[0] = CollateralParams({
+            token: address(weth), lltv: LLTV, liquidationCursor: 0.25e18, oracle: address(midnightOracle)
+        });
+        Market memory wethCollateralMarket = Market({
+            chainId: block.chainid,
+            midnight: address(midnight),
+            loanToken: address(loanToken),
+            collateralParams: collateralParams,
+            maturity: block.timestamp + 100 days,
+            rcfThreshold: 0,
+            enterGate: address(0),
+            liquidatorGate: address(0)
+        });
+        bytes32 wethCollateralId = midnight.touchMarket(wethCollateralMarket);
+
+        CollateralSupply[] memory supplies = new CollateralSupply[](1);
+        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
+
+        Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
+        bytes32 root = HashLib.hashOffer(offer);
+
+        deal(lender, 2 * PARKED_ASSETS);
+        vm.prank(lender);
+        weth.approve(address(midnightBundles), type(uint256).max);
+
+        // msg.value covers both the parked assets and the collateral supply.
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: 2 * PARKED_ASSETS}(
+            wethBlueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            wethCollateralMarket,
+            supplies,
+            address(priceRatifier),
+            root,
+            "",
+            new GroupCancellation[](0),
+            abi.encode(offer),
+            block.timestamp,
+            address(weth)
+        );
+
+        assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
+        assertEq(midnight.collateral(wethCollateralId, lender, 0), PARKED_ASSETS, "collateral supplied");
+        assertTrue(priceRatifier.isRootRatified(lender, root), "root ratification");
+        assertEq(lender.balance, 0, "lender native residual");
+        assertEq(address(midnightBundles).balance, 0, "bundler native residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
     }
 
     function testMakeWrapsNativeAndPullsBothCollaterals() public {

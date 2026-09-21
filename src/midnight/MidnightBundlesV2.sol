@@ -27,13 +27,15 @@ import {
     OfferFill
 } from "./interfaces/IMidnightBundlesV2.sol";
 
-/// @dev Maker-side Midnight offer creation and reposting, including callback-funded lend offers and collateralized borrow offers.
-/// @dev Taker-side buying and selling against Midnight offers, including collateral supply/withdrawal and debt repayment.
+/// @dev This contract enables:
+/// - Midnight offer creation and reposting, including BlueBuyCallback-funded lend offers and collateralized borrow offers.
+/// - Midnight batch-takes, including collateral supply/withdrawal and repayment at face value.
 /// @dev Inherits the token safety requirements of Midnight and Morpho Blue.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev All entrypoints share the same native-token handling: when msg.value is non-zero, it is wrapped using wrappedNative and transferred to msg.sender before the regular ERC20 pulls.
 /// @dev Native tokens may be combined with an existing wrappedNative balance and are not required to match any individual transfer amount.
 /// @dev msg.sender must approve this contract to pull wrappedNative before using native tokens.
+/// @dev The users must authorize this contract on Midnight beforehand.
 contract MidnightBundlesV2 is IMidnightBundlesV2 {
     using UtilsLib for uint256;
 
@@ -58,25 +60,21 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
     /// @dev Optionally supplies collateral to msg.sender on Midnight.
     /// @dev First checks consumption limits and cancels the groups in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
-    /// @dev After a group is cancelled, later occurrences of its ID in groupsToCancel revert unless their maxConsumed is type(uint128).max.
+    /// @dev Use consumption limits to avoid reposting oversized offers if additional fills occur before cancellation.
     /// @dev Each group's maxConsumed is the maximum acceptable Midnight consumption before cancellation, in the group's units or assets.
     /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
-    /// @dev SECURITY: If newRoot is non-zero, this call grants ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
-    /// @dev A wrong ratifier address may authorize a malicious contract that can move funds, modify positions, and authorize other accounts on behalf of msg.sender, potentially causing loss of funds. Interface compatibility and the expected success value do not establish trustworthiness.
+    /// @dev If newRoot is non-zero, this call grants the ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
     /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports PriceRatifierV1 and RateRatifierV1; the selected root setter must return SET_IS_ROOT_RATIFIED_SUCCESS.
-    /// - Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig.
-    /// - The EIP-712 signature must authorize (msg.sender, newRoot, true, nonce, signatureDeadline) under the selected ratifier's offer-tree typehash for height, for the current chain, signed by msg.sender or an address authorized by msg.sender on Midnight. Its deadline is independent of the bundle's deadline. Invalid signed ratifications revert.
+    /// @dev Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig. The signature deadline is independent of the bundle's deadline.
     /// @dev If newRoot is zero, ratifier, rootSignature, and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
-    /// @dev This function is meant to be used for buying (collateralSupplies.length == 0) or selling (assetsToPark == 0).
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
     /// @dev The new root may contain offers for multiple markets.
     /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected against supply-share-price inflation attacks.
-    /// @dev This bundle does not check that:
+    /// @dev This bundle notably does not check that:
     /// - Offers in newRoot or payload match the selected ratifier, the intended use case (lend limit or borrow limit), and the supplied funding or collateral inputs.
     /// - newRoot corresponds to the offers described by payload. The payload posted to LOG is not validated against any on-chain state or bundle inputs.
-    /// @dev Cancel prior offers before reposting to avoid leaving both old and new offers takeable. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers.
-    /// @dev The maker must authorize this contract on Midnight beforehand.
+    /// - Prior offers are cancelled when reposting. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers, otherwise both old and new offers remain takeable.
     function midnightBundlesV2CancelAndMake(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
@@ -93,7 +91,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
         if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
-        require(collateralSupplies.length == 0 || assetsToPark == 0, InconsistentInputs());
 
         for (uint256 i; i < groupsToCancel.length; i++) {
             GroupCancellation memory cancellation = groupsToCancel[i];
@@ -104,7 +101,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             IMidnight(MIDNIGHT).setConsumed(cancellation.group, type(uint128).max, msg.sender);
         }
 
-        supplyCollaterals(market, collateralSupplies, msg.sender);
+        for (uint256 i; i < collateralSupplies.length; i++) {
+            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            SafeTransferLib.safeTransferFrom(collateralToken, msg.sender, address(this), collateralSupplies[i].assets);
+            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(
+                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
+                );
+        }
 
         if (assetsToPark > 0) {
             address blueBuyCallback =
@@ -116,23 +121,24 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
         if (newRoot != bytes32(0)) {
             IMidnight(MIDNIGHT).setIsAuthorized(ratifier, true, msg.sender);
-            bytes32 ratificationResult;
             if (rootSignature.length == 0) {
-                ratificationResult = IRatifiersV1Common(ratifier).setIsRootRatified(msg.sender, newRoot, true);
+                require(
+                    IRatifiersV1Common(ratifier).setIsRootRatified(msg.sender, newRoot, true)
+                        == SET_IS_ROOT_RATIFIED_SUCCESS,
+                    InvalidRatifierResponse()
+                );
             } else {
                 (uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) =
                     abi.decode(rootSignature, (uint256, uint128, uint256, uint8, bytes32, bytes32));
-                ratificationResult = IRatifiersV1Common(ratifier)
-                    .setIsRootRatifiedWithSig(msg.sender, newRoot, height, true, nonce, signatureDeadline, v, r, s);
+                require(
+                    IRatifiersV1Common(ratifier)
+                        .setIsRootRatifiedWithSig(msg.sender, newRoot, height, true, nonce, signatureDeadline, v, r, s)
+                    == SET_IS_ROOT_RATIFIED_SUCCESS,
+                    InvalidRatifierResponse()
+                );
             }
-            require(ratificationResult == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
 
-            (bool success, bytes memory returndata) = LOG.call(payload);
-            if (!success) {
-                assembly ("memory-safe") {
-                    revert(add(returndata, 0x20), mload(returndata))
-                }
-            }
+            log(payload);
         }
     }
 
@@ -141,7 +147,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     // For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer") units.
     // Only touched offers are checked to point to the given market.
     // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
-    // msg.sender is the taker and must authorize this bundler on Midnight for the buy/sell functions below.
     // msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
     // The bundler contract must have an allowance to pull enough tokens from msg.sender for the buy/sell functions below.
     // Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing to buy, decreasing to sell).
@@ -251,7 +256,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
-        supplyCollaterals(market, collateralSupplies, msg.sender);
+        for (uint256 i; i < collateralSupplies.length; i++) {
+            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            SafeTransferLib.safeTransferFrom(collateralToken, msg.sender, address(this), collateralSupplies[i].assets);
+            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(
+                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
+                );
+        }
 
         (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
         uint256 withdrawUnits = min(targetUnits, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
@@ -404,7 +417,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
-        supplyCollaterals(market, collateralSupplies, msg.sender);
+        for (uint256 i; i < collateralSupplies.length; i++) {
+            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            SafeTransferLib.safeTransferFrom(collateralToken, msg.sender, address(this), collateralSupplies[i].assets);
+            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(
+                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
+                );
+        }
 
         uint256 referralFeeAssets = targetSellerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
         uint256 targetFilledSellerAssets = targetSellerAssets + referralFeeAssets;
@@ -463,16 +484,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         SafeTransferLib.safeTransfer(wrappedNative, msg.sender, msg.value);
     }
 
-    /// @dev Supplies each collateralSupplies entry to onBehalf on Midnight, pulling the assets from msg.sender.
-    function supplyCollaterals(Market memory market, CollateralSupply[] memory collateralSupplies, address onBehalf)
-        internal
-    {
-        for (uint256 i; i < collateralSupplies.length; i++) {
-            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            SafeTransferLib.safeTransferFrom(collateralToken, msg.sender, address(this), collateralSupplies[i].assets);
-            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-            IMidnight(MIDNIGHT)
-                .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, onBehalf);
+    /// @dev Calls the log contract and bubbles up any revert data.
+    function log(bytes memory payload) internal {
+        (bool success, bytes memory returndata) = LOG.call(payload);
+        if (!success) {
+            assembly ("memory-safe") {
+                revert(add(returndata, 0x20), mload(returndata))
+            }
         }
     }
 
