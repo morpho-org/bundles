@@ -243,7 +243,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             offerPayload(offer),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -328,7 +329,8 @@ contract MidnightBundlesV2MakerTest is Test {
             rootSignature,
             oneGroup(keccak256("cancelled group")),
             "signed payload",
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -370,7 +372,8 @@ contract MidnightBundlesV2MakerTest is Test {
             rootSignature,
             groupsToCancel,
             "combined payload",
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         vm.stopPrank();
 
@@ -502,7 +505,8 @@ contract MidnightBundlesV2MakerTest is Test {
             rootSignature,
             new GroupCancellation[](0),
             "payload",
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertSignedMakeRolledBack(ratifier, root);
@@ -602,7 +606,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             groups,
             "new payload",
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.consumed(lender, group), type(uint128).max);
@@ -636,7 +641,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             groups,
             "payload",
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         vm.stopPrank();
 
@@ -685,7 +691,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             oneGroup(oldOffer.group, maxConsumed),
             offerPayload(newOffer),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.consumed(lender, oldOffer.group), consumed);
@@ -717,7 +724,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             oneGroup(group, 1),
             "payload",
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         vm.stopPrank();
         assertEq(midnight.consumed(lender, group), 1);
@@ -745,7 +753,8 @@ contract MidnightBundlesV2MakerTest is Test {
             hex"01",
             oneGroup(root),
             "ignored payload",
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         vm.stopPrank();
 
@@ -771,7 +780,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             "",
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         vm.stopPrank();
         assertEq(midnight.consumed(lender, bytes32(0)), 0, "empty array skips cancellation");
@@ -825,7 +835,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             payload,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
     }
 
@@ -857,7 +868,8 @@ contract MidnightBundlesV2MakerTest is Test {
             rootSignature,
             oneGroup(cancelledGroup),
             offerPayload(offer),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         vm.stopPrank();
 
@@ -906,7 +918,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             oneGroup(group),
             "payload",
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertTrue(midnight.isAuthorized(lender, ratifier));
@@ -974,7 +987,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             oneGroup(group),
             offerPayload(newOffer),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(blueBuyCallbackFactory.callbackOf(lender, CALLBACK_SALT), callback, "reused callback");
@@ -1015,7 +1029,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             oneGroup(group),
             abi.encode(newOffer, address(0)),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertTrue(priceRatifier.isRootRatified(lender, oldRoot), "old root retained");
@@ -1052,7 +1067,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             abi.encode(offer, address(0)),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
         vm.stopPrank();
 
@@ -1128,7 +1144,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             payload,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertEq(midnight.collateral(id, borrower, firstCollateralIndex), firstAssets, "first collateral");
@@ -1166,7 +1183,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             abi.encode(oldOffer, address(0)),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         Offer memory newOffer = oldOffer;
@@ -1185,7 +1203,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             abi.encode(newOffer, address(0)),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertTrue(priceRatifier.isRootRatified(borrower, oldRoot), "old root");
@@ -1224,7 +1243,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             abi.encode(firstOffer, address(0), secondOffer, address(0)),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         bytes32[] memory proof = new bytes32[](1);
@@ -1254,7 +1274,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             abi.encode("old payload"),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         bytes32 newRoot = keccak256("new root");
@@ -1275,7 +1296,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             oneGroup(cancelledGroup),
             payload,
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertTrue(priceRatifier.isRootRatified(lender, oldRoot), "old root");
@@ -1301,7 +1323,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             abi.encode(offer, address(0)),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertTrue(midnight.isAuthorized(lender, address(priceRatifier)), "Price authorization");
@@ -1339,7 +1362,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             oneGroup(oldOffer.group),
             abi.encode(newOffer, address(0)),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertFalse(ecrecoverRatifier.isRootCanceled(lender, oldRoot), "old Ecrecover root retained");
@@ -1368,7 +1392,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             abi.encode("payload"),
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         bytes32 ecrecoverRoot = keccak256("ecrecover root");
@@ -1386,7 +1411,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             oneGroup(group),
             "",
-            block.timestamp
+            block.timestamp,
+            address(0)
         );
 
         assertTrue(priceRatifier.isRootRatified(lender, priceRoot), "Price root");
@@ -1410,7 +1436,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             oneGroup(group),
             "",
-            block.timestamp - 1
+            block.timestamp - 1,
+            address(0)
         );
 
         assertEq(midnight.consumed(lender, group), 0);
@@ -1446,7 +1473,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             abi.encode(offer, address(0)),
-            deadline
+            deadline,
+            address(0)
         );
     }
 
@@ -1467,8 +1495,10 @@ contract MidnightBundlesV2MakerTest is Test {
         bytes32 root = HashLib.hashOffer(offer);
 
         deal(lender, PARKED_ASSETS);
+        vm.prank(lender);
+        weth.approve(address(midnightBundles), type(uint256).max);
 
-        // The parked assets are wrapped from msg.value instead of being pulled.
+        // msg.value is wrapped for the lender and then pulled to park the assets.
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
             wethBlueMarket,
@@ -1481,7 +1511,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             abi.encode(offer),
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
 
         assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
@@ -1514,8 +1545,10 @@ contract MidnightBundlesV2MakerTest is Test {
         supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
 
         deal(lender, PARKED_ASSETS);
+        vm.prank(lender);
+        weth.approve(address(midnightBundles), type(uint256).max);
 
-        // The collateral supply is the call's first transfer, so msg.value funds it.
+        // msg.value is wrapped for the lender and then pulled for the collateral supply.
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
             blueMarket,
@@ -1528,7 +1561,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             "",
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
 
         assertEq(midnight.collateral(wethCollateralId, lender, 0), PARKED_ASSETS, "collateral supplied");
@@ -1536,41 +1570,117 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
     }
 
-    function testMakeRevertsWhenParkingAndSupplyingCollateral() public {
+    function testMakeParksAssetsAndSuppliesCollateral() public {
         CollateralSupply[] memory supplies = new CollateralSupply[](1);
-        supplies[0] = CollateralSupply({collateralIndex: 0, assets: 0});
+        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
 
-        // Parking is for buying and supplying collateral is for selling: both at once is rejected, even for zero supplies.
+        Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
+        bytes32 root = HashLib.hashOffer(offer);
+
+        deal(address(collateralToken), lender, PARKED_ASSETS);
         vm.prank(lender);
-        vm.expectRevert(IMidnightBundlesV2.InconsistentInputs.selector);
+        collateralToken.approve(address(midnightBundles), type(uint256).max);
+
+        vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
             PARKED_ASSETS,
             CALLBACK_SALT,
             midnightMarket,
             supplies,
-            address(0),
-            bytes32(0),
+            address(priceRatifier),
+            root,
             "",
             new GroupCancellation[](0),
-            "",
-            block.timestamp
+            abi.encode(offer),
+            block.timestamp,
+            address(0)
         );
+
+        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
+        assertEq(midnight.collateral(IdLib.toId(midnightMarket), lender, 0), PARKED_ASSETS, "collateral supplied");
+        assertTrue(priceRatifier.isRootRatified(lender, root), "root ratification");
+        assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundle loan residual");
+        assertEq(collateralToken.balanceOf(address(midnightBundles)), 0, "bundle collateral residual");
     }
 
-    function testMakeSuppliesNativeFirstCollateralAndPullsSecond() public {
+    function testMakeParksNativeAndSuppliesNativeCollateral() public {
+        WETHMock weth = new WETHMock();
+        MarketParams memory wethBlueMarket = MarketParams({
+            loanToken: address(weth),
+            collateralToken: address(collateralToken),
+            oracle: address(blueOracle),
+            irm: address(0),
+            lltv: LLTV
+        });
+        morpho.createMarket(wethBlueMarket);
+
+        CollateralParams[] memory collateralParams = new CollateralParams[](1);
+        collateralParams[0] = CollateralParams({
+            token: address(weth), lltv: LLTV, liquidationCursor: 0.25e18, oracle: address(midnightOracle)
+        });
+        Market memory wethCollateralMarket = Market({
+            chainId: block.chainid,
+            midnight: address(midnight),
+            loanToken: address(loanToken),
+            collateralParams: collateralParams,
+            maturity: block.timestamp + 100 days,
+            rcfThreshold: 0,
+            enterGate: address(0),
+            liquidatorGate: address(0)
+        });
+        bytes32 wethCollateralId = midnight.touchMarket(wethCollateralMarket);
+
+        CollateralSupply[] memory supplies = new CollateralSupply[](1);
+        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
+
+        Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
+        bytes32 root = HashLib.hashOffer(offer);
+
+        deal(lender, 2 * PARKED_ASSETS);
+        vm.prank(lender);
+        weth.approve(address(midnightBundles), type(uint256).max);
+
+        // msg.value covers both the parked assets and the collateral supply.
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2CancelAndMake{value: 2 * PARKED_ASSETS}(
+            wethBlueMarket,
+            PARKED_ASSETS,
+            CALLBACK_SALT,
+            wethCollateralMarket,
+            supplies,
+            address(priceRatifier),
+            root,
+            "",
+            new GroupCancellation[](0),
+            abi.encode(offer),
+            block.timestamp,
+            address(weth)
+        );
+
+        assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
+        assertEq(midnight.collateral(wethCollateralId, lender, 0), PARKED_ASSETS, "collateral supplied");
+        assertTrue(priceRatifier.isRootRatified(lender, root), "root ratification");
+        assertEq(lender.balance, 0, "lender native residual");
+        assertEq(address(midnightBundles).balance, 0, "bundler native residual");
+        assertEq(weth.balanceOf(address(midnightBundles)), 0, "bundler wrapped residual");
+    }
+
+    function testMakeWrapsNativeAndPullsBothCollaterals() public {
         WETHMock weth = new WETHMock();
         (Market memory market, uint256 wethIndex, uint256 tokenIndex) =
             makeMultiCollateralMarket(ERC20Permit(address(weth)), collateralToken);
         bytes32 id = midnight.touchMarket(market);
 
-        // The native supply must come first; the second supply is pulled.
+        // Both collaterals are pulled from the lender; the wrapped-native one need not come first.
         CollateralSupply[] memory supplies = new CollateralSupply[](2);
-        supplies[0] = CollateralSupply({collateralIndex: wethIndex, assets: PARKED_ASSETS});
-        supplies[1] = CollateralSupply({collateralIndex: tokenIndex, assets: 2 * PARKED_ASSETS});
+        supplies[0] = CollateralSupply({collateralIndex: tokenIndex, assets: 2 * PARKED_ASSETS});
+        supplies[1] = CollateralSupply({collateralIndex: wethIndex, assets: PARKED_ASSETS});
 
         deal(lender, PARKED_ASSETS);
         deal(address(collateralToken), lender, 2 * PARKED_ASSETS);
+        vm.prank(lender);
+        weth.approve(address(midnightBundles), type(uint256).max);
         vm.prank(lender);
         collateralToken.approve(address(midnightBundles), 2 * PARKED_ASSETS);
 
@@ -1586,7 +1696,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             "",
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
 
         assertEq(midnight.collateral(id, lender, wethIndex), PARKED_ASSETS, "wrapped collateral");
@@ -1597,12 +1708,11 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(collateralToken.balanceOf(address(midnightBundles)), 0, "bundler collateral residual");
     }
 
-    function testMakeRevertsWhenNativeIsNotConsumed() public {
+    function testMakeWrapsNativeWithoutAssetMovement() public {
+        WETHMock weth = new WETHMock();
         deal(lender, 1 ether);
 
-        // There is no first transfer to wrap into, so the native tokens would otherwise be stranded in the bundle.
         vm.prank(lender);
-        vm.expectRevert(IMidnightBundlesV2.UnusedNative.selector);
         midnightBundles.midnightBundlesV2CancelAndMake{value: 1 ether}(
             blueMarket,
             0,
@@ -1614,11 +1724,13 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             "",
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
 
         assertEq(address(midnightBundles).balance, 0, "no native left in the bundle");
-        assertEq(lender.balance, 1 ether, "native returned to the lender");
+        assertEq(lender.balance, 0, "native wrapped");
+        assertEq(weth.balanceOf(lender), 1 ether, "wrapped native sent to the lender");
     }
 
     function testMakeIgnoresNativeAlreadyHeldByTheBundle() public {
@@ -1637,6 +1749,8 @@ contract MidnightBundlesV2MakerTest is Test {
 
         deal(lender, PARKED_ASSETS);
         vm.prank(lender);
+        weth.approve(address(midnightBundles), type(uint256).max);
+        vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake{value: PARKED_ASSETS}(
             wethBlueMarket,
             PARKED_ASSETS,
@@ -1648,7 +1762,8 @@ contract MidnightBundlesV2MakerTest is Test {
             "",
             new GroupCancellation[](0),
             "",
-            block.timestamp
+            block.timestamp,
+            address(weth)
         );
 
         assertEq(morpho.expectedSupplyAssets(wethBlueMarket, callbackOf(lender)), PARKED_ASSETS, "parked assets");
