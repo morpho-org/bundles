@@ -19,7 +19,6 @@ import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
-import {Log} from "../lib/midnight/src/periphery/log/Log.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
 import {
     IMidnightBundlesV2,
@@ -86,7 +85,7 @@ contract MidnightBundlesV2TakerTest is Test {
         address blue = makeAddr("blue");
         BlueBuyCallbackFactoryStub blueBuyCallbackFactory = new BlueBuyCallbackFactoryStub(address(midnight), blue);
         midnightBundles =
-            new MidnightBundlesV2(address(midnight), blue, address(blueBuyCallbackFactory), address(new Log()));
+            new MidnightBundlesV2(address(midnight), blue, address(blueBuyCallbackFactory), makeAddr("log"));
         assertEq(midnightBundles.MIDNIGHT(), address(midnight));
 
         // Set settlement fees to max for all breakpoints.
@@ -320,7 +319,7 @@ contract MidnightBundlesV2TakerTest is Test {
         address fakeBlue = makeAddr("fakeBlue");
         BlueBuyCallbackFactoryStub fakeFactory = new BlueBuyCallbackFactoryStub(address(fakeMidnight), fakeBlue);
         MidnightBundlesV2 fakeBundles =
-            new MidnightBundlesV2(address(fakeMidnight), fakeBlue, address(fakeFactory), address(new Log()));
+            new MidnightBundlesV2(address(fakeMidnight), fakeBlue, address(fakeFactory), makeAddr("fakeLog"));
 
         Market memory fakeMarket;
         fakeMarket.chainId = block.chainid;
