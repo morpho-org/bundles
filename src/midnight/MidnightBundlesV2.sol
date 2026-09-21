@@ -68,7 +68,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig. The signature deadline is independent of the bundle's deadline.
     /// @dev If newRoot is zero, ratifier, rootSignature, and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
-    /// @dev This function is meant to be used for buying (collateralSupplies.length == 0) and selling (assetsToPark == 0).
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
     /// @dev The new root may contain offers for multiple markets.
     /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected against supply-share-price inflation attacks.
@@ -92,7 +91,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
         if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
-        require(collateralSupplies.length == 0 || assetsToPark == 0, InconsistentInputs());
 
         for (uint256 i; i < groupsToCancel.length; i++) {
             GroupCancellation memory cancellation = groupsToCancel[i];

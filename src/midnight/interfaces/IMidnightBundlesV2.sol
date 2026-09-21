@@ -35,7 +35,6 @@ interface IMidnightBundlesV2 {
     error InconsistentMarket();
     error InconsistentMidnight();
     error InconsistentSide();
-    error InconsistentInputs();
     error InvalidRatifierResponse();
     error NotReduceOnly();
     error OutOfOffers();
