@@ -19,7 +19,6 @@ import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
-import {TokenLib} from "../src/libraries/TokenLib.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
 import {
     IMidnightBundlesV2,
