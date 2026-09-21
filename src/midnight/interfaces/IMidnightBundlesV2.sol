@@ -10,12 +10,7 @@ struct GroupCancellation {
     uint128 maxConsumed;
 }
 
-struct CollateralSupply {
-    uint256 collateralIndex;
-    uint256 assets;
-}
-
-struct CollateralWithdrawal {
+struct CollateralTransfer {
     uint256 collateralIndex;
     uint256 assets;
 }
@@ -55,10 +50,15 @@ interface IMidnightBundlesV2 {
         uint256 assetsToPark,
         bytes32 callbackSalt,
         Market memory market,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         address ratifier,
         bytes32 newRoot,
-        bytes memory rootSignature,
+        uint256 signatureHeight,
+        uint128 signatureNonce,
+        uint256 signatureDeadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s,
         GroupCancellation[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline,
@@ -72,7 +72,7 @@ interface IMidnightBundlesV2 {
         bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
-        CollateralWithdrawal[] memory collateralWithdrawals,
+        CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -87,7 +87,7 @@ interface IMidnightBundlesV2 {
         uint256 minSellerAssets,
         bool reduceOnly,
         address receiver,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -103,7 +103,7 @@ interface IMidnightBundlesV2 {
         bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
-        CollateralWithdrawal[] memory collateralWithdrawals,
+        CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -118,7 +118,7 @@ interface IMidnightBundlesV2 {
         uint256 maxUnits,
         bool reduceOnly,
         address receiver,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,

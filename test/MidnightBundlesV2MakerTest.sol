@@ -29,8 +29,17 @@ import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
 import {
     IMidnightBundlesV2,
     GroupCancellation,
-    CollateralSupply
+    CollateralTransfer
 } from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
+
+struct RootSignatureParams {
+    uint256 height;
+    uint128 nonce;
+    uint256 deadline;
+    uint8 v;
+    bytes32 r;
+    bytes32 s;
+}
 
 contract MidnightBundlesV2MakerTest is Test {
     using MorphoBalancesLib for IMorpho;
@@ -139,8 +148,8 @@ contract MidnightBundlesV2MakerTest is Test {
 
     /// HELPERS ///
 
-    function noCollateralSupplies() internal pure returns (CollateralSupply[] memory) {
-        return new CollateralSupply[](0);
+    function noCollateralSupplies() internal pure returns (CollateralTransfer[] memory) {
+        return new CollateralTransfer[](0);
     }
 
     function callbackOf(address callbackOwner) internal view returns (address) {
@@ -240,7 +249,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             offer.ratifier,
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             offerPayload(offer),
             block.timestamp,
@@ -317,6 +331,7 @@ contract MidnightBundlesV2MakerTest is Test {
     }
 
     function makeRootWithSignature(address ratifier, bytes32 root, bytes memory rootSignature) internal {
+        RootSignatureParams memory signature = decodeRootSignature(rootSignature);
         vm.prank(lender);
         midnightBundles.midnightBundlesV2CancelAndMake(
             blueMarket,
@@ -326,12 +341,23 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             ratifier,
             root,
-            rootSignature,
+            signature.height,
+            signature.nonce,
+            signature.deadline,
+            signature.v,
+            signature.r,
+            signature.s,
             oneGroup(keccak256("cancelled group")),
             "signed payload",
             block.timestamp,
             address(0)
         );
+    }
+
+    function decodeRootSignature(bytes memory encoded) internal pure returns (RootSignatureParams memory signature) {
+        if (encoded.length == 0) return signature;
+        (signature.height, signature.nonce, signature.deadline, signature.v, signature.r, signature.s) =
+            abi.decode(encoded, (uint256, uint128, uint256, uint8, bytes32, bytes32));
     }
 
     function assertSignedMakeRolledBack(address ratifier, bytes32 root) internal view {
@@ -352,6 +378,7 @@ contract MidnightBundlesV2MakerTest is Test {
         bytes32 newRoot = keccak256("new root");
         bytes memory rootSignature =
             useSignature ? signRoot(ratifier, lender, newRoot, true, 0, block.timestamp, lenderPrivateKey) : bytes("");
+        RootSignatureParams memory signature = decodeRootSignature(rootSignature);
         GroupCancellation[] memory groupsToCancel = new GroupCancellation[](3);
         groupsToCancel[0] = GroupCancellation({group: oldRoot, maxConsumed: 0});
         groupsToCancel[1] = GroupCancellation({group: keccak256("second group"), maxConsumed: 0});
@@ -369,7 +396,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             ratifier,
             newRoot,
-            rootSignature,
+            signature.height,
+            signature.nonce,
+            signature.deadline,
+            signature.v,
+            signature.r,
+            signature.s,
             groupsToCancel,
             "combined payload",
             block.timestamp,
@@ -463,21 +495,11 @@ contract MidnightBundlesV2MakerTest is Test {
         assertSignedMakeRolledBack(ratifier, root);
     }
 
-    function testMakeRejectsMalformedRootSignature(bool useRateRatifier) public {
-        address ratifier = useRateRatifier ? address(rateRatifier) : address(priceRatifier);
-        bytes32 root = keccak256("signed root");
-
-        vm.expectRevert();
-        makeRootWithSignature(ratifier, root, hex"01");
-
-        assertSignedMakeRolledBack(ratifier, root);
-    }
-
     function testMakeRejectsInvalidRootSignature(bool useRateRatifier) public {
         address ratifier = useRateRatifier ? address(rateRatifier) : address(priceRatifier);
         bytes32 root = keccak256("signed root");
         bytes memory rootSignature =
-            abi.encode(uint256(0), uint128(0), block.timestamp, uint8(0), bytes32(0), bytes32(0));
+            abi.encode(uint256(0), uint128(0), block.timestamp, uint8(1), bytes32(0), bytes32(0));
 
         vm.expectRevert(IPriceRatifierV1.InvalidSignature.selector);
         makeRootWithSignature(ratifier, root, rootSignature);
@@ -489,6 +511,7 @@ contract MidnightBundlesV2MakerTest is Test {
         address ratifier = useRateRatifier ? address(rateRatifier) : address(priceRatifier);
         bytes32 root = keccak256("signed root");
         bytes memory rootSignature = signRoot(ratifier, lender, root, true, 0, block.timestamp, lenderPrivateKey);
+        RootSignatureParams memory signature = decodeRootSignature(rootSignature);
         vm.prank(lender);
         midnight.setIsAuthorized(address(midnightBundles), false, lender);
 
@@ -502,7 +525,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             ratifier,
             root,
-            rootSignature,
+            signature.height,
+            signature.nonce,
+            signature.deadline,
+            signature.v,
+            signature.r,
+            signature.s,
             new GroupCancellation[](0),
             "payload",
             block.timestamp,
@@ -564,7 +592,7 @@ contract MidnightBundlesV2MakerTest is Test {
     function testMakeRejectsUnexpectedRatifierResponse(bool useSignature) public {
         address ratifier = address(new InvalidResponseRatifier());
         bytes memory rootSignature = useSignature
-            ? abi.encode(uint256(0), uint128(0), block.timestamp, uint8(0), bytes32(0), bytes32(0))
+            ? abi.encode(uint256(0), uint128(0), block.timestamp, uint8(1), bytes32(0), bytes32(0))
             : bytes("");
 
         vm.expectRevert(IMidnightBundlesV2.InvalidRatifierResponse.selector);
@@ -603,7 +631,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             groups,
             "new payload",
             block.timestamp,
@@ -638,7 +671,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             groups,
             "payload",
             block.timestamp,
@@ -688,7 +726,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             newOffer.ratifier,
             newRoot,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             oneGroup(oldOffer.group, maxConsumed),
             offerPayload(newOffer),
             block.timestamp,
@@ -721,7 +764,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             bytes32(0),
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             oneGroup(group, 1),
             "payload",
             block.timestamp,
@@ -750,7 +798,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             ignoredRatifier,
             root,
-            hex"01",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             oneGroup(root),
             "ignored payload",
             block.timestamp,
@@ -777,7 +830,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(0),
             bytes32(0),
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             "",
             block.timestamp,
@@ -832,7 +890,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             payload,
             block.timestamp,
@@ -852,6 +915,7 @@ contract MidnightBundlesV2MakerTest is Test {
         bytes32 cancelledGroup = keccak256("cancelled group");
         bytes memory rootSignature =
             useSignature ? signRoot(ratifier, lender, root, true, 0, block.timestamp, lenderPrivateKey) : bytes("");
+        RootSignatureParams memory signature = decodeRootSignature(rootSignature);
 
         vm.startPrank(lender);
         loanToken.approve(address(revertingBundles), type(uint256).max);
@@ -865,7 +929,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             ratifier,
             root,
-            rootSignature,
+            signature.height,
+            signature.nonce,
+            signature.deadline,
+            signature.v,
+            signature.r,
+            signature.s,
             oneGroup(cancelledGroup),
             offerPayload(offer),
             block.timestamp,
@@ -915,7 +984,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             ratifier,
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             oneGroup(group),
             "payload",
             block.timestamp,
@@ -984,7 +1058,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             newOffer.ratifier,
             newRoot,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             oneGroup(group),
             offerPayload(newOffer),
             block.timestamp,
@@ -1026,7 +1105,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             newRoot,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             oneGroup(group),
             abi.encode(newOffer, address(0)),
             block.timestamp,
@@ -1064,7 +1148,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             abi.encode(offer, address(0)),
             block.timestamp,
@@ -1120,11 +1209,11 @@ contract MidnightBundlesV2MakerTest is Test {
         midnight.setIsAuthorized(address(midnightBundles), true, borrower);
         vm.stopPrank();
 
-        CollateralSupply[] memory collateralSupplies = new CollateralSupply[](3);
-        collateralSupplies[0] = CollateralSupply({collateralIndex: firstCollateralIndex, assets: firstAssets});
-        collateralSupplies[1] = CollateralSupply({collateralIndex: secondCollateralIndex, assets: secondAssets});
+        CollateralTransfer[] memory collateralSupplies = new CollateralTransfer[](3);
+        collateralSupplies[0] = CollateralTransfer({collateralIndex: firstCollateralIndex, assets: firstAssets});
+        collateralSupplies[1] = CollateralTransfer({collateralIndex: secondCollateralIndex, assets: secondAssets});
         // Zero supplies are no-ops, but their collateral index must still be valid.
-        collateralSupplies[2] = CollateralSupply({collateralIndex: firstCollateralIndex, assets: 0});
+        collateralSupplies[2] = CollateralTransfer({collateralIndex: firstCollateralIndex, assets: 0});
 
         Offer memory offer = makeBorrowOffer(market, keccak256("borrow group"), PARKED_ASSETS, MAX_TICK);
         bytes32 root = HashLib.hashPriceRatifierV1Offer(offer, address(0));
@@ -1141,7 +1230,12 @@ contract MidnightBundlesV2MakerTest is Test {
             collateralSupplies,
             address(priceRatifier),
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             payload,
             block.timestamp,
@@ -1180,7 +1274,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             oldRoot,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             abi.encode(oldOffer, address(0)),
             block.timestamp,
@@ -1200,7 +1299,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             newRoot,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             abi.encode(newOffer, address(0)),
             block.timestamp,
@@ -1240,7 +1344,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             abi.encode(firstOffer, address(0), secondOffer, address(0)),
             block.timestamp,
@@ -1271,7 +1380,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             oldRoot,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             abi.encode("old payload"),
             block.timestamp,
@@ -1293,7 +1407,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             newRoot,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             oneGroup(cancelledGroup),
             payload,
             block.timestamp,
@@ -1320,7 +1439,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             abi.encode(offer, address(0)),
             block.timestamp,
@@ -1359,7 +1483,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             newRoot,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             oneGroup(oldOffer.group),
             abi.encode(newOffer, address(0)),
             block.timestamp,
@@ -1389,7 +1518,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             priceRoot,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             abi.encode("payload"),
             block.timestamp,
@@ -1408,7 +1542,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             bytes32(0),
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             oneGroup(group),
             "",
             block.timestamp,
@@ -1433,7 +1572,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             bytes32(0),
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             oneGroup(group),
             "",
             block.timestamp - 1,
@@ -1470,7 +1614,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             abi.encode(offer, address(0)),
             deadline,
@@ -1508,7 +1657,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(priceRatifier),
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             abi.encode(offer),
             block.timestamp,
@@ -1541,8 +1695,8 @@ contract MidnightBundlesV2MakerTest is Test {
         });
         bytes32 wethCollateralId = midnight.touchMarket(wethCollateralMarket);
 
-        CollateralSupply[] memory supplies = new CollateralSupply[](1);
-        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
+        CollateralTransfer[] memory supplies = new CollateralTransfer[](1);
+        supplies[0] = CollateralTransfer({collateralIndex: 0, assets: PARKED_ASSETS});
 
         deal(lender, PARKED_ASSETS);
         vm.prank(lender);
@@ -1558,7 +1712,12 @@ contract MidnightBundlesV2MakerTest is Test {
             supplies,
             address(0),
             bytes32(0),
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             "",
             block.timestamp,
@@ -1571,8 +1730,8 @@ contract MidnightBundlesV2MakerTest is Test {
     }
 
     function testMakeParksAssetsAndSuppliesCollateral() public {
-        CollateralSupply[] memory supplies = new CollateralSupply[](1);
-        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
+        CollateralTransfer[] memory supplies = new CollateralTransfer[](1);
+        supplies[0] = CollateralTransfer({collateralIndex: 0, assets: PARKED_ASSETS});
 
         Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
         bytes32 root = HashLib.hashOffer(offer);
@@ -1590,7 +1749,12 @@ contract MidnightBundlesV2MakerTest is Test {
             supplies,
             address(priceRatifier),
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             abi.encode(offer),
             block.timestamp,
@@ -1631,8 +1795,8 @@ contract MidnightBundlesV2MakerTest is Test {
         });
         bytes32 wethCollateralId = midnight.touchMarket(wethCollateralMarket);
 
-        CollateralSupply[] memory supplies = new CollateralSupply[](1);
-        supplies[0] = CollateralSupply({collateralIndex: 0, assets: PARKED_ASSETS});
+        CollateralTransfer[] memory supplies = new CollateralTransfer[](1);
+        supplies[0] = CollateralTransfer({collateralIndex: 0, assets: PARKED_ASSETS});
 
         Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
         bytes32 root = HashLib.hashOffer(offer);
@@ -1651,7 +1815,12 @@ contract MidnightBundlesV2MakerTest is Test {
             supplies,
             address(priceRatifier),
             root,
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             abi.encode(offer),
             block.timestamp,
@@ -1673,9 +1842,9 @@ contract MidnightBundlesV2MakerTest is Test {
         bytes32 id = midnight.touchMarket(market);
 
         // Both collaterals are pulled from the lender; the wrapped-native one need not come first.
-        CollateralSupply[] memory supplies = new CollateralSupply[](2);
-        supplies[0] = CollateralSupply({collateralIndex: tokenIndex, assets: 2 * PARKED_ASSETS});
-        supplies[1] = CollateralSupply({collateralIndex: wethIndex, assets: PARKED_ASSETS});
+        CollateralTransfer[] memory supplies = new CollateralTransfer[](2);
+        supplies[0] = CollateralTransfer({collateralIndex: tokenIndex, assets: 2 * PARKED_ASSETS});
+        supplies[1] = CollateralTransfer({collateralIndex: wethIndex, assets: PARKED_ASSETS});
 
         deal(lender, PARKED_ASSETS);
         deal(address(collateralToken), lender, 2 * PARKED_ASSETS);
@@ -1693,7 +1862,12 @@ contract MidnightBundlesV2MakerTest is Test {
             supplies,
             address(0),
             bytes32(0),
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             "",
             block.timestamp,
@@ -1721,7 +1895,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(0),
             bytes32(0),
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             "",
             block.timestamp,
@@ -1759,7 +1938,12 @@ contract MidnightBundlesV2MakerTest is Test {
             noCollateralSupplies(),
             address(0),
             bytes32(0),
-            "",
+            0,
+            0,
+            0,
+            0,
+            bytes32(0),
+            bytes32(0),
             new GroupCancellation[](0),
             "",
             block.timestamp,

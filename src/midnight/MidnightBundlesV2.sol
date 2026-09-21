@@ -22,8 +22,7 @@ import {IWNative} from "../libraries/interfaces/IWNative.sol";
 import {
     IMidnightBundlesV2,
     GroupCancellation,
-    CollateralSupply,
-    CollateralWithdrawal,
+    CollateralTransfer,
     OfferFill
 } from "./interfaces/IMidnightBundlesV2.sol";
 
@@ -65,8 +64,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
     /// @dev If newRoot is non-zero, this call grants the ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
     /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports PriceRatifierV1 and RateRatifierV1; the selected root setter must return SET_IS_ROOT_RATIFIED_SUCCESS.
-    /// @dev Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig. The signature deadline is independent of the bundle's deadline.
-    /// @dev If newRoot is zero, ratifier, rootSignature, and payload are ignored and ratifier authorizations are unchanged.
+    /// @dev Pass v = 0 to call setIsRootRatified. Otherwise, the signature parameters are passed to setIsRootRatifiedWithSig. The signature deadline is independent of the bundle's deadline.
+    /// @dev If newRoot is zero, ratifier, signature parameters, and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
     /// @dev The new root may contain offers for multiple markets.
@@ -80,12 +79,17 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 assetsToPark,
         bytes32 callbackSalt,
         Market memory market,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         address ratifier,
         bytes32 newRoot,
-        bytes memory rootSignature,
+        uint256 signatureHeight,
+        uint128 signatureNonce,
+        uint256 signatureDeadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s,
         GroupCancellation[] memory groupsToCancel,
-        bytes memory payload,
+        bytes memory payloadToLog,
         uint256 deadline,
         address wrappedNative
     ) external payable {
@@ -121,24 +125,18 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
         if (newRoot != bytes32(0)) {
             IMidnight(MIDNIGHT).setIsAuthorized(ratifier, true, msg.sender);
-            if (rootSignature.length == 0) {
-                require(
-                    IRatifiersV1Common(ratifier).setIsRootRatified(msg.sender, newRoot, true)
-                        == SET_IS_ROOT_RATIFIED_SUCCESS,
-                    InvalidRatifierResponse()
-                );
+            if (v == 0) {
+                bytes32 res = IRatifiersV1Common(ratifier).setIsRootRatified(msg.sender, newRoot, true);
+                require(res == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
             } else {
-                (uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) =
-                    abi.decode(rootSignature, (uint256, uint128, uint256, uint8, bytes32, bytes32));
-                require(
-                    IRatifiersV1Common(ratifier)
-                        .setIsRootRatifiedWithSig(msg.sender, newRoot, height, true, nonce, signatureDeadline, v, r, s)
-                    == SET_IS_ROOT_RATIFIED_SUCCESS,
-                    InvalidRatifierResponse()
-                );
+                bytes32 res = IRatifiersV1Common(ratifier)
+                    .setIsRootRatifiedWithSig(
+                        msg.sender, newRoot, signatureHeight, true, signatureNonce, signatureDeadline, v, r, s
+                    );
+                require(res == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
             }
 
-            log(payload);
+            log(payloadToLog);
         }
     }
 
@@ -165,7 +163,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
-        CollateralWithdrawal[] memory collateralWithdrawals,
+        CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -186,19 +184,16 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 filledUnits;
         uint256 filledBuyerAssets;
         for (uint256 i; i < offerFills.length && filledUnits < targetUnits; i++) {
-            require(!offerFills[i].offer.buy, InconsistentSide());
-            require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
+            OfferFill memory fill = offerFills[i];
+            require(!fill.offer.buy, InconsistentSide());
+            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
-                targetUnits - filledUnits,
-                offerFills[i].units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, offerFills[i].offer)
+                targetUnits - filledUnits, fill.units, ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
-                .take(
-                    offerFills[i].offer, offerFills[i].ratifierData, unitsToTake, msg.sender, address(0), address(0), ""
-                ) returns (
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
             ) {
                 filledUnits += unitsToTake;
@@ -242,7 +237,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 minSellerAssets,
         bool reduceOnly,
         address receiver,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -272,28 +267,19 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;
         for (uint256 i; i < offerFills.length && filledUnits < targetUnits; i++) {
-            require(offerFills[i].offer.buy, InconsistentSide());
-            require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
+            OfferFill memory fill = offerFills[i];
+            require(fill.offer.buy, InconsistentSide());
+            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
-                targetUnits - filledUnits,
-                offerFills[i].units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, offerFills[i].offer)
+                targetUnits - filledUnits, fill.units, ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
                 require(unitsToTake <= takerCredit, NotReduceOnly());
             }
             try IMidnight(MIDNIGHT)
-                .take(
-                    offerFills[i].offer,
-                    offerFills[i].ratifierData,
-                    unitsToTake,
-                    msg.sender,
-                    address(this),
-                    address(0),
-                    ""
-                ) returns (
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "") returns (
                 uint256, uint256 resSellerAssets
             ) {
                 filledUnits += unitsToTake;
@@ -322,7 +308,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
-        CollateralWithdrawal[] memory collateralWithdrawals,
+        CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -346,21 +332,20 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 filledUnits;
         uint256 filledBuyerAssets;
         for (uint256 i; i < offerFills.length && filledBuyerAssets < targetFilledBuyerAssets; i++) {
-            require(!offerFills[i].offer.buy, InconsistentSide());
-            require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
+            OfferFill memory fill = offerFills[i];
+            require(!fill.offer.buy, InconsistentSide());
+            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 TakeAmountsLib.buyerAssetsToUnits(
-                    MIDNIGHT, id, offerFills[i].offer, targetFilledBuyerAssets - filledBuyerAssets
+                    MIDNIGHT, id, fill.offer, targetFilledBuyerAssets - filledBuyerAssets
                 ),
-                offerFills[i].units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, offerFills[i].offer)
+                fill.units,
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
-                .take(
-                    offerFills[i].offer, offerFills[i].ratifierData, unitsToTake, msg.sender, address(0), address(0), ""
-                ) returns (
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
             ) {
                 filledUnits += unitsToTake;
@@ -403,7 +388,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 maxUnits,
         bool reduceOnly,
         address receiver,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
@@ -436,30 +421,23 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;
         for (uint256 i; i < offerFills.length && filledSellerAssets < targetFilledSellerAssets; i++) {
-            require(offerFills[i].offer.buy, InconsistentSide());
-            require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
+            OfferFill memory fill = offerFills[i];
+            require(fill.offer.buy, InconsistentSide());
+            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 TakeAmountsLib.sellerAssetsToUnits(
-                    MIDNIGHT, id, offerFills[i].offer, targetFilledSellerAssets - filledSellerAssets
+                    MIDNIGHT, id, fill.offer, targetFilledSellerAssets - filledSellerAssets
                 ),
-                offerFills[i].units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, offerFills[i].offer)
+                fill.units,
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
                 require(unitsToTake <= takerCredit, NotReduceOnly());
             }
             try IMidnight(MIDNIGHT)
-                .take(
-                    offerFills[i].offer,
-                    offerFills[i].ratifierData,
-                    unitsToTake,
-                    msg.sender,
-                    address(this),
-                    address(0),
-                    ""
-                ) returns (
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "") returns (
                 uint256, uint256 resSellerAssets
             ) {
                 filledUnits += unitsToTake;
