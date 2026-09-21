@@ -899,6 +899,11 @@ contract MidnightBundlesV2MakerTest is Test {
         new MidnightBundlesV2(address(midnight), address(morpho), address(inconsistentFactory), address(offerLog));
     }
 
+    function testConstructorRevertsWhenLogHasNoCode() public {
+        vm.expectRevert(IMidnightBundlesV2.LogHasNoCode.selector);
+        new MidnightBundlesV2(address(midnight), address(morpho), address(blueBuyCallbackFactory), makeAddr("log"));
+    }
+
     function testMakeAcceptsArbitraryRatifier(bool useRateRatifier) public {
         address ratifier = useRateRatifier
             ? address(new RateRatifierV1(address(midnight)))

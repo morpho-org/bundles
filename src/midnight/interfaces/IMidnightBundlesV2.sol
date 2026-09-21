@@ -36,6 +36,7 @@ interface IMidnightBundlesV2 {
     error InconsistentMidnight();
     error InconsistentSide();
     error InvalidRatifierResponse();
+    error LogHasNoCode();
     error NotReduceOnly();
     error OutOfOffers();
     error PctExceeded();

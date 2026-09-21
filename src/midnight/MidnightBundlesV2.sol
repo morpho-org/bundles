@@ -47,6 +47,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     constructor(address _midnight, address _blue, address _blueBuyCallbackFactory, address _log) {
         require(IBlueBuyCallbackFactory(_blueBuyCallbackFactory).MIDNIGHT() == _midnight, InconsistentMidnight());
         require(IBlueBuyCallbackFactory(_blueBuyCallbackFactory).BLUE() == _blue, InconsistentBlue());
+        require(_log.code.length > 0, LogHasNoCode());
 
         MIDNIGHT = _midnight;
         BLUE = _blue;
