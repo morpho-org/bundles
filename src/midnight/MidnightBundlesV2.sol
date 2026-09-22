@@ -64,7 +64,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
     /// @dev If newRoot is non-zero, this call grants the ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
     /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports PriceRatifierV1 and RateRatifierV1; the selected root setter must return SET_IS_ROOT_RATIFIED_SUCCESS.
-    /// @dev Pass v = 0 to call setIsRootRatified. Otherwise, the signature parameters are passed to setIsRootRatifiedWithSig. The signature deadline is independent of the bundle's deadline.
+    /// @dev Pass v = r = s = 0 to call setIsRootRatified. Otherwise, the signature parameters are passed to setIsRootRatifiedWithSig. The signature deadline is independent of the bundle's deadline.
     /// @dev If newRoot is zero, ratifier, signature parameters, and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
@@ -125,7 +125,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
         if (newRoot != bytes32(0)) {
             IMidnight(MIDNIGHT).setIsAuthorized(ratifier, true, msg.sender);
-            if (v == 0) {
+            if (v == 0 && r == 0 && s == 0) {
                 bytes32 res = IRatifiersV1Common(ratifier).setIsRootRatified(msg.sender, newRoot, true);
                 require(res == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
             } else {
