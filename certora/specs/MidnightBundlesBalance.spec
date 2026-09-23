@@ -73,7 +73,7 @@ function summarySupplyCollateral(uint256 assets) {
 
 /// RULES ///
 
-rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Market market, uint256 targetUnits, uint256 maxBuyerAssets, bool reduceOnly, bool repayEnabled, MidnightBundlesV2.OfferFill[] offerFills, MidnightBundlesV2.CollateralWithdrawal[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative) {
+rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Market market, uint256 targetUnits, uint256 maxBuyerAssets, bool reduceOnly, bool repayEnabled, MidnightBundlesV2.OfferFill[] offerFills, MidnightBundlesV2.CollateralTransfer[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative) {
     address loanToken = market.loanToken;
 
     // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
@@ -95,7 +95,7 @@ rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Market
     assert spent == boughtAssets + repaidAssets + fees;
 }
 
-rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Market market, uint256 targetBuyerAssets, uint256 minUnits, bool reduceOnly, bool repayEnabled, MidnightBundlesV2.OfferFill[] offerFills, MidnightBundlesV2.CollateralWithdrawal[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative) {
+rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Market market, uint256 targetBuyerAssets, uint256 minUnits, bool reduceOnly, bool repayEnabled, MidnightBundlesV2.OfferFill[] offerFills, MidnightBundlesV2.CollateralTransfer[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative) {
     address loanToken = market.loanToken;
 
     // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
@@ -117,7 +117,7 @@ rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Marke
     assert spent == boughtAssets + repaidAssets + fees;
 }
 
-rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, Utils.Market market, uint256 targetUnits, uint256 minSellerAssets, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralSupply[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative) {
+rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, Utils.Market market, uint256 targetUnits, uint256 minSellerAssets, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralTransfer[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative) {
     address loanToken = market.loanToken;
 
     // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
@@ -140,7 +140,7 @@ rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, Utils.Market 
     assert received == soldAssets + withdrawnAssets - fees;
 }
 
-rule supplyCollateralAndSellWithAssetsTargetDoesntLoseTokens(env e, Utils.Market market, uint256 targetSellerAssets, uint256 maxUnits, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralSupply[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative) {
+rule supplyCollateralAndSellWithAssetsTargetDoesntLoseTokens(env e, Utils.Market market, uint256 targetSellerAssets, uint256 maxUnits, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralTransfer[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative) {
     address loanToken = market.loanToken;
 
     // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
