@@ -192,13 +192,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 targetUnits - filledUnits, fill.units, ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
-            try IMidnight(MIDNIGHT)
-                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(0), address(0), "") returns (
-                uint256 resBuyerAssets, uint256
-            ) {
-                filledUnits += unitsToTake;
-                filledBuyerAssets += resBuyerAssets;
-            } catch {}
+            (uint256 resBuyerAssets,) = IMidnight(MIDNIGHT)
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(0), address(0), "");
+            filledUnits += unitsToTake;
+            filledBuyerAssets += resBuyerAssets;
         }
         if (repayEnabled) {
             uint256 repayUnits = UtilsLib.min(targetUnits - filledUnits, IMidnight(MIDNIGHT).debt(id, msg.sender));
@@ -278,13 +275,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
                 require(unitsToTake <= takerCredit, NotReduceOnly());
             }
-            try IMidnight(MIDNIGHT)
-                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "") returns (
-                uint256, uint256 resSellerAssets
-            ) {
-                filledUnits += unitsToTake;
-                filledSellerAssets += resSellerAssets;
-            } catch {}
+            (, uint256 resSellerAssets) = IMidnight(MIDNIGHT)
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "");
+            filledUnits += unitsToTake;
+            filledSellerAssets += resSellerAssets;
         }
 
         require(filledUnits == targetUnits, OutOfOffers());
@@ -344,13 +338,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
-            try IMidnight(MIDNIGHT)
-                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(0), address(0), "") returns (
-                uint256 resBuyerAssets, uint256
-            ) {
-                filledUnits += unitsToTake;
-                filledBuyerAssets += resBuyerAssets;
-            } catch {}
+            (uint256 resBuyerAssets,) = IMidnight(MIDNIGHT)
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(0), address(0), "");
+            filledUnits += unitsToTake;
+            filledBuyerAssets += resBuyerAssets;
         }
         if (repayEnabled) {
             uint256 repayAssets =
@@ -436,13 +427,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
                 require(unitsToTake <= takerCredit, NotReduceOnly());
             }
-            try IMidnight(MIDNIGHT)
-                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "") returns (
-                uint256, uint256 resSellerAssets
-            ) {
-                filledUnits += unitsToTake;
-                filledSellerAssets += resSellerAssets;
-            } catch {}
+            (, uint256 resSellerAssets) = IMidnight(MIDNIGHT)
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "");
+            filledUnits += unitsToTake;
+            filledSellerAssets += resSellerAssets;
         }
 
         require(filledSellerAssets == targetFilledSellerAssets, OutOfOffers());
