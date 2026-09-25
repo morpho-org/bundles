@@ -91,7 +91,6 @@ interface IMidnightBundlesV2 {
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
-        uint256 maxContinuousFee,
         uint256 deadline,
         address wrappedNative
     ) external payable;
@@ -122,7 +121,6 @@ interface IMidnightBundlesV2 {
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
-        uint256 maxContinuousFee,
         uint256 deadline,
         address wrappedNative
     ) external payable;
