@@ -33,7 +33,7 @@ import {
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev All entrypoints share the same native-token handling: when msg.value is non-zero, it is wrapped using wrappedNative and transferred to msg.sender before the regular ERC20 pulls.
 /// @dev Native tokens may be combined with an existing wrappedNative balance and are not required to match any individual transfer amount.
-/// @dev wrappedNative must be the chain's canonical wrapped native token, behaving like WETH9: deposit() mints exactly msg.value tokens to the caller, withdraw(amount) burns exactly amount tokens and sends amount native tokens back, and it is a plain ERC20 (no fees, hooks, rebasing or blocklists). Any other wrapper can revert or strand tokens in this contract.
+/// @dev wrappedNative must be the chain's canonical wrapped native token, behaving like WETH9.
 /// @dev msg.sender must approve this contract to pull wrappedNative before using native tokens.
 /// @dev The users must authorize this contract on Midnight beforehand.
 contract MidnightBundlesV2 is IMidnightBundlesV2 {
