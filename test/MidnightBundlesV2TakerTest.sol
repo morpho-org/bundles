@@ -249,7 +249,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 new OfferFill[](0),
                 0,
                 address(0),
-                type(uint256).max,
                 block.timestamp,
                 address(0)
             );
@@ -264,7 +263,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 new OfferFill[](0),
                 0,
                 address(0),
-                type(uint256).max,
                 block.timestamp,
                 address(0)
             );
@@ -306,7 +304,7 @@ contract MidnightBundlesV2TakerTest is Test {
         );
     }
 
-    function testSellUnitsTargetRevertsWhenCallbackRaisesContinuousFeeBeforeNextTake() public {
+    function testBuyUnitsTargetRevertsWhenContinuousFeeRisesBeforeNextTake() public {
         uint256 firstUnits = 40e18;
         uint256 secondUnits = 60e18;
         uint256 targetUnits = firstUnits + secondUnits;
@@ -323,8 +321,8 @@ contract MidnightBundlesV2TakerTest is Test {
         fakeMarket.maturity = block.timestamp + 100;
 
         Offer memory firstOffer;
-        firstOffer.buy = true;
-        firstOffer.maker = lender;
+        firstOffer.buy = false;
+        firstOffer.maker = borrower;
         firstOffer.market = fakeMarket;
         firstOffer.maxUnits = firstUnits.toUint128();
         Offer memory secondOffer = firstOffer;
@@ -335,16 +333,19 @@ contract MidnightBundlesV2TakerTest is Test {
         offerFills[0] = OfferFill({offer: firstOffer, units: firstUnits, ratifierData: hex""});
         offerFills[1] = OfferFill({offer: secondOffer, units: secondUnits, ratifierData: hex""});
 
-        vm.prank(borrower);
+        vm.prank(lender);
+        loanToken.approve(address(fakeBundles), targetUnits);
+        vm.prank(lender);
         vm.expectRevert(IMidnightBundlesV2.ContinuousFeeAboveMax.selector);
-        fakeBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
+        fakeBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
             fakeMarket,
             targetUnits,
-            0,
+            targetUnits,
             false,
-            borrower,
-            new CollateralTransfer[](0),
+            false,
             offerFills,
+            new CollateralTransfer[](0),
+            address(0),
             0,
             address(0),
             MAX_CONTINUOUS_FEE - 1,
@@ -379,7 +380,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 offerFills,
                 0,
                 address(0),
-                type(uint256).max,
                 block.timestamp,
                 address(0)
             );
@@ -402,7 +402,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 offerFills,
                 0,
                 address(0),
-                type(uint256).max,
                 block.timestamp,
                 address(0)
             );
@@ -544,7 +543,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -631,7 +629,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 offerFills,
                 0,
                 address(0),
-                type(uint256).max,
                 block.timestamp,
                 address(0)
             );
@@ -654,7 +651,6 @@ contract MidnightBundlesV2TakerTest is Test {
                 offerFills,
                 0,
                 address(0),
-                type(uint256).max,
                 block.timestamp,
                 address(0)
             );
@@ -685,7 +681,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -717,7 +712,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -861,7 +855,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             referralFeePct,
             referrer,
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -955,7 +948,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             referralFeePct,
             referrer,
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -992,7 +984,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1059,7 +1050,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1138,7 +1128,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1222,7 +1211,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1293,7 +1281,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1371,7 +1358,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1437,7 +1423,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1504,7 +1489,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1540,7 +1524,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             referralFeePct,
             referrer,
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1591,7 +1574,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1621,7 +1603,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             referralFeePct,
             referrer,
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1658,7 +1639,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1692,7 +1672,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1733,7 +1712,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1767,7 +1745,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1833,7 +1810,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             WAD,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1848,7 +1824,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             WAD,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -1898,18 +1873,7 @@ contract MidnightBundlesV2TakerTest is Test {
         vm.startPrank(borrower);
         vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
-            market,
-            1,
-            0,
-            false,
-            borrower,
-            new CollateralTransfer[](0),
-            offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            past,
-            address(0)
+            market, 1, 0, false, borrower, new CollateralTransfer[](0), offerFills, 0, address(0), past, address(0)
         );
         vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
@@ -1922,7 +1886,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             past,
             address(0)
         );
@@ -2074,18 +2037,7 @@ contract MidnightBundlesV2TakerTest is Test {
 
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
-            market,
-            units,
-            0,
-            false,
-            borrower,
-            supplies,
-            offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            market, units, 0, false, borrower, supplies, offerFills, 0, address(0), block.timestamp, address(0)
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -2122,7 +2074,6 @@ contract MidnightBundlesV2TakerTest is Test {
             sellOfferFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -2204,7 +2155,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -2284,7 +2234,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -2357,7 +2306,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -2391,7 +2339,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -2433,7 +2380,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(0)
         );
@@ -2715,7 +2661,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(weth)
         );
@@ -2799,7 +2744,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(weth)
         );
@@ -2848,7 +2792,6 @@ contract MidnightBundlesV2TakerTest is Test {
             offerFills,
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(weth)
         );
@@ -2914,7 +2857,6 @@ contract MidnightBundlesV2TakerTest is Test {
             new OfferFill[](0),
             0,
             address(0),
-            type(uint256).max,
             block.timestamp,
             address(weth)
         );
@@ -2940,16 +2882,6 @@ contract ContinuousFeeChangingMidnightFake {
     function consumed(address, bytes32) external pure returns (uint256) {
         return 0;
     }
-
-    function updatePositionView(Market memory, bytes32, address) external pure returns (uint128, uint128, uint128) {
-        return (0, 0, 0);
-    }
-
-    function withdrawable(bytes32) external pure returns (uint128) {
-        return 0;
-    }
-
-    function withdraw(Market memory, uint256, address, address) external {}
 
     function take(Offer memory, bytes memory, uint256, address, address, address, bytes memory)
         external
