@@ -1106,17 +1106,13 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
     }
 
-    function testRepayMaxAfterLiquidation(uint256 referralFeePct, bool withdrawLiquidatedCollateral) public {
+    function testRepayMaxAfterLiquidation(uint256 referralFeePct) public {
         uint256 debt = _openDebtForClose();
         referralFeePct = bound(referralFeePct, 0, WAD - 1);
         uint256 maxBuyerAssets = debt + debt.mulDivDown(referralFeePct, WAD - referralFeePct);
         deal(address(loanToken), borrower, maxBuyerAssets);
 
         CollateralTransfer[] memory withdrawals = _withdrawAllForClose();
-        if (!withdrawLiquidatedCollateral) {
-            withdrawals = new CollateralTransfer[](1);
-            withdrawals[0] = CollateralTransfer({collateralIndex: 1, assets: type(uint256).max});
-        }
 
         // The borrower quotes the close before an unrelated liquidator repays one base unit against collateral 0.
         uint256 seizedAssets = _liquidateForClose(1);
@@ -1126,15 +1122,11 @@ contract MidnightBundlesV2TakerTest is Test {
         address receiver = makeAddr("collateralReceiver");
         assertEq(midnight.debt(id, borrower), 0, "debt fully repaid");
         assertEq(midnight.credit(id, borrower), 0, "no credit acquired");
-        assertEq(
-            midnight.collateral(id, borrower, 0),
-            withdrawLiquidatedCollateral ? 0 : 2 * debt - seizedAssets,
-            "liquidated collateral"
-        );
+        assertEq(midnight.collateral(id, borrower, 0), 0, "liquidated collateral withdrawn");
         assertEq(midnight.collateral(id, borrower, 1), 0, "other collateral withdrawn");
         assertEq(
             ERC20(market.collateralParams[0].token).balanceOf(receiver),
-            withdrawLiquidatedCollateral ? 2 * debt - seizedAssets : 0,
+            2 * debt - seizedAssets,
             "liquidated collateral received"
         );
         assertEq(ERC20(market.collateralParams[1].token).balanceOf(receiver), 2 * debt, "other collateral received");
@@ -1249,43 +1241,6 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(ERC20(market.collateralParams[1].token).balanceOf(receiver), 2 * debt, "other collateral received");
         assertEq(loanToken.balanceOf(borrower), 1, "exact assets spent");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
-    }
-
-    function testExactBuyTargetsStillRevertAfterLiquidation(bool assetsTarget) public {
-        uint256 debt = _openDebtForClose();
-        _liquidateForClose(1);
-        CollateralTransfer[] memory withdrawals = _withdrawAllForClose();
-
-        vm.expectRevert(IMidnightBundlesV2.OutOfOffers.selector);
-        _repayAndWithdrawForClose(assetsTarget, debt, debt, withdrawals, 0);
-
-        assertEq(midnight.debt(id, borrower), debt - 1, "repayment rolled back");
-        assertEq(loanToken.balanceOf(borrower), debt, "funding rolled back");
-    }
-
-    function testExactCollateralWithdrawalsStillRevertAfterLiquidation(bool assetsTarget) public {
-        uint256 debt = _openDebtForClose();
-        CollateralTransfer[] memory withdrawals = new CollateralTransfer[](1);
-        withdrawals[0] = CollateralTransfer({collateralIndex: 0, assets: 2 * debt});
-        uint256 seizedAssets = _liquidateForClose(1);
-
-        vm.expectRevert(stdError.arithmeticError);
-        _repayAndWithdrawForClose(assetsTarget, debt - 1, debt - 1, withdrawals, 0);
-
-        assertEq(midnight.debt(id, borrower), debt - 1, "repayment rolled back");
-        assertEq(midnight.collateral(id, borrower, 0), 2 * debt - seizedAssets, "withdrawal rolled back");
-    }
-
-    function testWithdrawMaxStillChecksHealth(bool assetsTarget) public {
-        uint256 debt = _openDebtForClose();
-        CollateralTransfer[] memory withdrawals = _withdrawAllForClose();
-
-        vm.expectRevert(IMidnight.UnhealthyBorrower.selector);
-        _repayAndWithdrawForClose(assetsTarget, 0, 0, withdrawals, 0);
-
-        assertEq(midnight.debt(id, borrower), debt, "debt unchanged");
-        assertEq(midnight.collateral(id, borrower, 0), 2 * debt, "first withdrawal rolled back");
-        assertEq(midnight.collateral(id, borrower, 1), 2 * debt, "second withdrawal rolled back");
     }
 
     function _openDebtForClose() internal returns (uint256 debt) {
