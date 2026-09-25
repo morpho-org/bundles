@@ -154,11 +154,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev This function pulls maxBuyerAssets from the msg.sender and transfers back the remaining tokens at the end.
     /// @dev msg.sender will pay at most maxBuyerAssets.
     /// @dev If repayEnabled and msg.sender has debt, the remaining amount not covered by the take loop is repaid.
-    /// @dev When targetUnits is type(uint256).max, the target is msg.sender's debt at execution, before taking offers.
-    /// @dev To repay all remaining debt without taking offers, use that sentinel with repayEnabled = true and an empty offerFills array.
+    /// @dev targetUnits = type(uint256).max targets msg.sender's debt before taking offers; with repayEnabled = true and empty offerFills, it repays all debt directly.
     /// @dev Total loan assets transferred from msg.sender is filledBuyerAssets + filledBuyerAssets * referralFeePct / (WAD - referralFeePct).
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
-    /// @dev A withdrawal's assets of type(uint256).max is replaced with msg.sender's balance of that collateral immediately before withdrawing.
+    /// @dev Set collateralWithdrawals[i].assets to type(uint256).max to withdraw msg.sender's full balance of that collateral at the time of withdrawal.
     function midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
         Market memory market,
         uint256 targetUnits,
@@ -306,7 +305,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev msg.sender will gain at least minUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
-    /// @dev A withdrawal's assets of type(uint256).max is replaced with msg.sender's balance of that collateral immediately before withdrawing.
+    /// @dev Set collateralWithdrawals[i].assets to type(uint256).max to withdraw msg.sender's full balance of that collateral at the time of withdrawal.
     /// @dev For full repayment using live debt, use midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral with targetUnits = type(uint256).max instead.
     function midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
         Market memory market,
