@@ -154,8 +154,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev This function pulls maxBuyerAssets from the msg.sender and transfers back the remaining tokens at the end.
     /// @dev msg.sender will pay at most maxBuyerAssets.
     /// @dev If repayEnabled and msg.sender has debt, the remaining amount not covered by the take loop is repaid.
+    /// @dev targetUnits = type(uint256).max targets msg.sender's debt before taking offers; with repayEnabled = true and empty offerFills, it repays all debt directly.
     /// @dev Total loan assets transferred from msg.sender is filledBuyerAssets + filledBuyerAssets * referralFeePct / (WAD - referralFeePct).
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
+    /// @dev Set collateralWithdrawals[i].assets to type(uint256).max to withdraw msg.sender's full balance of that collateral at the time of withdrawal.
     function midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
         Market memory market,
         uint256 targetUnits,
@@ -180,6 +182,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         address loanToken = market.loanToken;
         SafeTransferLib.safeTransferFrom(loanToken, msg.sender, address(this), maxBuyerAssets);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
+
+        if (targetUnits == type(uint256).max) {
+            targetUnits = IMidnight(MIDNIGHT).debt(id, msg.sender);
+        }
 
         uint256 filledUnits;
         uint256 filledBuyerAssets;
@@ -210,14 +216,12 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         require(filledUnits == targetUnits, OutOfOffers());
 
         for (uint256 i; i < collateralWithdrawals.length; i++) {
-            IMidnight(MIDNIGHT)
-                .withdrawCollateral(
-                    market,
-                    collateralWithdrawals[i].collateralIndex,
-                    collateralWithdrawals[i].assets,
-                    msg.sender,
-                    collateralReceiver
-                );
+            uint256 collateralIndex = collateralWithdrawals[i].collateralIndex;
+            uint256 assets = collateralWithdrawals[i].assets;
+            if (assets == type(uint256).max) {
+                assets = IMidnight(MIDNIGHT).collateral(id, msg.sender, collateralIndex);
+            }
+            IMidnight(MIDNIGHT).withdrawCollateral(market, collateralIndex, assets, msg.sender, collateralReceiver);
         }
 
         uint256 referralFeeAssets = filledBuyerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
@@ -301,6 +305,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev msg.sender will gain at least minUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
+    /// @dev Set collateralWithdrawals[i].assets to type(uint256).max to withdraw msg.sender's full balance of that collateral at the time of withdrawal.
+    /// @dev For full repayment using live debt, use midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral with targetUnits = type(uint256).max instead.
     function midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
         Market memory market,
         uint256 targetBuyerAssets,
@@ -364,14 +370,12 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         require(filledUnits >= minUnits, UnitsTooLow());
 
         for (uint256 i; i < collateralWithdrawals.length; i++) {
-            IMidnight(MIDNIGHT)
-                .withdrawCollateral(
-                    market,
-                    collateralWithdrawals[i].collateralIndex,
-                    collateralWithdrawals[i].assets,
-                    msg.sender,
-                    collateralReceiver
-                );
+            uint256 collateralIndex = collateralWithdrawals[i].collateralIndex;
+            uint256 assets = collateralWithdrawals[i].assets;
+            if (assets == type(uint256).max) {
+                assets = IMidnight(MIDNIGHT).collateral(id, msg.sender, collateralIndex);
+            }
+            IMidnight(MIDNIGHT).withdrawCollateral(market, collateralIndex, assets, msg.sender, collateralReceiver);
         }
 
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);

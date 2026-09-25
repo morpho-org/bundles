@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "../lib/forge-std/src/Test.sol";
+import {Test, stdError} from "../lib/forge-std/src/Test.sol";
 import {Market, Offer, CollateralParams} from "../lib/midnight/src/interfaces/IMidnight.sol";
 import {UtilsLib} from "../lib/midnight/src/libraries/UtilsLib.sol";
 import {IdLib} from "../lib/midnight/src/libraries/IdLib.sol";
@@ -1104,6 +1104,224 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(borrower), 0, "borrower spent assets");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
+    }
+
+    function testRepayMaxAfterLiquidation(uint256 referralFeePct) public {
+        uint256 debt = _openDebtForClose();
+        referralFeePct = bound(referralFeePct, 0, WAD - 1);
+        uint256 maxBuyerAssets = debt + debt.mulDivDown(referralFeePct, WAD - referralFeePct);
+        deal(address(loanToken), borrower, maxBuyerAssets);
+
+        CollateralTransfer[] memory withdrawals = _withdrawAllForClose();
+
+        // The borrower quotes the close before an unrelated liquidator repays one base unit against collateral 0.
+        uint256 seizedAssets = _liquidateForClose(1);
+        uint256 expectedFee = (debt - 1).mulDivDown(referralFeePct, WAD - referralFeePct);
+        _repayAndWithdrawForClose(false, type(uint256).max, maxBuyerAssets, withdrawals, referralFeePct);
+
+        address receiver = makeAddr("collateralReceiver");
+        assertEq(midnight.debt(id, borrower), 0, "debt fully repaid");
+        assertEq(midnight.credit(id, borrower), 0, "no credit acquired");
+        assertEq(midnight.collateral(id, borrower, 0), 0, "liquidated collateral withdrawn");
+        assertEq(midnight.collateral(id, borrower, 1), 0, "other collateral withdrawn");
+        assertEq(
+            ERC20(market.collateralParams[0].token).balanceOf(receiver),
+            2 * debt - seizedAssets,
+            "liquidated collateral received"
+        );
+        assertEq(ERC20(market.collateralParams[1].token).balanceOf(receiver), 2 * debt, "other collateral received");
+        assertEq(loanToken.balanceOf(makeAddr("referrer")), expectedFee, "fee on actual repayment");
+        assertEq(loanToken.balanceOf(borrower), maxBuyerAssets - (debt - 1) - expectedFee, "unused budget refunded");
+        assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
+    }
+
+    function testRepayMaxAfterFullLiquidation() public {
+        uint256 debt = _openDebtForClose();
+        uint256 seizedAssets = _liquidateForClose(debt);
+        CollateralTransfer[] memory withdrawals = _withdrawAllForClose();
+
+        _repayAndWithdrawForClose(false, type(uint256).max, debt, withdrawals, 0);
+
+        assertEq(midnight.debt(id, borrower), 0, "no remaining debt");
+        assertEq(midnight.collateral(id, borrower, 0), 0, "liquidated collateral withdrawn");
+        assertEq(midnight.collateral(id, borrower, 1), 0, "other collateral withdrawn");
+        address receiver = makeAddr("collateralReceiver");
+        assertEq(
+            ERC20(market.collateralParams[0].token).balanceOf(receiver),
+            2 * debt - seizedAssets,
+            "remaining collateral received"
+        );
+        assertEq(ERC20(market.collateralParams[1].token).balanceOf(receiver), 2 * debt, "other collateral received");
+        assertEq(loanToken.balanceOf(borrower), debt, "full budget refunded");
+        assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
+
+        // Both sentinels also work when the position is already empty.
+        _repayAndWithdrawForClose(false, type(uint256).max, 0, withdrawals, 0);
+        assertEq(loanToken.balanceOf(borrower), debt, "empty close spends nothing");
+    }
+
+    function testRepayMaxWithOffers(uint256 offerUnits, bool repayEnabled, bool reduceOnly) public {
+        uint256 debt = _openDebtForClose();
+        offerUnits = bound(offerUnits, 0, 2 * debt);
+        Offer memory sellOffer = offers[0];
+        sellOffer.buy = false;
+        sellOffer.receiverIfMakerIsSeller = lender;
+        sellOffer.maxUnits = (2 * debt).toUint128();
+        sellOffer.group = bytes32(uint256(2));
+        OfferFill[] memory offerFills = new OfferFill[](1);
+        offerFills[0] = OfferFill({offer: sellOffer, units: offerUnits, ratifierData: hex""});
+        CollateralTransfer[] memory withdrawals = _withdrawAllForClose();
+        address receiver = makeAddr("collateralReceiver");
+        bool outOfOffers = !repayEnabled && offerUnits < debt;
+
+        if (outOfOffers) vm.expectRevert(IMidnightBundlesV2.OutOfOffers.selector);
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
+            market,
+            type(uint256).max,
+            debt,
+            reduceOnly,
+            repayEnabled,
+            offerFills,
+            withdrawals,
+            receiver,
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp,
+            address(0)
+        );
+
+        if (outOfOffers) {
+            assertEq(midnight.debt(id, borrower), debt, "repayment rolled back");
+            assertEq(loanToken.balanceOf(borrower), debt, "funding rolled back");
+        } else {
+            uint256 takenUnits = UtilsLib.min(offerUnits, debt);
+            assertEq(midnight.debt(id, borrower), 0, "debt fully repaid");
+            assertEq(midnight.credit(id, borrower), 0, "offers capped to debt");
+            assertEq(midnight.consumed(lender, sellOffer.group), takenUnits, "units taken");
+            assertEq(midnight.withdrawable(id), debt - takenUnits, "remaining debt repaid at face value");
+            assertEq(midnight.collateral(id, borrower, 0), 0, "first collateral withdrawn");
+            assertEq(midnight.collateral(id, borrower, 1), 0, "second collateral withdrawn");
+        }
+        assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
+    }
+
+    function testRepayMaxRespectsSpendingCap(bool coversDebt) public {
+        uint256 debt = _openDebtForClose();
+        uint256 maxBuyerAssets = coversDebt ? debt : debt - 1;
+        CollateralTransfer[] memory withdrawals = _withdrawAllForClose();
+        // Pre-existing funds allow the transfers to succeed, but cannot let the caller exceed their spending cap.
+        deal(address(loanToken), address(midnightBundles), debt);
+
+        vm.expectRevert(stdError.arithmeticError);
+        _repayAndWithdrawForClose(false, type(uint256).max, maxBuyerAssets, withdrawals, 0.01e18);
+
+        assertEq(midnight.debt(id, borrower), debt, "repayment rolled back");
+        assertEq(midnight.collateral(id, borrower, 0), 2 * debt, "first withdrawal rolled back");
+        assertEq(midnight.collateral(id, borrower, 1), 2 * debt, "second withdrawal rolled back");
+        assertEq(loanToken.balanceOf(borrower), debt, "funding rolled back");
+        assertEq(loanToken.balanceOf(address(midnightBundles)), debt, "pre-existing funds preserved");
+    }
+
+    function testWithdrawMaxWithExactTargetAfterLiquidation(bool assetsTarget) public {
+        uint256 debt = _openDebtForClose();
+        uint256 seizedAssets = _liquidateForClose(1);
+        _repayAndWithdrawForClose(assetsTarget, debt - 1, debt - 1, _withdrawAllForClose(), 0);
+
+        address receiver = makeAddr("collateralReceiver");
+        assertEq(midnight.debt(id, borrower), 0, "debt fully repaid");
+        assertEq(midnight.collateral(id, borrower, 0), 0, "first collateral withdrawn");
+        assertEq(midnight.collateral(id, borrower, 1), 0, "second collateral withdrawn");
+        assertEq(
+            ERC20(market.collateralParams[0].token).balanceOf(receiver),
+            2 * debt - seizedAssets,
+            "remaining collateral received"
+        );
+        assertEq(ERC20(market.collateralParams[1].token).balanceOf(receiver), 2 * debt, "other collateral received");
+        assertEq(loanToken.balanceOf(borrower), 1, "exact assets spent");
+        assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
+    }
+
+    function _openDebtForClose() internal returns (uint256 debt) {
+        debt = 100e18;
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+        for (uint256 i; i < market.collateralParams.length; i++) {
+            ERC20 collateralToken = ERC20(market.collateralParams[i].token);
+            deal(address(collateralToken), borrower, 2 * debt);
+            vm.startPrank(borrower);
+            collateralToken.approve(address(midnight), 2 * debt);
+            midnight.supplyCollateral(market, i, 2 * debt, borrower);
+            vm.stopPrank();
+        }
+        offers[0].maxUnits = debt.toUint128();
+        vm.startPrank(borrower);
+        midnight.take(offers[0], hex"", debt, borrower, borrower, address(0), hex"");
+        loanToken.approve(address(midnightBundles), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function _liquidateForClose(uint256 units) internal returns (uint256 seizedAssets) {
+        address liquidator = makeAddr("liquidator");
+        deal(address(loanToken), liquidator, units);
+        vm.warp(market.maturity + 1);
+        vm.startPrank(liquidator);
+        loanToken.approve(address(midnight), units);
+        (seizedAssets,) = midnight.liquidate(market, 0, 0, units, borrower, true, liquidator, address(0), hex"");
+        vm.stopPrank();
+    }
+
+    function _withdrawAllForClose() internal pure returns (CollateralTransfer[] memory withdrawals) {
+        withdrawals = new CollateralTransfer[](2);
+        withdrawals[0] = CollateralTransfer({collateralIndex: 0, assets: type(uint256).max});
+        withdrawals[1] = CollateralTransfer({collateralIndex: 1, assets: type(uint256).max});
+    }
+
+    function _repayAndWithdrawForClose(
+        bool assetsTarget,
+        uint256 target,
+        uint256 maxBuyerAssets,
+        CollateralTransfer[] memory withdrawals,
+        uint256 referralFeePct
+    ) internal {
+        address receiver = makeAddr("collateralReceiver");
+        address referrer = makeAddr("referrer");
+        vm.prank(borrower);
+        if (assetsTarget) {
+            midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
+                market,
+                target,
+                0,
+                true,
+                true,
+                new OfferFill[](0),
+                withdrawals,
+                receiver,
+                referralFeePct,
+                referrer,
+                type(uint256).max,
+                block.timestamp,
+                address(0)
+            );
+        } else {
+            midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
+                market,
+                target,
+                maxBuyerAssets,
+                true,
+                true,
+                new OfferFill[](0),
+                withdrawals,
+                receiver,
+                referralFeePct,
+                referrer,
+                type(uint256).max,
+                block.timestamp,
+                address(0)
+            );
+        }
     }
 
     // Repay and withdraw steps.
