@@ -499,6 +499,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// @dev Returns min(x, y, z, w).
     function min(uint256 x, uint256 y, uint256 z, uint256 w) internal pure returns (uint256) {
-        return UtilsLib.min(min(x, y, z), w);
+        return UtilsLib.min(UtilsLib.min(x, y), UtilsLib.min(z, w));
     }
 }
