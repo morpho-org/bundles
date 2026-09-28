@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IMidnight, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol";
+import {IMidnight, Market, Offer} from "../../lib/midnight/src/interfaces/IMidnight.sol";
+import {IBlueBuyCallback} from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallback.sol";
 import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
@@ -144,13 +145,14 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// TAKE-SIDE EXTERNAL FUNCTIONS ///
 
     // For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer") units.
+    // Sell functions additionally cap units using buyerAssetsBound for callbacks registered with BLUE_BUY_CALLBACK_FACTORY.
     // Only touched offers are checked to point to the given market.
     // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
     // msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
     // The bundler contract must have an allowance to pull enough tokens from msg.sender for the buy/sell functions below.
     // Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing to buy, decreasing to sell).
     // offerFills[i].units should prevent taking more than what is takeable w.r.t. the callback / the balances / the health.
-    // For the buy functions below, the current market continuous fee must be at most maxContinuousFee when taking offers. Pass type(uint256).max to disable.
+    // For the buy functions below, unless reduceOnly is true, the current market continuous fee must be at most maxContinuousFee when taking offers. Pass type(uint256).max to disable.
 
     /// @dev This function pulls maxBuyerAssets from the msg.sender and transfers back the remaining tokens at the end.
     /// @dev msg.sender will pay at most maxBuyerAssets.
@@ -188,7 +190,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
+            require(reduceOnly || IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 targetUnits - filledUnits, fill.units, ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
             );
@@ -271,7 +273,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             uint256 unitsToTake = min(
-                targetUnits - filledUnits, fill.units, ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
+                targetUnits - filledUnits,
+                fill.units,
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                blueFundableUnits(id, fill.offer)
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -334,7 +339,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
+            require(reduceOnly || IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 TakeAmountsLib.buyerAssetsToUnits(
                     MIDNIGHT, id, fill.offer, targetFilledBuyerAssets - filledBuyerAssets
@@ -427,7 +432,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                     MIDNIGHT, id, fill.offer, targetFilledSellerAssets - filledSellerAssets
                 ),
                 fill.units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                blueFundableUnits(id, fill.offer)
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -452,6 +458,23 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// INTERNAL FUNCTIONS ///
 
+    /// @dev Returns a Blue funding cap in units. Assumes offer.buy.
+    /// @dev Other callbacks and failed bound queries impose no additional cap.
+    function blueFundableUnits(bytes32 id, Offer memory offer) internal view returns (uint256) {
+        if (!IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).isBlueBuyCallback(offer.callback)) {
+            return type(uint256).max;
+        }
+
+        try IBlueBuyCallback(offer.callback)
+            .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
+            uint256 bound
+        ) {
+            return TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, offer, bound + 1) - 1;
+        } catch {
+            return type(uint256).max;
+        }
+    }
+
     /// @dev Wraps msg.value into wrappedNative and transfers it to msg.sender.
     // forge-lint: disable-next-item(arbitrary-send-eth) wrappedNative is chosen by msg.sender, who also receives the wrapped tokens.
     function wrapNativeToMsgSender(address wrappedNative) internal {
@@ -472,5 +495,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Returns min(x, y, z).
     function min(uint256 x, uint256 y, uint256 z) internal pure returns (uint256) {
         return UtilsLib.min(UtilsLib.min(x, y), z);
+    }
+
+    /// @dev Returns min(x, y, z, w).
+    function min(uint256 x, uint256 y, uint256 z, uint256 w) internal pure returns (uint256) {
+        return UtilsLib.min(min(x, y, z), w);
     }
 }

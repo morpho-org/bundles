@@ -2893,7 +2893,7 @@ contract ContinuousFeeChangingMidnightFake {
     }
 }
 
-/// @dev Only satisfies MidnightBundlesV2's constructor check; the taker functions never call the factory.
+/// @dev Satisfies the constructor checks and treats all callbacks as unrelated to Blue.
 contract BlueBuyCallbackFactoryStub {
     address public immutable MIDNIGHT;
     address public immutable BLUE;
@@ -2901,6 +2901,10 @@ contract BlueBuyCallbackFactoryStub {
     constructor(address _midnight, address _blue) {
         MIDNIGHT = _midnight;
         BLUE = _blue;
+    }
+
+    function isBlueBuyCallback(address) external pure returns (bool) {
+        return false;
     }
 }
 
