@@ -190,16 +190,16 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
-            uint256 makerCredit = type(uint256).max;
+            uint256 makerCreditBound = type(uint256).max;
             if (fill.offer.reduceOnly) {
                 (uint128 credit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, fill.offer.maker);
-                makerCredit = credit;
+                makerCreditBound = credit;
             }
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerCredit
+                makerCreditBound
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
@@ -279,13 +279,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            uint256 makerDebt =
+            uint256 makerDebtBound =
                 fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max;
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerDebt
+                makerDebtBound
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -349,10 +349,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
-            uint256 makerCredit = type(uint256).max;
+            uint256 makerCreditBound = type(uint256).max;
             if (fill.offer.reduceOnly) {
                 (uint128 credit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, fill.offer.maker);
-                makerCredit = credit;
+                makerCreditBound = credit;
             }
             uint256 unitsToTake = min(
                 TakeAmountsLib.buyerAssetsToUnits(
@@ -360,7 +360,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 ),
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerCredit
+                makerCreditBound
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
@@ -442,7 +442,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            uint256 makerDebt =
+            uint256 makerDebtBound =
                 fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max;
             uint256 unitsToTake = min(
                 TakeAmountsLib.sellerAssetsToUnits(
@@ -450,7 +450,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 ),
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerDebt
+                makerDebtBound
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
