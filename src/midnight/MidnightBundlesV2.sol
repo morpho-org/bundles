@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IMidnight, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol";
+import {IMidnight, Market, Offer} from "../../lib/midnight/src/interfaces/IMidnight.sol";
 import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
@@ -144,6 +144,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// TAKE-SIDE EXTERNAL FUNCTIONS ///
 
     // For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer") units.
+    // For reduce-only offers, the taken units are additionally capped by the maker's current credit (sell offers, after fee accrual and slashing) or debt (buy offers).
     // Only touched offers are checked to point to the given market.
     // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
     // msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
@@ -190,7 +191,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
-                targetUnits - filledUnits, fill.units, ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
+                targetUnits - filledUnits,
+                fill.units,
+                UtilsLib.min(
+                    ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer), makerReduceOnlyUnits(id, fill.offer)
+                )
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
@@ -271,7 +276,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             uint256 unitsToTake = min(
-                targetUnits - filledUnits, fill.units, ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
+                targetUnits - filledUnits,
+                fill.units,
+                UtilsLib.min(
+                    ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer), makerReduceOnlyUnits(id, fill.offer)
+                )
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -340,7 +349,9 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                     MIDNIGHT, id, fill.offer, targetFilledBuyerAssets - filledBuyerAssets
                 ),
                 fill.units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
+                UtilsLib.min(
+                    ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer), makerReduceOnlyUnits(id, fill.offer)
+                )
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
@@ -427,7 +438,9 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                     MIDNIGHT, id, fill.offer, targetFilledSellerAssets - filledSellerAssets
                 ),
                 fill.units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
+                UtilsLib.min(
+                    ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer), makerReduceOnlyUnits(id, fill.offer)
+                )
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -451,6 +464,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     }
 
     /// INTERNAL FUNCTIONS ///
+
+    /// @dev Returns the maximum units that can be taken from the offer without increasing the maker's credit or debt, if the offer is reduce-only.
+    /// @dev Assumes that `id` matches `offer.market`.
+    function makerReduceOnlyUnits(bytes32 id, Offer memory offer) internal view returns (uint256) {
+        if (!offer.reduceOnly) return type(uint256).max;
+        if (offer.buy) return IMidnight(MIDNIGHT).debt(id, offer.maker);
+        (uint128 makerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(offer.market, id, offer.maker);
+        return makerCredit;
+    }
 
     /// @dev Wraps msg.value into wrappedNative and transfers it to msg.sender.
     // forge-lint: disable-next-item(arbitrary-send-eth) wrappedNative is chosen by msg.sender, who also receives the wrapped tokens.
