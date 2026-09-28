@@ -36,8 +36,8 @@ methods {
     // For mulDivDown a non-deterministic summary is enough.
     function UtilsLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
     function MathLib.mulDivDown(uint256 x, uint256 y, uint256 d) internal returns (uint256) => NONDET;
-    function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
-    function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpG(x, y, d);
+    function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpGhost(x, y, d);
+    function MathLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpGhost(x, y, d);
 
     // The public allocator's penalty pull is a low-level token.call whose sighash the prover cannot resolve
     // statically, so the _.transferFrom wildcard misses it; summarize the library function instead.
@@ -45,7 +45,7 @@ methods {
 }
 
 // Uninterpreted rounding-up mulDiv shared by both implementations.
-persistent ghost mulDivUpG(uint256, uint256, uint256) returns uint256;
+persistent ghost mulDivUpGhost(uint256, uint256, uint256) returns uint256;
 
 // The public allocator can never register the bundler as a vault (its setters require isVaultV2), so a reallocation
 // whose vault is the bundler always reverts on InactiveAdapter; the linked allocator's symbolic storage cannot know
