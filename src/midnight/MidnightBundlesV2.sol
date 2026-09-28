@@ -90,7 +90,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bytes32 r,
         bytes32 s,
         GroupCancellation[] memory groupsToCancel,
-        bytes memory payloadToLog,
+        bytes memory payload,
         uint256 deadline,
         address wrappedNative
     ) external payable {
@@ -137,7 +137,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 require(res == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
             }
 
-            log(payloadToLog);
+            log(payload);
         }
     }
 
