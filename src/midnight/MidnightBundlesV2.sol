@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IMidnight, Market, Offer} from "../../lib/midnight/src/interfaces/IMidnight.sol";
+import {IMidnight, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol";
 import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
@@ -190,12 +190,16 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
+            uint256 makerCredit = type(uint256).max;
+            if (fill.offer.reduceOnly) {
+                (uint128 credit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, fill.offer.maker);
+                makerCredit = credit;
+            }
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 fill.units,
-                UtilsLib.min(
-                    ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer), makerReduceOnlyUnits(id, fill.offer)
-                )
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                makerCredit
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
@@ -275,12 +279,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
+            uint256 makerDebt =
+                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max;
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 fill.units,
-                UtilsLib.min(
-                    ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer), makerReduceOnlyUnits(id, fill.offer)
-                )
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                makerDebt
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -344,14 +349,18 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
+            uint256 makerCredit = type(uint256).max;
+            if (fill.offer.reduceOnly) {
+                (uint128 credit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, fill.offer.maker);
+                makerCredit = credit;
+            }
             uint256 unitsToTake = min(
                 TakeAmountsLib.buyerAssetsToUnits(
                     MIDNIGHT, id, fill.offer, targetFilledBuyerAssets - filledBuyerAssets
                 ),
                 fill.units,
-                UtilsLib.min(
-                    ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer), makerReduceOnlyUnits(id, fill.offer)
-                )
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                makerCredit
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
@@ -433,14 +442,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
+            uint256 makerDebt =
+                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max;
             uint256 unitsToTake = min(
                 TakeAmountsLib.sellerAssetsToUnits(
                     MIDNIGHT, id, fill.offer, targetFilledSellerAssets - filledSellerAssets
                 ),
                 fill.units,
-                UtilsLib.min(
-                    ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer), makerReduceOnlyUnits(id, fill.offer)
-                )
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                makerDebt
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -465,15 +475,6 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// INTERNAL FUNCTIONS ///
 
-    /// @dev Returns the maximum units that can be taken from the offer without increasing the maker's credit or debt, if the offer is reduce-only.
-    /// @dev Assumes that `id` matches `offer.market`.
-    function makerReduceOnlyUnits(bytes32 id, Offer memory offer) internal view returns (uint256) {
-        if (!offer.reduceOnly) return type(uint256).max;
-        if (offer.buy) return IMidnight(MIDNIGHT).debt(id, offer.maker);
-        (uint128 makerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(offer.market, id, offer.maker);
-        return makerCredit;
-    }
-
     /// @dev Wraps msg.value into wrappedNative and transfers it to msg.sender.
     // forge-lint: disable-next-item(arbitrary-send-eth) wrappedNative is chosen by msg.sender, who also receives the wrapped tokens.
     function wrapNativeToMsgSender(address wrappedNative) internal {
@@ -494,5 +495,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Returns min(x, y, z).
     function min(uint256 x, uint256 y, uint256 z) internal pure returns (uint256) {
         return UtilsLib.min(UtilsLib.min(x, y), z);
+    }
+
+    /// @dev Returns min(x, y, z, w).
+    function min(uint256 x, uint256 y, uint256 z, uint256 w) internal pure returns (uint256) {
+        return UtilsLib.min(min(x, y, z), w);
     }
 }
