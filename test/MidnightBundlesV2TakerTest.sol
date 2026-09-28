@@ -304,6 +304,134 @@ contract MidnightBundlesV2TakerTest is Test {
         );
     }
 
+    function testBuyUnitsTargetReduceOnlyIgnoresMaxContinuousFee() public {
+        uint256 debtUnits = 100e18;
+        uint256 buyUnits = debtUnits / 2;
+        uint256 continuousFee = MAX_CONTINUOUS_FEE;
+        midnight.setMarketContinuousFee(id, continuousFee);
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+
+        offers[0].maxUnits = debtUnits.toUint128();
+        offers[0].continuousFeeCap = continuousFee;
+        OfferFill[] memory sellOfferFills = new OfferFill[](1);
+        sellOfferFills[0] = OfferFill({offer: offers[0], units: debtUnits, ratifierData: hex""});
+        collateralize(market, borrower, debtUnits);
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
+            market,
+            debtUnits,
+            0,
+            false,
+            borrower,
+            new CollateralTransfer[](0),
+            sellOfferFills,
+            0,
+            address(0),
+            block.timestamp,
+            address(0)
+        );
+        assertEq(midnight.debt(id, borrower), debtUnits, "initial debt");
+
+        Offer memory buybackOffer = offers[0];
+        buybackOffer.buy = false;
+        buybackOffer.maker = lender;
+        buybackOffer.receiverIfMakerIsSeller = lender;
+        buybackOffer.maxUnits = type(uint128).max;
+        buybackOffer.group = bytes32(uint256(2));
+        buybackOffer.continuousFeeCap = continuousFee;
+        OfferFill[] memory buyOfferFills = new OfferFill[](1);
+        buyOfferFills[0] = OfferFill({offer: buybackOffer, units: buyUnits, ratifierData: hex""});
+
+        uint256 maxBuyerAssets = buyUnits.mulDivUp(TickLib.tickToPrice(MAX_TICK), WAD);
+        deal(address(loanToken), borrower, maxBuyerAssets);
+        vm.prank(borrower);
+        loanToken.approve(address(midnightBundles), maxBuyerAssets);
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
+            market,
+            buyUnits,
+            maxBuyerAssets,
+            true,
+            false,
+            buyOfferFills,
+            new CollateralTransfer[](0),
+            address(0),
+            0,
+            address(0),
+            continuousFee - 1,
+            block.timestamp,
+            address(0)
+        );
+
+        assertEq(midnight.debt(id, borrower), debtUnits - buyUnits, "debt reduced");
+    }
+
+    function testBuyAssetsTargetReduceOnlyIgnoresMaxContinuousFee() public {
+        uint256 debtUnits = 100e18;
+        uint256 buyUnits = debtUnits / 2;
+        uint256 continuousFee = MAX_CONTINUOUS_FEE;
+        midnight.setMarketContinuousFee(id, continuousFee);
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+
+        offers[0].maxUnits = debtUnits.toUint128();
+        offers[0].continuousFeeCap = continuousFee;
+        OfferFill[] memory sellOfferFills = new OfferFill[](1);
+        sellOfferFills[0] = OfferFill({offer: offers[0], units: debtUnits, ratifierData: hex""});
+        collateralize(market, borrower, debtUnits);
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
+            market,
+            debtUnits,
+            0,
+            false,
+            borrower,
+            new CollateralTransfer[](0),
+            sellOfferFills,
+            0,
+            address(0),
+            block.timestamp,
+            address(0)
+        );
+        assertEq(midnight.debt(id, borrower), debtUnits, "initial debt");
+
+        Offer memory buybackOffer = offers[0];
+        buybackOffer.buy = false;
+        buybackOffer.maker = lender;
+        buybackOffer.receiverIfMakerIsSeller = lender;
+        buybackOffer.maxUnits = type(uint128).max;
+        buybackOffer.group = bytes32(uint256(2));
+        buybackOffer.continuousFeeCap = continuousFee;
+        OfferFill[] memory buyOfferFills = new OfferFill[](1);
+        buyOfferFills[0] = OfferFill({offer: buybackOffer, units: buyUnits, ratifierData: hex""});
+
+        uint256 targetBuyerAssets = buyUnits.mulDivUp(TickLib.tickToPrice(MAX_TICK), WAD);
+        deal(address(loanToken), borrower, targetBuyerAssets);
+        vm.prank(borrower);
+        loanToken.approve(address(midnightBundles), targetBuyerAssets);
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
+            market,
+            targetBuyerAssets,
+            0,
+            true,
+            false,
+            buyOfferFills,
+            new CollateralTransfer[](0),
+            address(0),
+            0,
+            address(0),
+            continuousFee - 1,
+            block.timestamp,
+            address(0)
+        );
+
+        assertLt(midnight.debt(id, borrower), debtUnits, "debt reduced");
+    }
+
     function testBuyUnitsTargetRevertsWhenContinuousFeeRisesBeforeNextTake() public {
         uint256 firstUnits = 40e18;
         uint256 secondUnits = 60e18;
