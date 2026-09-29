@@ -773,6 +773,227 @@ contract MidnightBundlesV2TakerTest is Test {
         }
     }
 
+    // Reduce-only offers are capped by the maker's live credit or debt.
+
+    function _setupLenderCreditWithFeeAccrual(uint256 units) internal returns (uint256 actualCredit) {
+        midnight.setMarketContinuousFee(id, MAX_CONTINUOUS_FEE);
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+
+        // Borrower sells units so the lender holds credit.
+        offers[0].maxUnits = units.toUint128();
+        offers[0].continuousFeeCap = MAX_CONTINUOUS_FEE;
+        OfferFill[] memory sellOfferFills = new OfferFill[](1);
+        sellOfferFills[0] = OfferFill({offer: offers[0], units: units, ratifierData: hex""});
+        collateralize(market, borrower, units);
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
+            market,
+            units,
+            0,
+            false,
+            borrower,
+            new CollateralTransfer[](0),
+            sellOfferFills,
+            0,
+            address(0),
+            block.timestamp,
+            address(0)
+        );
+
+        // Half of the continuous fee accrues: the stored credit is above the actual credit.
+        vm.warp(vm.getBlockTimestamp() + 50);
+        uint256 storedCredit = midnight.credit(id, lender);
+        (uint128 credit,,) = midnight.updatePositionView(market, id, lender);
+        assertGt(storedCredit, credit, "no fee accrued");
+        return credit;
+    }
+
+    function testBuyUnitsTargetCapsReduceOnlyMakerCredit() public {
+        uint256 units = 100e18;
+        uint256 actualCredit = _setupLenderCreditWithFeeAccrual(units);
+
+        address taker = makeAddr("taker");
+        address maker2 = makeAddr("maker2");
+        vm.prank(taker);
+        midnight.setIsAuthorized(address(midnightBundles), true, taker);
+        vm.prank(maker2);
+        midnight.setIsAuthorized(address(dummyRatifier), true, maker2);
+        collateralize(market, maker2, units);
+
+        // The lender's reduce-only sell offer can only be taken up to its live credit.
+        Offer memory reduceOnlySellOffer = offers[0];
+        reduceOnlySellOffer.buy = false;
+        reduceOnlySellOffer.maker = lender;
+        reduceOnlySellOffer.receiverIfMakerIsSeller = lender;
+        reduceOnlySellOffer.maxUnits = type(uint128).max;
+        reduceOnlySellOffer.reduceOnly = true;
+        reduceOnlySellOffer.group = bytes32(uint256(2));
+
+        Offer memory backupSellOffer = offers[0];
+        backupSellOffer.buy = false;
+        backupSellOffer.maker = maker2;
+        backupSellOffer.receiverIfMakerIsSeller = maker2;
+        backupSellOffer.maxUnits = type(uint128).max;
+        backupSellOffer.group = bytes32(uint256(3));
+
+        OfferFill[] memory offerFills = new OfferFill[](2);
+        offerFills[0] = OfferFill({offer: reduceOnlySellOffer, units: units, ratifierData: hex""});
+        offerFills[1] = OfferFill({offer: backupSellOffer, units: units - actualCredit, ratifierData: hex""});
+
+        uint256 maxBuyerAssets = units.mulDivUp(TickLib.tickToPrice(MAX_TICK), WAD);
+        deal(address(loanToken), taker, maxBuyerAssets);
+        vm.prank(taker);
+        loanToken.approve(address(midnightBundles), maxBuyerAssets);
+
+        vm.prank(taker);
+        midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
+            market,
+            units,
+            maxBuyerAssets,
+            false,
+            false,
+            offerFills,
+            new CollateralTransfer[](0),
+            address(0),
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp,
+            address(0)
+        );
+
+        assertEq(midnight.credit(id, lender), 0, "lender credit");
+        assertEq(midnight.debt(id, lender), 0, "lender debt");
+        assertEq(midnight.debt(id, maker2), units - actualCredit, "backup debt");
+    }
+
+    function testBuyAssetsTargetCapsReduceOnlyMakerCredit() public {
+        uint256 units = 100e18;
+        uint256 actualCredit = _setupLenderCreditWithFeeAccrual(units);
+
+        address taker = makeAddr("taker");
+        address maker2 = makeAddr("maker2");
+        vm.prank(taker);
+        midnight.setIsAuthorized(address(midnightBundles), true, taker);
+        vm.prank(maker2);
+        midnight.setIsAuthorized(address(dummyRatifier), true, maker2);
+        collateralize(market, maker2, units);
+
+        Offer memory reduceOnlySellOffer = offers[0];
+        reduceOnlySellOffer.buy = false;
+        reduceOnlySellOffer.maker = lender;
+        reduceOnlySellOffer.receiverIfMakerIsSeller = lender;
+        reduceOnlySellOffer.maxUnits = type(uint128).max;
+        reduceOnlySellOffer.reduceOnly = true;
+        reduceOnlySellOffer.group = bytes32(uint256(2));
+
+        Offer memory backupSellOffer = offers[0];
+        backupSellOffer.buy = false;
+        backupSellOffer.maker = maker2;
+        backupSellOffer.receiverIfMakerIsSeller = maker2;
+        backupSellOffer.maxUnits = type(uint128).max;
+        backupSellOffer.group = bytes32(uint256(3));
+
+        OfferFill[] memory offerFills = new OfferFill[](2);
+        offerFills[0] = OfferFill({offer: reduceOnlySellOffer, units: units, ratifierData: hex""});
+        offerFills[1] = OfferFill({offer: backupSellOffer, units: units - actualCredit, ratifierData: hex""});
+
+        uint256 targetBuyerAssets = units.mulDivUp(TickLib.tickToPrice(MAX_TICK), WAD);
+        deal(address(loanToken), taker, targetBuyerAssets);
+        vm.prank(taker);
+        loanToken.approve(address(midnightBundles), targetBuyerAssets);
+
+        vm.prank(taker);
+        midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
+            market,
+            targetBuyerAssets,
+            0,
+            false,
+            false,
+            offerFills,
+            new CollateralTransfer[](0),
+            address(0),
+            0,
+            address(0),
+            type(uint256).max,
+            block.timestamp,
+            address(0)
+        );
+
+        assertEq(midnight.credit(id, lender), 0, "lender credit");
+        assertEq(midnight.debt(id, lender), 0, "lender debt");
+        assertEq(midnight.debt(id, maker2), units - actualCredit, "backup debt");
+    }
+
+    function testSellUnitsTargetCapsReduceOnlyMakerDebt() public {
+        uint256 debtUnits = 100e18;
+        uint256 extra = 10e18;
+
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+
+        // Give the borrower existing debt to reduce.
+        offers[0].maxUnits = debtUnits.toUint128();
+        collateralize(market, borrower, debtUnits);
+        OfferFill[] memory sellOfferFills = new OfferFill[](1);
+        sellOfferFills[0] = OfferFill({offer: offers[0], units: debtUnits, ratifierData: hex""});
+        vm.prank(borrower);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
+            market,
+            debtUnits,
+            0,
+            false,
+            borrower,
+            new CollateralTransfer[](0),
+            sellOfferFills,
+            0,
+            address(0),
+            block.timestamp,
+            address(0)
+        );
+        assertEq(midnight.debt(id, borrower), debtUnits, "initial debt");
+
+        // The borrower's reduce-only buy offer can only be taken up to its debt.
+        Offer memory reduceOnlyBuyOffer = offers[0];
+        reduceOnlyBuyOffer.maker = borrower;
+        reduceOnlyBuyOffer.maxUnits = type(uint128).max;
+        reduceOnlyBuyOffer.reduceOnly = true;
+        reduceOnlyBuyOffer.group = bytes32(uint256(2));
+
+        offers[1].maxUnits = type(uint128).max;
+
+        OfferFill[] memory offerFills = new OfferFill[](2);
+        offerFills[0] = OfferFill({offer: reduceOnlyBuyOffer, units: debtUnits + extra, ratifierData: hex""});
+        offerFills[1] = OfferFill({offer: offers[1], units: extra, ratifierData: hex""});
+
+        address taker = makeAddr("taker");
+        vm.prank(taker);
+        midnight.setIsAuthorized(address(midnightBundles), true, taker);
+        collateralize(market, taker, debtUnits + extra);
+
+        vm.prank(taker);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
+            market,
+            debtUnits + extra,
+            0,
+            false,
+            taker,
+            new CollateralTransfer[](0),
+            offerFills,
+            0,
+            address(0),
+            block.timestamp,
+            address(0)
+        );
+
+        assertEq(midnight.debt(id, borrower), 0, "borrower debt");
+        assertEq(midnight.credit(id, borrower), 0, "borrower credit");
+        assertEq(midnight.consumed(lender, offers[1].group), extra, "backup consumed");
+    }
+
     // Referral fee.
 
     function testBuyUnitsTargetWithReferralFee(uint256 units, uint256 referralFeePct) public {
