@@ -211,7 +211,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         }
         if (repayEnabled) {
             uint256 repayUnits = UtilsLib.min(targetUnits - filledUnits, IMidnight(MIDNIGHT).debt(id, msg.sender));
-            IMidnight(MIDNIGHT).repay(market, repayUnits, msg.sender, address(0), "");
+            if (repayUnits > 0) IMidnight(MIDNIGHT).repay(market, repayUnits, msg.sender, address(0), "");
             filledUnits += repayUnits;
             filledBuyerAssets += repayUnits;
         }
@@ -271,7 +271,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
         (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
         uint256 withdrawUnits = min(targetUnits, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
-        IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
+        if (withdrawUnits > 0) IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;
         for (uint256 i; i < offerFills.length && filledUnits < targetUnits; i++) {
@@ -373,7 +373,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         if (repayEnabled) {
             uint256 repayAssets =
                 UtilsLib.min(targetFilledBuyerAssets - filledBuyerAssets, IMidnight(MIDNIGHT).debt(id, msg.sender));
-            IMidnight(MIDNIGHT).repay(market, repayAssets, msg.sender, address(0), "");
+            if (repayAssets > 0) IMidnight(MIDNIGHT).repay(market, repayAssets, msg.sender, address(0), "");
             filledUnits += repayAssets;
             filledBuyerAssets += repayAssets;
         }
@@ -434,7 +434,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
         (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
         uint256 withdrawUnits = min(targetFilledSellerAssets, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
-        IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
+        if (withdrawUnits > 0) IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;
         for (uint256 i; i < offerFills.length && filledSellerAssets < targetFilledSellerAssets; i++) {

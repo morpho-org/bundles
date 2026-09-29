@@ -192,8 +192,8 @@ contract MidnightBundlesV2TakerTest is Test {
 
         vm.startPrank(lender);
         midnight.setIsAuthorized(address(midnightBundles), false, lender);
-        // Unauthorized takes are skipped; the optional repay bubbles Midnight's authorization error.
-        vm.expectRevert(repayEnabled ? IMidnight.Unauthorized.selector : IMidnightBundlesV2.OutOfOffers.selector);
+        // Unauthorized takes are skipped and the lender has no debt to repay.
+        vm.expectRevert(IMidnightBundlesV2.OutOfOffers.selector);
         if (assetsTarget) {
             midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
                 market,
@@ -237,7 +237,8 @@ contract MidnightBundlesV2TakerTest is Test {
     function testSellRequiresBundleAuthorization(bool assetsTarget) public {
         vm.startPrank(borrower);
         midnight.setIsAuthorized(address(midnightBundles), false, borrower);
-        vm.expectRevert(IMidnight.Unauthorized.selector);
+        // The borrower has no credit to withdraw and there are no offers to take.
+        vm.expectRevert(IMidnightBundlesV2.OutOfOffers.selector);
         if (assetsTarget) {
             midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
                 market,
