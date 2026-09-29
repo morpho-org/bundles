@@ -1375,6 +1375,7 @@ contract MidnightBundlesV2TakerTest is Test {
         loanToken.approve(address(midnightBundles), maxBuyerAssets);
 
         // The offer only covers buyUnits, the remaining repayUnits are repaid.
+        vm.expectCall(address(midnight), abi.encodeWithSelector(IMidnight.repay.selector), repayUnits > 0 ? 1 : 0);
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
             market,
@@ -1396,6 +1397,10 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(borrower), 0, "borrower spent max");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
+    }
+
+    function testBuyUnitsTargetWithRepaySkipsZeroRepay() public {
+        testBuyUnitsTargetWithRepay(100e18, 100e18, 0, 0);
     }
 
     function testBuyBuyerAssetsTargetWithRepay(uint256 targetBuyerAssets, uint256 repayUnits, uint256 referralFeePct)
@@ -1453,6 +1458,7 @@ contract MidnightBundlesV2TakerTest is Test {
         vm.prank(borrower);
         loanToken.approve(address(midnightBundles), targetBuyerAssets);
 
+        vm.expectCall(address(midnight), abi.encodeWithSelector(IMidnight.repay.selector), repayUnits > 0 ? 1 : 0);
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
             market,
@@ -1474,6 +1480,10 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(borrower), 0, "borrower spent target");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
+    }
+
+    function testBuyBuyerAssetsTargetWithRepaySkipsZeroRepay() public {
+        testBuyBuyerAssetsTargetWithRepay(100e18, 0, 0);
     }
 
     function testBuyUnitsTargetRepayDisabled(uint256 units, uint256 buyUnits, uint256 referralFeePct) public {
@@ -1735,6 +1745,7 @@ contract MidnightBundlesV2TakerTest is Test {
         uint256 expectedFee = (expectedFilledSellerAssets + withdrawUnits).mulDivDown(referralFeePct, WAD);
 
         // withdrawUnits are withdrawable, the remaining sellUnits are sold to the offer.
+        vm.expectCall(address(midnight), abi.encodeWithSelector(IMidnight.withdraw.selector), withdrawUnits > 0 ? 1 : 0);
         vm.prank(lender);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
             market,
@@ -1756,6 +1767,10 @@ contract MidnightBundlesV2TakerTest is Test {
         );
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
+    }
+
+    function testSellUnitsTargetWithWithdrawSkipsZeroWithdraw() public {
+        testSellUnitsTargetWithWithdraw(100e18, 100e18, 0, 0);
     }
 
     function testSellSellerAssetsTargetWithWithdraw(
@@ -1814,6 +1829,7 @@ contract MidnightBundlesV2TakerTest is Test {
         OfferFill[] memory offerFills = new OfferFill[](1);
         offerFills[0] = OfferFill({offer: buyOffer, units: type(uint256).max, ratifierData: hex""});
 
+        vm.expectCall(address(midnight), abi.encodeWithSelector(IMidnight.withdraw.selector), withdrawUnits > 0 ? 1 : 0);
         vm.prank(lender);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
             market,
@@ -1833,6 +1849,10 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(loanToken.balanceOf(receiver), targetSellerAssets, "receiver net");
         assertEq(loanToken.balanceOf(referrer), expectedFee, "referrer fee");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
+    }
+
+    function testSellSellerAssetsTargetWithWithdrawSkipsZeroWithdraw() public {
+        testSellSellerAssetsTargetWithWithdraw(100e18, 0, 0);
     }
 
     function testSellUnitsTargetWithWithdrawAfterFeeAccrual() public {
