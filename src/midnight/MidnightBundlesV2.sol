@@ -144,7 +144,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// TAKE-SIDE EXTERNAL FUNCTIONS ///
 
-    // For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer", "for reduce-only sell offers, the maker's current credit (after fee accrual and slashing)") units.
+    // For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer", "for reduce-only offers, the maker's current credit (sell offers, after fee accrual and slashing) or debt (buy offers)") units.
     // Sell functions additionally cap units using buyerAssetsBound for callbacks registered with BLUE_BUY_CALLBACK_FACTORY.
     // Only touched offers are checked to point to the given market.
     // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
@@ -280,10 +280,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
+            uint256 makerDebtBound =
+                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max;
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                makerDebtBound,
                 blueFundableUnits(id, fill.offer)
             );
             if (reduceOnly) {
@@ -441,12 +444,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
+            uint256 makerDebtBound =
+                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max;
             uint256 unitsToTake = min(
                 TakeAmountsLib.sellerAssetsToUnits(
                     MIDNIGHT, id, fill.offer, targetFilledSellerAssets - filledSellerAssets
                 ),
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                makerDebtBound,
                 blueFundableUnits(id, fill.offer)
             );
             if (reduceOnly) {
@@ -514,5 +520,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Returns min(x, y, z, w).
     function min(uint256 x, uint256 y, uint256 z, uint256 w) internal pure returns (uint256) {
         return UtilsLib.min(UtilsLib.min(x, y), UtilsLib.min(z, w));
+    }
+
+    /// @dev Returns min(x, y, z, w, v).
+    function min(uint256 x, uint256 y, uint256 z, uint256 w, uint256 v) internal pure returns (uint256) {
+        return UtilsLib.min(min(x, y, z), UtilsLib.min(w, v));
     }
 }

@@ -1281,6 +1281,57 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(midnight.debt(id, borrower), totalUnits);
     }
 
+    function testSellCapsBlueFundingAndReduceOnlyMakerDebt(bool assetsTarget, bool debtLimited) public {
+        bytes32 id = IdLib.toId(midnightMarket);
+        uint128 debtUnits = 800e18;
+        uint128 targetUnits = 1_000e18;
+        uint256 parkedAssets = debtLimited ? 900e18 : 600e18;
+        uint256 firstUnits = debtLimited ? debtUnits : parkedAssets;
+
+        // Give the maker debt and the taker credit, with no withdrawable cash in Midnight.
+        deal(address(collateralToken), lender, 2 * debtUnits);
+        vm.startPrank(lender);
+        collateralToken.approve(address(midnight), 2 * debtUnits);
+        midnight.supplyCollateral(midnightMarket, 0, 2 * debtUnits, lender);
+        vm.stopPrank();
+
+        Offer memory borrowOffer = makeOffer(keccak256("initial debt"), debtUnits, MAX_TICK);
+        borrowOffer.buy = false;
+        borrowOffer.callback = address(0);
+        borrowOffer.callbackData = "";
+        borrowOffer.receiverIfMakerIsSeller = lender;
+        bytes32 borrowRoot = makeLendLimit(borrowOffer, 0);
+        deal(address(loanToken), borrower, debtUnits);
+        vm.startPrank(borrower);
+        loanToken.approve(address(midnight), debtUnits);
+        midnight.take(borrowOffer, priceRatifierData(borrowRoot), debtUnits, borrower, address(0), address(0), "");
+        vm.stopPrank();
+
+        Offer memory offer = makeOffer(keccak256("blue debt reduction"), targetUnits, MAX_TICK);
+        offer.reduceOnly = true;
+        bytes32 root = makeLendLimit(offer, parkedAssets);
+        Offer memory fallbackOffer = makeOffer(keccak256("wallet remainder"), targetUnits, MAX_TICK);
+        fallbackOffer.callback = address(0);
+        fallbackOffer.callbackData = "";
+        bytes32 fallbackRoot = makeLendLimit(fallbackOffer, 0);
+        vm.prank(lender);
+        loanToken.approve(address(midnight), type(uint256).max);
+
+        OfferFill[] memory fills = new OfferFill[](2);
+        fills[0] = OfferFill(offer, priceRatifierData(root), targetUnits);
+        fills[1] = OfferFill(fallbackOffer, priceRatifierData(fallbackRoot), targetUnits - firstUnits);
+
+        // The first fill must respect both limits so the remaining offer can complete the target.
+        sellWithBlueOffers(assetsTarget, targetUnits, targetUnits, fills);
+
+        assertEq(midnight.consumed(lender, offer.group), firstUnits, "first fill capped by funding and debt");
+        assertEq(midnight.consumed(lender, fallbackOffer.group), targetUnits - firstUnits, "wallet remainder");
+        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), parkedAssets - firstUnits);
+        assertEq(midnight.debt(id, lender), 0, "maker debt repaid");
+        assertEq(midnight.credit(id, lender), targetUnits - debtUnits, "only fallback increases maker credit");
+        assertEq(loanToken.balanceOf(borrower), targetUnits, "seller proceeds");
+    }
+
     function testSellBlueFundingRounding(bool assetsTarget, bool unitsCap) public {
         bytes32 id = IdLib.toId(midnightMarket);
         for (uint256 i; i <= 6; i++) {
