@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IMidnight, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol";
+import {IMidnight, Market, Offer} from "../../lib/midnight/src/interfaces/IMidnight.sol";
+import {IBuyerAssetsBound} from "../../lib/midnight/src/interfaces/ICallbacks.sol";
 import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
@@ -144,6 +145,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// TAKE-SIDE EXTERNAL FUNCTIONS ///
 
     // For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer", "for reduce-only offers, the maker's current credit (sell offers, after fee accrual and slashing) or debt (buy offers)") units.
+    // Sell functions additionally cap units using buyerAssetsBound when the callback's bound query succeeds.
     // Only touched offers are checked to point to the given market.
     // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
     // msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
@@ -288,7 +290,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 targetUnits - filledUnits,
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerDebtBound
+                makerDebtBound,
+                callbackFundableUnits(id, fill.offer)
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -453,7 +456,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 ),
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerDebtBound
+                makerDebtBound,
+                callbackFundableUnits(id, fill.offer)
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -477,6 +481,23 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     }
 
     /// INTERNAL FUNCTIONS ///
+
+    /// @dev Returns the maker's callback funding cap in units for a buy offer.
+    function callbackFundableUnits(bytes32 id, Offer memory offer) internal view returns (uint256) {
+        uint256 fundableUnits = type(uint256).max;
+        if (offer.callback != address(0)) {
+            try IBuyerAssetsBound(offer.callback)
+                .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
+                uint256 bound
+            ) {
+                // buy offers already limit buyer assets to uint128.max through maxAssets or maxUnits and buyerPrice <= WAD.
+                fundableUnits =
+                    TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, offer, UtilsLib.min(bound, type(uint128).max));
+            } catch {}
+        }
+
+        return fundableUnits;
+    }
 
     /// @dev Wraps msg.value into wrappedNative and transfers it to msg.sender.
     // forge-lint: disable-next-item(arbitrary-send-eth) wrappedNative is chosen by msg.sender, who also receives the wrapped tokens.
@@ -503,5 +524,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev Returns min(x, y, z, w).
     function min(uint256 x, uint256 y, uint256 z, uint256 w) internal pure returns (uint256) {
         return UtilsLib.min(UtilsLib.min(x, y), UtilsLib.min(z, w));
+    }
+
+    /// @dev Returns min(x, y, z, w, v).
+    function min(uint256 x, uint256 y, uint256 z, uint256 w, uint256 v) internal pure returns (uint256) {
+        return UtilsLib.min(min(x, y, z), UtilsLib.min(w, v));
     }
 }
