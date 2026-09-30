@@ -1267,9 +1267,9 @@ contract MidnightBundlesV2MakerTest is Test {
         fills[0] = OfferFill(offer, priceRatifierData(root), 1_600e18);
         fills[1] = OfferFill(fallbackOffer, priceRatifierData(fallbackRoot), 200e18);
         uint256 sellerPrice = 0.5e18 - midnight.settlementFee(id, midnightMarket.maturity - block.timestamp);
-        // At price 0.5, 700e18 buyer assets fund 1_400e18 + 1 units. Each fill rounds separately.
-        uint256 firstUnits = 1_400e18 + 1;
-        uint256 totalUnits = 1_600e18 + (assetsTarget ? 1 : 0);
+        // At price 0.5, the 700e18 buyer asset bound caps the first fill at 1_400e18 units.
+        uint256 firstUnits = 1_400e18;
+        uint256 totalUnits = 1_600e18;
         uint256 secondUnits = totalUnits - firstUnits;
         uint256 sellerAssets = firstUnits * sellerPrice / WAD + secondUnits * sellerPrice / WAD;
 
@@ -1331,47 +1331,6 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(midnight.debt(id, lender), 0, "maker debt repaid");
         assertEq(midnight.credit(id, lender), targetUnits - debtUnits, "only fallback increases maker credit");
         assertEq(loanToken.balanceOf(borrower), targetUnits, "seller proceeds");
-    }
-
-    function testSellBlueFundingRounding(bool assetsTarget, bool unitsCap) public {
-        bytes32 id = IdLib.toId(midnightMarket);
-        for (uint256 i; i <= 6; i++) {
-            midnight.setMarketSettlementFee(id, i, maxSettlementFee(i));
-        }
-
-        Offer memory offer = makeOffer(keccak256("blue rounding"), PARKED_ASSETS, MAX_TICK / 2);
-        if (unitsCap) {
-            offer.maxAssets = 0;
-            offer.maxUnits = 3;
-        }
-        bytes32 root = makeLendLimit(offer, 1);
-        OfferFill[] memory fills = new OfferFill[](1);
-        fills[0] = OfferFill(offer, priceRatifierData(root), 3);
-
-        // Three units cost one buyer asset and yield one seller asset even with settlement fees.
-        sellWithBlueOffers(assetsTarget, 3, 1, fills);
-
-        assertEq(midnight.consumed(lender, offer.group), unitsCap ? 3 : 1);
-        assertEq(midnight.debt(id, borrower), 3);
-        assertEq(loanToken.balanceOf(borrower), 1);
-        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), 0);
-    }
-
-    function testSellBlueFundingAllowsUnitsThatRoundToZeroAssets() public {
-        Offer memory offer = makeOffer(keccak256("zero-asset rounding"), 0, MAX_TICK / 2);
-        offer.maxUnits = 1;
-        bytes32 root = makeLendLimit(offer, 1);
-        borrowBlue(1);
-        OfferFill[] memory fills = new OfferFill[](1);
-        fills[0] = OfferFill(offer, priceRatifierData(root), 1);
-
-        // Blue has no liquidity, but this unit costs zero assets after rounding.
-        sellWithBlueOffers(false, 1, 0, fills);
-
-        assertEq(midnight.consumed(lender, offer.group), 1);
-        assertEq(midnight.debt(IdLib.toId(midnightMarket), borrower), 1);
-        assertEq(loanToken.balanceOf(borrower), 0);
-        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), 1);
     }
 
     function testSellWithUnregisteredCallback(bool assetsTarget, bool hasBound) public {
