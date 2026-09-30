@@ -34,7 +34,7 @@ import {
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev All entrypoints share the same native-token handling: when msg.value is non-zero, it is wrapped using wrappedNative and transferred to msg.sender before the regular ERC20 pulls.
 /// @dev Native tokens may be combined with an existing wrappedNative balance and are not required to match any individual transfer amount.
-/// @dev wrappedNative must be the chain's canonical wrapped native token, behaving like WETH9.
+/// @dev wrappedNative must behave like WETH9.
 /// @dev msg.sender must approve this contract to pull wrappedNative before using native tokens.
 /// @dev The users must authorize this contract on Midnight beforehand.
 contract MidnightBundlesV2 is IMidnightBundlesV2 {
@@ -144,15 +144,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// TAKE-SIDE EXTERNAL FUNCTIONS ///
 
-    // For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer", "for reduce-only offers, the maker's current credit (sell offers, after fee accrual and slashing) or debt (buy offers)") units.
-    // Sell functions additionally cap units using buyerAssetsBound when the callback's bound query succeeds.
     // Only touched offers are checked to point to the given market.
     // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
     // msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
     // The bundler contract must have an allowance to pull enough tokens from msg.sender for the buy/sell functions below.
     // Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing to buy, decreasing to sell).
     // offerFills[i].units should prevent taking more than what is takeable w.r.t. the callback / the balances / the health.
-    // For the buy functions below, the current market continuous fee must be at most maxContinuousFee when taking offers. Pass type(uint256).max to disable.
+    // For the buy functions below, the current market continuous fee must be at most maxContinuousFee when taking offers.
 
     /// @dev This function pulls maxBuyerAssets from the msg.sender and transfers back the remaining tokens at the end.
     /// @dev msg.sender will pay at most maxBuyerAssets.
@@ -197,16 +195,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
-            uint256 makerCreditBound = type(uint256).max;
-            if (fill.offer.reduceOnly) {
-                (uint128 credit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, fill.offer.maker);
-                makerCreditBound = credit;
-            }
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerCreditBound
+                fill.offer.reduceOnly ? credit(market, id, fill.offer.maker) : type(uint256).max
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
@@ -275,8 +268,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 );
         }
 
-        (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
-        uint256 withdrawUnits = min(targetUnits, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
+        uint256 withdrawUnits = min(targetUnits, credit(market, id, msg.sender), IMidnight(MIDNIGHT).withdrawable(id));
         if (withdrawUnits > 0) IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;
@@ -284,19 +276,14 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            uint256 makerDebtBound =
-                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max;
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerDebtBound,
-                callbackFundableUnits(id, fill.offer)
+                fill.offer.reduceOnly ? debt(id, fill.offer.maker) : type(uint256).max,
+                TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
-            if (reduceOnly) {
-                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
-                require(unitsToTake <= takerCredit, NotReduceOnly());
-            }
+            require(!reduceOnly || unitsToTake <= credit(market, id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "") returns (
                 uint256, uint256 resSellerAssets
@@ -321,7 +308,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
     /// @dev Set collateralWithdrawals[i].assets to type(uint256).max to withdraw msg.sender's full balance of that collateral at the time of withdrawal.
-    /// @dev For full repayment using live debt, use midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral with targetUnits = type(uint256).max instead.
+    /// @dev For full repayment, use midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral with targetUnits = type(uint256).max instead.
     function midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
         Market memory market,
         uint256 targetBuyerAssets,
@@ -357,18 +344,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
-            uint256 makerCreditBound = type(uint256).max;
-            if (fill.offer.reduceOnly) {
-                (uint128 credit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, fill.offer.maker);
-                makerCreditBound = credit;
-            }
             uint256 unitsToTake = min(
                 TakeAmountsLib.buyerAssetsToUnits(
                     MIDNIGHT, id, fill.offer, targetFilledBuyerAssets - filledBuyerAssets
                 ),
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerCreditBound
+                fill.offer.reduceOnly ? credit(market, id, fill.offer.maker) : type(uint256).max
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
@@ -439,8 +421,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 referralFeeAssets = targetSellerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
         uint256 targetFilledSellerAssets = targetSellerAssets + referralFeeAssets;
 
-        (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
-        uint256 withdrawUnits = min(targetFilledSellerAssets, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
+        uint256 withdrawUnits =
+            min(targetFilledSellerAssets, credit(market, id, msg.sender), IMidnight(MIDNIGHT).withdrawable(id));
         if (withdrawUnits > 0) IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;
@@ -448,21 +430,16 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            uint256 makerDebtBound =
-                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max;
             uint256 unitsToTake = min(
                 TakeAmountsLib.sellerAssetsToUnits(
                     MIDNIGHT, id, fill.offer, targetFilledSellerAssets - filledSellerAssets
                 ),
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerDebtBound,
-                callbackFundableUnits(id, fill.offer)
+                fill.offer.reduceOnly ? debt(id, fill.offer.maker) : type(uint256).max,
+                TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
-            if (reduceOnly) {
-                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
-                require(unitsToTake <= takerCredit, NotReduceOnly());
-            }
+            require(!reduceOnly || unitsToTake <= credit(market, id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "") returns (
                 uint256, uint256 resSellerAssets
@@ -482,21 +459,29 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// INTERNAL FUNCTIONS ///
 
-    /// @dev Returns the maker's callback funding cap in units for a buy offer.
-    function callbackFundableUnits(bytes32 id, Offer memory offer) internal view returns (uint256) {
-        uint256 fundableUnits = type(uint256).max;
-        if (offer.callback != address(0)) {
-            try IBuyerAssetsBound(offer.callback)
-                .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
-                uint256 bound
-            ) {
-                // buy offers already limit buyer assets to uint128.max through maxAssets or maxUnits and buyerPrice <= WAD.
-                fundableUnits =
-                    TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, offer, UtilsLib.min(bound, type(uint128).max));
-            } catch {}
-        }
+    /// @dev Returns user's credit on market, after fee accrual and slashing.
+    function credit(Market memory market, bytes32 id, address user) internal view returns (uint256) {
+        (uint128 userCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, user);
+        return userCredit;
+    }
 
-        return fundableUnits;
+    /// @dev Returns user's debt on market.
+    function debt(bytes32 id, address user) internal view returns (uint256) {
+        return IMidnight(MIDNIGHT).debt(id, user);
+    }
+
+    /// @dev Returns the maker's callback funding cap in buyer assets for a buy offer.
+    /// @dev Buy offers already limit buyer assets to uint128.max through maxAssets or maxUnits and buyerPrice <= WAD.
+    function buyerAssetsBound(bytes32 id, Offer memory offer) internal view returns (uint256) {
+        if (offer.callback == address(0)) return type(uint128).max;
+        try IBuyerAssetsBound(offer.callback)
+            .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
+            uint256 bound
+        ) {
+            return UtilsLib.min(bound, type(uint128).max);
+        } catch {
+            return type(uint128).max;
+        }
     }
 
     /// @dev Wraps msg.value into wrappedNative and transfers it to msg.sender.
