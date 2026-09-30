@@ -3,7 +3,7 @@
 pragma solidity 0.8.34;
 
 import {IMidnight, Market, Offer} from "../../lib/midnight/src/interfaces/IMidnight.sol";
-import {IBlueBuyCallback} from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallback.sol";
+import {IBoundBuyerAssetsInterface} from "../../lib/midnight/src/interfaces/ICallbacks.sol";
 import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
@@ -145,7 +145,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// TAKE-SIDE EXTERNAL FUNCTIONS ///
 
     // For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer", "for reduce-only offers, the maker's current credit (sell offers, after fee accrual and slashing) or debt (buy offers)") units.
-    // Sell functions additionally cap units using buyerAssetsBound for callbacks registered with BLUE_BUY_CALLBACK_FACTORY.
+    // Sell functions additionally cap units using buyerAssetsBound when the callback's bound query succeeds.
     // Only touched offers are checked to point to the given market.
     // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
     // msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
@@ -478,21 +478,20 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// INTERNAL FUNCTIONS ///
 
-    /// @dev Returns a Blue funding cap in units. Assumes offer.buy.
-    /// @dev Other callbacks and failed bound queries impose no additional cap.
+    /// @dev Returns a callback funding cap in units. Assumes offer.buy.
+    /// @dev Failed bound queries impose no additional cap.
     function callbackFundableUnits(bytes32 id, Offer memory offer) internal view returns (uint256) {
-        if (!IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).isBlueBuyCallback(offer.callback)) {
-            return type(uint256).max;
+        uint256 fundableUnits = type(uint256).max;
+        if (offer.callback != address(0)) {
+            try IBoundBuyerAssetsInterface(offer.callback)
+                .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
+                uint256 bound
+            ) {
+                fundableUnits = TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, offer, bound);
+            } catch {}
         }
 
-        try IBlueBuyCallback(offer.callback)
-            .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
-            uint256 bound
-        ) {
-            return TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, offer, bound);
-        } catch {
-            return type(uint256).max;
-        }
+        return fundableUnits;
     }
 
     /// @dev Wraps msg.value into wrappedNative and transfers it to msg.sender.

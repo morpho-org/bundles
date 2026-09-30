@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {IMidnight, Market, Offer, CollateralParams} from "../lib/midnight/src/interfaces/IMidnight.sol";
+import {IBuyCallback, IBoundBuyerAssetsInterface} from "../lib/midnight/src/interfaces/ICallbacks.sol";
 import {EcrecoverRatifier} from "../lib/midnight/src/ratifiers/EcrecoverRatifier.sol";
 import {Signature, EIP712_DOMAIN_TYPEHASH} from "../lib/midnight/src/ratifiers/interfaces/IEcrecoverRatifier.sol";
 import {RateRatifierV1} from "../lib/midnight/src/ratifiers/RateRatifierV1.sol";
@@ -1373,6 +1374,36 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), 1);
     }
 
+    function testSellWithUnregisteredCallback(bool assetsTarget, bool hasBound) public {
+        address callback = hasBound ? address(new BoundedBuyCallbackMock()) : address(new BuyCallbackMock());
+        uint256 callbackAssets = hasBound ? 300e18 : 800e18;
+        deal(address(loanToken), callback, callbackAssets);
+        assertFalse(blueBuyCallbackFactory.isBlueBuyCallback(callback));
+
+        Offer memory offer = makeOffer(keccak256("generic callback"), 800e18, MAX_TICK);
+        offer.callback = callback;
+        offer.callbackData = "";
+        bytes32 root = makeLendLimit(offer, 0);
+
+        Offer memory fallbackOffer = makeOffer(keccak256("wallet"), 500e18, MAX_TICK);
+        fallbackOffer.callback = address(0);
+        fallbackOffer.callbackData = "";
+        bytes32 fallbackRoot = makeLendLimit(fallbackOffer, 0);
+        vm.prank(lender);
+        loanToken.approve(address(midnight), type(uint256).max);
+
+        OfferFill[] memory fills = new OfferFill[](2);
+        fills[0] = OfferFill(offer, priceRatifierData(root), 800e18);
+        fills[1] = OfferFill(fallbackOffer, priceRatifierData(fallbackRoot), 500e18);
+
+        sellWithBlueOffers(assetsTarget, 800e18, 800e18, fills);
+
+        assertEq(midnight.consumed(lender, offer.group), callbackAssets);
+        assertEq(midnight.consumed(lender, fallbackOffer.group), 800e18 - callbackAssets);
+        assertEq(loanToken.balanceOf(callback), 0);
+        assertEq(loanToken.balanceOf(borrower), 800e18);
+    }
+
     function testSellUsesOriginalFillWhenBlueBoundReverts(bool assetsTarget) public {
         Offer memory offer = makeOffer(keccak256("blue"), PARKED_ASSETS, MAX_TICK);
         bytes32 root = makeLendLimit(offer, PARKED_ASSETS);
@@ -2220,6 +2251,22 @@ contract RevertingLog {
 contract InvalidResponseRatifier {
     fallback(bytes calldata) external returns (bytes memory) {
         return abi.encode(bytes32(0));
+    }
+}
+
+contract BuyCallbackMock is IBuyCallback {
+    function onBuy(bytes32, Market memory market, uint256 buyerAssets, uint256, uint256, address, bytes memory)
+        external
+        returns (bytes32)
+    {
+        ERC20(market.loanToken).approve(msg.sender, buyerAssets);
+        return CALLBACK_SUCCESS;
+    }
+}
+
+contract BoundedBuyCallbackMock is BuyCallbackMock, IBoundBuyerAssetsInterface {
+    function buyerAssetsBound(bytes32, Market memory market, address, bytes memory) external view returns (uint256) {
+        return ERC20(market.loanToken).balanceOf(address(this));
     }
 }
 
