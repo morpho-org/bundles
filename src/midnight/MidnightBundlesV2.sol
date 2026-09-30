@@ -277,9 +277,9 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             uint256 unitsToTake = min(
-                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max,
                 targetUnits - filledUnits,
                 fill.units,
+                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
                 TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
@@ -431,11 +431,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             uint256 unitsToTake = min(
-                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max,
                 TakeAmountsLib.sellerAssetsToUnits(
                     MIDNIGHT, id, fill.offer, targetFilledSellerAssets - filledSellerAssets
                 ),
                 fill.units,
+                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
                 TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
