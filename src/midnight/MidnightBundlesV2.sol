@@ -478,8 +478,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// INTERNAL FUNCTIONS ///
 
-    /// @dev Returns a callback funding cap in units. Assumes offer.buy.
-    /// @dev Failed bound queries impose no additional cap.
+    /// @dev Returns the maker's callback funding cap in units for a buy offer.
     function callbackFundableUnits(bytes32 id, Offer memory offer) internal view returns (uint256) {
         uint256 fundableUnits = type(uint256).max;
         if (offer.callback != address(0)) {
