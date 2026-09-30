@@ -279,8 +279,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 fill.units,
-                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                fill.offer.reduceOnly ? debt(id, fill.offer.maker) : type(uint256).max,
                 TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
             require(!reduceOnly || unitsToTake <= credit(market, id, msg.sender), NotReduceOnly());
@@ -435,8 +435,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                     MIDNIGHT, id, fill.offer, targetFilledSellerAssets - filledSellerAssets
                 ),
                 fill.units,
-                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                fill.offer.reduceOnly ? debt(id, fill.offer.maker) : type(uint256).max,
                 TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
             require(!reduceOnly || unitsToTake <= credit(market, id, msg.sender), NotReduceOnly());
@@ -463,6 +463,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     function credit(Market memory market, bytes32 id, address user) internal view returns (uint256) {
         (uint128 userCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, user);
         return userCredit;
+    }
+
+    /// @dev Returns user's debt on market.
+    function debt(bytes32 id, address user) internal view returns (uint256) {
+        return IMidnight(MIDNIGHT).debt(id, user);
     }
 
     /// @dev Returns the maker's callback funding cap in buyer assets for a buy offer.
