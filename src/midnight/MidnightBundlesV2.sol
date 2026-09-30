@@ -472,13 +472,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// @dev Returns the maker's callback funding cap in buyer assets for a buy offer.
     /// @dev Buy offers already limit buyer assets to uint128.max through maxAssets or maxUnits and buyerPrice <= WAD.
-    function buyerAssetsBound(bytes32 id, Offer memory offer) internal view returns (uint128) {
+    function buyerAssetsBound(bytes32 id, Offer memory offer) internal view returns (uint256) {
         if (offer.callback == address(0)) return type(uint128).max;
         try IBuyerAssetsBound(offer.callback)
             .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
             uint256 bound
         ) {
-            return bound.min(type(uint128).max).toUint128();
+            return UtilsLib.min(bound, type(uint128).max);
         } catch {
             return type(uint128).max;
         }
