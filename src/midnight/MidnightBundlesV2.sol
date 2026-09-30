@@ -287,7 +287,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
                 makerDebtBound,
-                blueFundableUnits(id, fill.offer)
+                callbackFundableUnits(id, fill.offer)
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -453,7 +453,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
                 makerDebtBound,
-                blueFundableUnits(id, fill.offer)
+                callbackFundableUnits(id, fill.offer)
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -480,7 +480,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// @dev Returns a Blue funding cap in units. Assumes offer.buy.
     /// @dev Other callbacks and failed bound queries impose no additional cap.
-    function blueFundableUnits(bytes32 id, Offer memory offer) internal view returns (uint256) {
+    function callbackFundableUnits(bytes32 id, Offer memory offer) internal view returns (uint256) {
         if (!IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).isBlueBuyCallback(offer.callback)) {
             return type(uint256).max;
         }
@@ -489,7 +489,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
             uint256 bound
         ) {
-            return TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, offer, bound + 1) - 1;
+            return TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, offer, bound);
         } catch {
             return type(uint256).max;
         }
