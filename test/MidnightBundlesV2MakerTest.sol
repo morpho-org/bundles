@@ -1363,6 +1363,40 @@ contract MidnightBundlesV2MakerTest is Test {
         assertEq(loanToken.balanceOf(borrower), 800e18);
     }
 
+    function testSellWithOversizedCallbackBound(bool assetsTarget, bool callbackFunded, bool maxBound) public {
+        address callback = address(new BoundedBuyCallbackMock());
+        if (callbackFunded) deal(address(loanToken), callback, 400e18);
+        uint256 callbackBound = maxBound ? type(uint256).max : type(uint256).max - 1;
+        vm.mockCall(
+            callback, abi.encodeWithSelector(IBuyerAssetsBound.buyerAssetsBound.selector), abi.encode(callbackBound)
+        );
+
+        Offer memory offer = makeOffer(keccak256("oversized callback bound"), 400e18, MAX_TICK / 2);
+        offer.callback = callback;
+        offer.callbackData = "";
+        bytes32 root = makeLendLimit(offer, 0);
+
+        Offer memory fallbackOffer = makeOffer(keccak256("wallet"), 400e18, MAX_TICK / 2);
+        fallbackOffer.callback = address(0);
+        fallbackOffer.callbackData = "";
+        bytes32 fallbackRoot = makeLendLimit(fallbackOffer, 0);
+        vm.prank(lender);
+        loanToken.approve(address(midnight), type(uint256).max);
+
+        OfferFill[] memory fills = new OfferFill[](2);
+        fills[0] = OfferFill(offer, priceRatifierData(root), 800e18);
+        fills[1] = OfferFill(fallbackOffer, priceRatifierData(fallbackRoot), 800e18);
+
+        // A funded callback fills the target; an unfunded callback's take reverts and the next offer fills it.
+        sellWithBlueOffers(assetsTarget, 800e18, 400e18, fills);
+
+        assertEq(midnight.consumed(lender, offer.group), callbackFunded ? 400e18 : 0);
+        assertEq(midnight.consumed(lender, fallbackOffer.group), callbackFunded ? 0 : 400e18);
+        assertEq(midnight.debt(IdLib.toId(midnightMarket), borrower), 800e18);
+        assertEq(loanToken.balanceOf(borrower), 400e18);
+        assertEq(loanToken.balanceOf(callback), 0);
+    }
+
     function testSellUsesOriginalFillWhenBlueBoundReverts(bool assetsTarget) public {
         Offer memory offer = makeOffer(keccak256("blue"), PARKED_ASSETS, MAX_TICK);
         bytes32 root = makeLendLimit(offer, PARKED_ASSETS);

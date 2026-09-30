@@ -486,7 +486,9 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
                 uint256 bound
             ) {
-                fundableUnits = TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, offer, bound);
+                // A valid buy offer cannot consume more than uint128.max buyer assets.
+                fundableUnits =
+                    TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, offer, UtilsLib.min(bound, type(uint128).max));
             } catch {}
         }
 
