@@ -4,10 +4,12 @@ pragma solidity ^0.8.0;
 
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {Market, Offer, CollateralParams} from "../lib/midnight/src/interfaces/IMidnight.sol";
+import {IBuyCallback, IBuyerAssetsBound} from "../lib/midnight/src/interfaces/ICallbacks.sol";
 import {UtilsLib} from "../lib/midnight/src/libraries/UtilsLib.sol";
 import {IdLib} from "../lib/midnight/src/libraries/IdLib.sol";
 import {TickLib, MAX_TICK} from "../lib/midnight/src/libraries/TickLib.sol";
 import {
+    CALLBACK_SUCCESS,
     WAD,
     ORACLE_PRICE_SCALE,
     DEFAULT_TICK_SPACING,
@@ -159,6 +161,44 @@ contract MidnightBundlesV2TakerTest is Test {
         ERC20(_market.collateralParams[0].token).approve(address(midnight), collateral);
         midnight.supplyCollateral(_market, 0, collateral, _borrower);
         vm.stopPrank();
+    }
+
+    function sellWithOffers(
+        bool assetsTarget,
+        uint256 targetUnits,
+        uint256 targetSellerAssets,
+        OfferFill[] memory offerFills
+    ) internal {
+        vm.prank(borrower);
+        if (assetsTarget) {
+            midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
+                market,
+                targetSellerAssets,
+                targetUnits,
+                false,
+                borrower,
+                new CollateralTransfer[](0),
+                offerFills,
+                0,
+                address(0),
+                block.timestamp,
+                address(0)
+            );
+        } else {
+            midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
+                market,
+                targetUnits,
+                targetSellerAssets,
+                false,
+                borrower,
+                new CollateralTransfer[](0),
+                offerFills,
+                0,
+                address(0),
+                block.timestamp,
+                address(0)
+            );
+        }
     }
 
     function sortCollateralParams(CollateralParams[] memory arr) internal pure returns (CollateralParams[] memory) {
@@ -993,6 +1033,65 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(midnight.debt(id, borrower), 0, "borrower debt");
         assertEq(midnight.credit(id, borrower), 0, "borrower credit");
         assertEq(midnight.consumed(lender, offers[1].group), extra, "backup consumed");
+    }
+
+    function testSellWithUnregisteredCallback(bool assetsTarget, bool hasBound) public {
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+        collateralize(market, borrower, 800e18);
+
+        address callback = hasBound ? address(new BoundedBuyCallbackMock()) : address(new BuyCallbackMock());
+        uint256 callbackAssets = hasBound ? 300e18 : 800e18;
+        deal(address(loanToken), callback, callbackAssets);
+
+        offers[0].callback = callback;
+        offers[0].maxAssets = 800e18;
+        offers[1].maxAssets = 500e18;
+
+        OfferFill[] memory offerFills = new OfferFill[](2);
+        offerFills[0] = OfferFill({offer: offers[0], units: 800e18, ratifierData: hex""});
+        offerFills[1] = OfferFill({offer: offers[1], units: 500e18, ratifierData: hex""});
+
+        sellWithOffers(assetsTarget, 800e18, 800e18, offerFills);
+
+        assertEq(midnight.consumed(lender, offers[0].group), callbackAssets);
+        assertEq(midnight.consumed(lender, offers[1].group), 800e18 - callbackAssets);
+        assertEq(loanToken.balanceOf(callback), 0);
+        assertEq(loanToken.balanceOf(borrower), 800e18);
+    }
+
+    function testSellWithOversizedCallbackBound(bool assetsTarget, bool callbackFunded, bool maxBound) public {
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+        collateralize(market, borrower, 800e18);
+
+        address callback = address(new BoundedBuyCallbackMock());
+        if (callbackFunded) deal(address(loanToken), callback, 400e18);
+        uint256 callbackBound = maxBound ? type(uint256).max : type(uint256).max - 1;
+        vm.mockCall(
+            callback, abi.encodeWithSelector(IBuyerAssetsBound.buyerAssetsBound.selector), abi.encode(callbackBound)
+        );
+
+        offers[0].callback = callback;
+        offers[0].maxAssets = 400e18;
+        offers[0].tick = MAX_TICK / 2;
+        offers[1].maxAssets = 400e18;
+        offers[1].tick = MAX_TICK / 2;
+
+        OfferFill[] memory offerFills = new OfferFill[](2);
+        offerFills[0] = OfferFill({offer: offers[0], units: 800e18, ratifierData: hex""});
+        offerFills[1] = OfferFill({offer: offers[1], units: 800e18, ratifierData: hex""});
+
+        // A funded callback fills the target; an unfunded callback's take reverts and the next offer fills it.
+        sellWithOffers(assetsTarget, 800e18, 400e18, offerFills);
+
+        assertEq(midnight.consumed(lender, offers[0].group), callbackFunded ? 400e18 : 0);
+        assertEq(midnight.consumed(lender, offers[1].group), callbackFunded ? 0 : 400e18);
+        assertEq(midnight.debt(id, borrower), 800e18);
+        assertEq(loanToken.balanceOf(borrower), 400e18);
+        assertEq(loanToken.balanceOf(callback), 0);
     }
 
     // Referral fee.
@@ -3106,6 +3205,22 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(address(midnightBundles).balance, 0, "no native left in the bundle");
         assertEq(borrower.balance, 0, "native wrapped");
         assertEq(weth.balanceOf(borrower), 1 ether, "wrapped native sent to the borrower");
+    }
+}
+
+contract BuyCallbackMock is IBuyCallback {
+    function onBuy(bytes32, Market memory market, uint256 buyerAssets, uint256, uint256, address, bytes memory)
+        external
+        returns (bytes32)
+    {
+        ERC20(market.loanToken).approve(msg.sender, buyerAssets);
+        return CALLBACK_SUCCESS;
+    }
+}
+
+contract BoundedBuyCallbackMock is BuyCallbackMock, IBuyerAssetsBound {
+    function buyerAssetsBound(bytes32, Market memory market, address, bytes memory) external view returns (uint256) {
+        return ERC20(market.loanToken).balanceOf(address(this));
     }
 }
 
