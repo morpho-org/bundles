@@ -34,7 +34,7 @@ import {
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev All entrypoints share the same native-token handling: when msg.value is non-zero, it is wrapped using wrappedNative and transferred to msg.sender before the regular ERC20 pulls.
 /// @dev Native tokens may be combined with an existing wrappedNative balance and are not required to match any individual transfer amount.
-/// @dev wrappedNative must be the chain's canonical wrapped native token, behaving like WETH9.
+/// @dev wrappedNative must behave like WETH9.
 /// @dev msg.sender must approve this contract to pull wrappedNative before using native tokens.
 /// @dev The users must authorize this contract on Midnight beforehand.
 contract MidnightBundlesV2 is IMidnightBundlesV2 {
@@ -144,15 +144,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// TAKE-SIDE EXTERNAL FUNCTIONS ///
 
-    // For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer", "for reduce-only offers, the maker's current credit (sell offers, after fee accrual and slashing) or debt (buy offers)") units.
-    // Sell functions additionally cap units using buyerAssetsBound when the callback's bound query succeeds.
     // Only touched offers are checked to point to the given market.
     // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
     // msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
     // The bundler contract must have an allowance to pull enough tokens from msg.sender for the buy/sell functions below.
     // Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing to buy, decreasing to sell).
     // offerFills[i].units should prevent taking more than what is takeable w.r.t. the callback / the balances / the health.
-    // For the buy functions below, the current market continuous fee must be at most maxContinuousFee when taking offers. Pass type(uint256).max to disable.
+    // For the buy functions below, the current market continuous fee must be at most maxContinuousFee when taking offers.
 
     /// @dev This function pulls maxBuyerAssets from the msg.sender and transfers back the remaining tokens at the end.
     /// @dev msg.sender will pay at most maxBuyerAssets.
@@ -197,10 +195,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
-            uint256 makerCreditBound = type(uint256).max;
+            uint256 makerCreditBound;
             if (fill.offer.reduceOnly) {
-                (uint128 credit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, fill.offer.maker);
-                makerCreditBound = credit;
+                (makerCreditBound,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, fill.offer.maker);
+            } else {
+                makerCreditBound = type(uint256).max;
             }
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
