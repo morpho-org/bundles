@@ -285,9 +285,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 makerDebtBound,
                 TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
-            if (reduceOnly) {
-                require(unitsToTake <= credit(market, id, msg.sender), NotReduceOnly());
-            }
+            require(!reduceOnly || unitsToTake <= credit(market, id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "") returns (
                 uint256, uint256 resSellerAssets
@@ -445,9 +443,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 makerDebtBound,
                 TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
-            if (reduceOnly) {
-                require(unitsToTake <= credit(market, id, msg.sender), NotReduceOnly());
-            }
+            require(!reduceOnly || unitsToTake <= credit(market, id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "") returns (
                 uint256, uint256 resSellerAssets
