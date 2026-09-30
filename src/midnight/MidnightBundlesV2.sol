@@ -195,17 +195,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
-            uint256 makerCreditBound;
-            if (fill.offer.reduceOnly) {
-                (makerCreditBound,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, fill.offer.maker);
-            } else {
-                makerCreditBound = type(uint256).max;
-            }
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerCreditBound
+                makerCreditBound(id, fill.offer)
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
@@ -283,17 +277,12 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            uint256 makerDebtBound =
-                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max;
-            // buy offers already limit buyer assets to uint128.max through maxAssets or maxUnits and buyerPrice <= WAD.
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerDebtBound,
-                TakeAmountsLib.buyerAssetsToUnits(
-                    MIDNIGHT, id, fill.offer, UtilsLib.min(buyerAssetsBound(id, fill.offer), type(uint128).max)
-                )
+                makerDebtBound(id, fill.offer),
+                TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -359,19 +348,13 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
-            uint256 makerCreditBound;
-            if (fill.offer.reduceOnly) {
-                (makerCreditBound,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, fill.offer.maker);
-            } else {
-                makerCreditBound = type(uint256).max;
-            }
             uint256 unitsToTake = min(
                 TakeAmountsLib.buyerAssetsToUnits(
                     MIDNIGHT, id, fill.offer, targetFilledBuyerAssets - filledBuyerAssets
                 ),
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerCreditBound
+                makerCreditBound(id, fill.offer)
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
@@ -451,19 +434,14 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            uint256 makerDebtBound =
-                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max;
-            // buy offers already limit buyer assets to uint128.max through maxAssets or maxUnits and buyerPrice <= WAD.
             uint256 unitsToTake = min(
                 TakeAmountsLib.sellerAssetsToUnits(
                     MIDNIGHT, id, fill.offer, targetFilledSellerAssets - filledSellerAssets
                 ),
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                makerDebtBound,
-                TakeAmountsLib.buyerAssetsToUnits(
-                    MIDNIGHT, id, fill.offer, UtilsLib.min(buyerAssetsBound(id, fill.offer), type(uint128).max)
-                )
+                makerDebtBound(id, fill.offer),
+                TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
             if (reduceOnly) {
                 (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
@@ -488,16 +466,36 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// INTERNAL FUNCTIONS ///
 
+    /// @dev Returns the maker's credit for reduce-only sell offers, type(uint256).max otherwise.
+    function makerCreditBound(bytes32 id, Offer memory offer) internal view returns (uint256) {
+        if (offer.reduceOnly) {
+            (uint128 credit,,) = IMidnight(MIDNIGHT).updatePositionView(offer.market, id, offer.maker);
+            return credit;
+        } else {
+            return type(uint256).max;
+        }
+    }
+
+    /// @dev Returns the maker's debt for reduce-only buy offers, type(uint256).max otherwise.
+    function makerDebtBound(bytes32 id, Offer memory offer) internal view returns (uint256) {
+        if (offer.reduceOnly) {
+            return IMidnight(MIDNIGHT).debt(id, offer.maker);
+        } else {
+            return type(uint256).max;
+        }
+    }
+
     /// @dev Returns the maker's callback funding cap in buyer assets for a buy offer.
-    function buyerAssetsBound(bytes32 id, Offer memory offer) internal view returns (uint256) {
-        if (offer.callback == address(0)) return type(uint256).max;
+    /// @dev Buy offers already limit buyer assets to uint128.max through maxAssets or maxUnits and buyerPrice <= WAD.
+    function buyerAssetsBound(bytes32 id, Offer memory offer) internal view returns (uint128) {
+        if (offer.callback == address(0)) return type(uint128).max;
         try IBuyerAssetsBound(offer.callback)
             .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
             uint256 bound
         ) {
-            return bound;
+            return bound.min(type(uint128).max).toUint128();
         } catch {
-            return type(uint256).max;
+            return type(uint128).max;
         }
     }
 
