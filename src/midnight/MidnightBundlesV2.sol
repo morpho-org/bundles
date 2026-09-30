@@ -3,7 +3,7 @@
 pragma solidity 0.8.34;
 
 import {IMidnight, Market, Offer} from "../../lib/midnight/src/interfaces/IMidnight.sol";
-import {IBoundBuyerAssetsInterface} from "../../lib/midnight/src/interfaces/ICallbacks.sol";
+import {IBuyerAssetsBound} from "../../lib/midnight/src/interfaces/ICallbacks.sol";
 import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
@@ -482,7 +482,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     function callbackFundableUnits(bytes32 id, Offer memory offer) internal view returns (uint256) {
         uint256 fundableUnits = type(uint256).max;
         if (offer.callback != address(0)) {
-            try IBoundBuyerAssetsInterface(offer.callback)
+            try IBuyerAssetsBound(offer.callback)
                 .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
                 uint256 bound
             ) {

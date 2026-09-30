@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {IMidnight, Market, Offer, CollateralParams} from "../lib/midnight/src/interfaces/IMidnight.sol";
-import {IBuyCallback, IBoundBuyerAssetsInterface} from "../lib/midnight/src/interfaces/ICallbacks.sol";
+import {IBuyCallback, IBuyerAssetsBound} from "../lib/midnight/src/interfaces/ICallbacks.sol";
 import {EcrecoverRatifier} from "../lib/midnight/src/ratifiers/EcrecoverRatifier.sol";
 import {Signature, EIP712_DOMAIN_TYPEHASH} from "../lib/midnight/src/ratifiers/interfaces/IEcrecoverRatifier.sol";
 import {RateRatifierV1} from "../lib/midnight/src/ratifiers/RateRatifierV1.sol";
@@ -1192,7 +1192,7 @@ contract MidnightBundlesV2MakerTest is Test {
         Offer memory offer = makeOffer(keccak256("group"), PARKED_ASSETS, MAX_TICK);
         makeLendLimit(offer, PARKED_ASSETS);
 
-        uint256 bound = IBlueBuyCallback(callbackOf(lender))
+        uint256 bound = IBuyerAssetsBound(callbackOf(lender))
             .buyerAssetsBound(IdLib.toId(midnightMarket), midnightMarket, lender, abi.encode(blueMarket));
 
         assertEq(bound, PARKED_ASSETS);
@@ -1407,7 +1407,7 @@ contract MidnightBundlesV2MakerTest is Test {
     function testSellUsesOriginalFillWhenBlueBoundReverts(bool assetsTarget) public {
         Offer memory offer = makeOffer(keccak256("blue"), PARKED_ASSETS, MAX_TICK);
         bytes32 root = makeLendLimit(offer, PARKED_ASSETS);
-        vm.mockCallRevert(offer.callback, abi.encodeWithSelector(IBlueBuyCallback.buyerAssetsBound.selector), hex"01");
+        vm.mockCallRevert(offer.callback, abi.encodeWithSelector(IBuyerAssetsBound.buyerAssetsBound.selector), hex"01");
         OfferFill[] memory fills = new OfferFill[](1);
         fills[0] = OfferFill(offer, priceRatifierData(root), 800e18);
 
@@ -2264,7 +2264,7 @@ contract BuyCallbackMock is IBuyCallback {
     }
 }
 
-contract BoundedBuyCallbackMock is BuyCallbackMock, IBoundBuyerAssetsInterface {
+contract BoundedBuyCallbackMock is BuyCallbackMock, IBuyerAssetsBound {
     function buyerAssetsBound(bytes32, Market memory market, address, bytes memory) external view returns (uint256) {
         return ERC20(market.loanToken).balanceOf(address(this));
     }
