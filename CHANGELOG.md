@@ -17,14 +17,14 @@ Maker side:
 
 Taker side:
 
-- Sell bundles now first withdraw up to the available liquidity, before taking offers for the remaining target.
-- Buy bundles can now repay after taking offers. Buy bundles can also target the current debt of the caller, which allows exiting a borrow position fully.
-- `midnightBundlesV1RepayAndWithdrawCollateral` is removed in favor of the buy bundles with repayment enabled and no offers. Repay fully with the units target set to `type(uint256).max`; repaying a given amount of assets is still possible with the assets target.
+- Sell functions now first withdraw up to the available liquidity, before taking offers for the remaining target.
+- Buy functions can now repay after taking offers. Buy functions can also target the current debt of the caller, which allows exiting a borrow position fully.
+- `midnightBundlesV1RepayAndWithdrawCollateral` is removed in favor of the buy functions with repayment enabled and no offers. Repay fully with the units target set to `type(uint256).max`; repaying a given amount of assets is still possible with the assets target.
 - Collateral withdrawals can withdraw the full collateral balance by passing `type(uint256).max`.
-- The maximum continuous fee check is removed from sell bundles.
-- Takes on reduce-only offers are capped by the maker's position, and sell bundles cap takes by the funding bound of the offer's callback.
+- The maximum continuous fee check is removed from sell functions.
+- Takes on reduce-only offers are capped by the maker's position, and sell functions cap takes by the funding bound of the offer's callback.
 
-All bundles:
+All functions:
 
 - `taker` and `onBehalf` are removed: operations always apply to `msg.sender`.
 - Permit and Permit2 are removed: approvals must be given in a separate transaction.
