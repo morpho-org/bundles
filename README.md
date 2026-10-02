@@ -54,6 +54,10 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 - `vaultExitBundlesV1InKindRedemptionVaultV2` — withdraw idle assets and redeem the remainder in kind from an illiquid Vault V2.
 - `vaultExitBundlesV1ForceWithdrawVaultV2` — force withdraw from a liquid Vault V2.
 
+## Changelog
+
+Changes between versions, and the commits where previous versions can be found, are listed in the [changelog](./CHANGELOG.md).
+
 ## Audits
 
 Audits can be found in the [audits](./audits/) folder.
