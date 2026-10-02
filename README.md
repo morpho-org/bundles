@@ -56,7 +56,7 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 
 ## Changelog
 
-Changes between versions, and the commits where previous versions can be found, are listed in the [changelog](./CHANGELOG.md).
+Changes between versions and source code of all versions are listed in the [CHANGELOG](./CHANGELOG.md).
 
 ## Audits
 
@@ -64,4 +64,4 @@ Audits can be found in the [audits](./audits/) folder.
 
 ## License
 
-Files in this repository are publicly available under license `GPL-2.0-or-later`, see [`LICENSE`](./LICENSE).
+Files in this repository are publicly available under license `GPL-2.0-or-later`, see [LICENSE](./LICENSE).

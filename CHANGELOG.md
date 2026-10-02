@@ -30,9 +30,9 @@ All functions:
 - Native tokens are accepted: they are wrapped and sent to `msg.sender` before the token pulls.
 - All functions now take a `deadline` parameter.
 
-## Versions
+## Source code
 
-| Contract                       | Source                                                                                                                                                                                 |
+| Contract                       | Source code                                                                                                                                                                            |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | BlueBundlesV1                  | [`src/blue/BlueBundlesV1.sol`](src/blue/BlueBundlesV1.sol)                                                                                                                             |
 | MidnightBundlesV1 [deprecated] | [`MidnightBundlesV1@068d625de4623a522b25196928fc4b053a953141`](https://github.com/morpho-org/bundles/blob/068d625de4623a522b25196928fc4b053a953141/src/midnight/MidnightBundlesV1.sol) |
