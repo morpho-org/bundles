@@ -32,10 +32,10 @@ All functions:
 
 ## Source code
 
-| Contract                       | Source code                                                                                                                                                                          |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| BlueBundlesV1                  | [BlueBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/blue/BlueBundlesV1.sol)                                                                                     |
-| MidnightBundlesV1 [deprecated] | [MidnightBundlesV1@068d625de4623a522b25196928fc4b053a953141](https://github.com/morpho-org/bundles/blob/068d625de4623a522b25196928fc4b053a953141/src/midnight/MidnightBundlesV1.sol) |
-| MidnightBundlesV2              | [MidnightBundlesV2@main](https://github.com/morpho-org/bundles/blob/main/src/midnight/MidnightBundlesV2.sol)                                                                         |
-| VaultBundlesV1                 | [VaultBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/vault/VaultBundlesV1.sol)                                                                                  |
-| VaultExitBundlesV1             | [VaultExitBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/vault-exit/VaultExitBundlesV1.sol)                                                                     |
+| Contract           | Source code                                                                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| BlueBundlesV1      | [BlueBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/blue/BlueBundlesV1.sol)                                                                                     |
+| MidnightBundlesV1  | [MidnightBundlesV1@068d625de4623a522b25196928fc4b053a953141](https://github.com/morpho-org/bundles/blob/068d625de4623a522b25196928fc4b053a953141/src/midnight/MidnightBundlesV1.sol) |
+| MidnightBundlesV2  | [MidnightBundlesV2@main](https://github.com/morpho-org/bundles/blob/main/src/midnight/MidnightBundlesV2.sol)                                                                         |
+| VaultBundlesV1     | [VaultBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/vault/VaultBundlesV1.sol)                                                                                  |
+| VaultExitBundlesV1 | [VaultExitBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/vault-exit/VaultExitBundlesV1.sol)                                                                     |
