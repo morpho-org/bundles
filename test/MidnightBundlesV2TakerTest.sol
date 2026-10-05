@@ -2245,6 +2245,67 @@ contract MidnightBundlesV2TakerTest is Test {
         );
     }
 
+    function testSellMaxAfterFeeAccrual() public {
+        uint256 units = 100e18;
+        address receiver = makeAddr("receiver");
+        midnight.setMarketContinuousFee(id, MAX_CONTINUOUS_FEE);
+
+        for (uint256 i; i <= 6; i++) {
+            midnight.setMarketSettlementFee(id, i, 0);
+        }
+
+        // Borrower sells units so the lender holds credit, then repays so that the units are withdrawable.
+        offers[0].maxUnits = units.toUint128();
+        offers[0].continuousFeeCap = MAX_CONTINUOUS_FEE;
+        collateralize(market, borrower, units);
+        vm.prank(borrower);
+        midnight.take(offers[0], hex"", units, borrower, borrower, address(0), hex"");
+        deal(address(loanToken), borrower, 2 * units);
+        vm.prank(borrower);
+        midnight.repay(market, units, borrower, address(0), "");
+
+        // Half of the continuous fee accrues: the stored credit is above the actual credit.
+        vm.warp(vm.getBlockTimestamp() + 50);
+        (uint128 actualCredit,,) = midnight.updatePositionView(market, id, lender);
+        assertGt(midnight.credit(id, lender), actualCredit, "no fee accrued");
+
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
+            market,
+            type(uint256).max,
+            actualCredit,
+            true,
+            receiver,
+            new CollateralTransfer[](0),
+            new OfferFill[](0),
+            0,
+            address(0),
+            block.timestamp,
+            address(0)
+        );
+
+        assertEq(midnight.credit(id, lender), 0, "lender credit");
+        assertEq(midnight.debt(id, lender), 0, "lender debt");
+        assertEq(loanToken.balanceOf(receiver), actualCredit, "receiver assets");
+
+        // The sentinel also works when the position is already empty.
+        vm.prank(lender);
+        midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
+            market,
+            type(uint256).max,
+            0,
+            true,
+            receiver,
+            new CollateralTransfer[](0),
+            new OfferFill[](0),
+            0,
+            address(0),
+            block.timestamp,
+            address(0)
+        );
+        assertEq(loanToken.balanceOf(receiver), actualCredit, "empty exit receives nothing");
+    }
+
     function testSellSellerAssetsTargetWithWithdrawAfterFeeAccrual() public {
         uint256 units = 100e18;
         address receiver = makeAddr("receiver");
