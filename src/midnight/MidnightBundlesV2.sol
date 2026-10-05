@@ -269,9 +269,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 );
         }
 
-        if (targetUnits == type(uint256).max) targetUnits = credit(market, id, msg.sender);
+        uint256 currentCredit = credit(market, id, msg.sender);
+        if (targetUnits == type(uint256).max) targetUnits = currentCredit;
 
-        uint256 withdrawUnits = min(targetUnits, credit(market, id, msg.sender), IMidnight(MIDNIGHT).withdrawable(id));
+        uint256 withdrawUnits = min(targetUnits, currentCredit, IMidnight(MIDNIGHT).withdrawable(id));
         if (withdrawUnits > 0) IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;
