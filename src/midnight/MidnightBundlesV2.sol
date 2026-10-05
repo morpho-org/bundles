@@ -184,9 +184,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         SafeTransferLib.safeTransferFrom(loanToken, msg.sender, address(this), maxBuyerAssets);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
-        if (targetUnits == type(uint256).max) {
-            targetUnits = IMidnight(MIDNIGHT).debt(id, msg.sender);
-        }
+        if (targetUnits == type(uint256).max) targetUnits = IMidnight(MIDNIGHT).debt(id, msg.sender);
 
         uint256 filledUnits;
         uint256 filledBuyerAssets;
@@ -222,9 +220,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         for (uint256 i; i < collateralWithdrawals.length; i++) {
             uint256 collateralIndex = collateralWithdrawals[i].collateralIndex;
             uint256 assets = collateralWithdrawals[i].assets;
-            if (assets == type(uint256).max) {
-                assets = IMidnight(MIDNIGHT).collateral(id, msg.sender, collateralIndex);
-            }
+            if (assets == type(uint256).max) assets = IMidnight(MIDNIGHT).collateral(id, msg.sender, collateralIndex);
             IMidnight(MIDNIGHT).withdrawCollateral(market, collateralIndex, assets, msg.sender, collateralReceiver);
         }
 
@@ -237,6 +233,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// @dev The receiver will receive at least minSellerAssets.
     /// @dev If msg.sender has credit, as much credit as possible is withdrawn before the take loop.
+    /// @dev targetUnits = type(uint256).max targets msg.sender's credit before withdrawing and taking offers.
     /// @dev Total loan assets received by the receiver is filledSellerAssets - filledSellerAssets * referralFeePct / WAD.
     /// @dev msg.sender will pay collateralSupplies[0].assets of the first token of collateralSupplies, etc.
     function midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
@@ -268,7 +265,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 );
         }
 
-        uint256 withdrawUnits = min(targetUnits, credit(market, id, msg.sender), IMidnight(MIDNIGHT).withdrawable(id));
+        uint256 currentCredit = credit(market, id, msg.sender);
+        if (targetUnits == type(uint256).max) targetUnits = currentCredit;
+
+        uint256 withdrawUnits = min(targetUnits, currentCredit, IMidnight(MIDNIGHT).withdrawable(id));
         if (withdrawUnits > 0) IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;
@@ -375,9 +375,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         for (uint256 i; i < collateralWithdrawals.length; i++) {
             uint256 collateralIndex = collateralWithdrawals[i].collateralIndex;
             uint256 assets = collateralWithdrawals[i].assets;
-            if (assets == type(uint256).max) {
-                assets = IMidnight(MIDNIGHT).collateral(id, msg.sender, collateralIndex);
-            }
+            if (assets == type(uint256).max) assets = IMidnight(MIDNIGHT).collateral(id, msg.sender, collateralIndex);
             IMidnight(MIDNIGHT).withdrawCollateral(market, collateralIndex, assets, msg.sender, collateralReceiver);
         }
 
