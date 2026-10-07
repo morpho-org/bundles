@@ -21,6 +21,26 @@ struct OfferFill {
     uint256 units;
 }
 
+struct RatifierAuth {
+    address ratifier;
+    bytes32 newRoot;
+    uint256 signatureHeight;
+    uint128 signatureNonce;
+    uint256 signatureDeadline;
+    uint8 v;
+    bytes32 r;
+    bytes32 s;
+}
+
+struct TakeSettings {
+    bool reduceOnly;
+    uint256 maxContinuousFee;
+    uint256 referralFeePct;
+    address referralFeeRecipient;
+    uint256 deadline;
+    address wrappedNative;
+}
+
 interface IMidnightBundlesV2 {
     /// ERRORS ///
     error ConsumedAboveMax();
@@ -51,14 +71,7 @@ interface IMidnightBundlesV2 {
         bytes32 callbackSalt,
         Market memory market,
         CollateralTransfer[] memory collateralSupplies,
-        address ratifier,
-        bytes32 newRoot,
-        uint256 signatureHeight,
-        uint128 signatureNonce,
-        uint256 signatureDeadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s,
+        RatifierAuth memory auth,
         GroupCancellation[] memory groupsToCancel,
         bytes memory payload,
         uint256 deadline,
@@ -69,61 +82,41 @@ interface IMidnightBundlesV2 {
         Market memory market,
         uint256 targetUnits,
         uint256 maxBuyerAssets,
-        bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
         CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline,
-        address wrappedNative
+        TakeSettings memory settings
     ) external payable;
 
     function midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
         Market memory market,
         uint256 targetUnits,
         uint256 minSellerAssets,
-        bool reduceOnly,
         address receiver,
         CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline,
-        address wrappedNative
+        TakeSettings memory settings
     ) external payable;
 
     function midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
         Market memory market,
         uint256 targetBuyerAssets,
         uint256 minUnits,
-        bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
         CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline,
-        address wrappedNative
+        TakeSettings memory settings
     ) external payable;
 
     function midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
         Market memory market,
         uint256 targetSellerAssets,
         uint256 maxUnits,
-        bool reduceOnly,
         address receiver,
         CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline,
-        address wrappedNative
+        TakeSettings memory settings
     ) external payable;
 }
