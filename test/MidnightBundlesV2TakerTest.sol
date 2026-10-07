@@ -20,7 +20,12 @@ import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
-import {IMidnightBundlesV2, OfferFill, CollateralTransfer} from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
+import {
+    IMidnightBundlesV2,
+    OfferFill,
+    CollateralTransfer,
+    TakeSettings
+} from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
 
 contract MidnightBundlesV2TakerTest is Test {
     using UtilsLib for uint256;
@@ -199,32 +204,36 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 buyerAssets,
                 units,
-                false,
                 repayEnabled,
                 offerFills,
                 new CollateralTransfer[](0),
                 address(0),
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: false,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
         } else {
             midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
                 market,
                 units,
                 buyerAssets,
-                false,
                 repayEnabled,
                 offerFills,
                 new CollateralTransfer[](0),
                 address(0),
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: false,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
         }
         vm.stopPrank();
@@ -243,30 +252,34 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 1,
                 type(uint256).max,
-                false,
                 borrower,
                 new CollateralTransfer[](0),
                 new OfferFill[](0),
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: false,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
         } else {
             midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
                 market,
                 1,
                 0,
-                false,
                 borrower,
                 new CollateralTransfer[](0),
                 new OfferFill[](0),
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: false,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
         }
         vm.stopPrank();
@@ -293,16 +306,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             type(uint256).max,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            continuousFee - 1,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: continuousFee - 1,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
     }
 
@@ -341,15 +356,17 @@ contract MidnightBundlesV2TakerTest is Test {
             fakeMarket,
             targetUnits,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             offerFills,
-            0,
-            address(0),
-            MAX_CONTINUOUS_FEE - 1,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: MAX_CONTINUOUS_FEE - 1,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
     }
 
@@ -373,15 +390,17 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 units,
                 0,
-                false,
                 borrower,
                 new CollateralTransfer[](0),
                 offerFills,
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: false,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
 
             uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
@@ -396,15 +415,17 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 units,
                 0,
-                false,
                 borrower,
                 new CollateralTransfer[](0),
                 offerFills,
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: false,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
         }
     }
@@ -445,16 +466,18 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 targetBuyerAssets,
                 0,
-                false,
                 true,
                 offerFills,
                 new CollateralTransfer[](0),
                 address(0),
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: false,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
 
             uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
@@ -469,16 +492,18 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 targetBuyerAssets,
                 0,
-                false,
                 true,
                 offerFills,
                 new CollateralTransfer[](0),
                 address(0),
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: false,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
         }
     }
@@ -507,16 +532,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             2,
             type(uint256).max,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
     }
 
@@ -538,15 +565,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             2,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
     }
 
@@ -578,16 +607,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1000,
             0,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
     }
 
@@ -625,15 +656,17 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 targetSellerAssets,
                 type(uint256).max,
-                false,
                 borrower,
                 new CollateralTransfer[](0),
                 offerFills,
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: false,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
 
             uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
@@ -648,15 +681,17 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 targetSellerAssets,
                 type(uint256).max,
-                false,
                 borrower,
                 new CollateralTransfer[](0),
                 offerFills,
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: false,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
         }
     }
@@ -679,15 +714,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1000,
             type(uint256).max,
-            false,
             borrower,
             new CollateralTransfer[](0),
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
     }
 
@@ -711,15 +748,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             debtUnits,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
         assertEq(midnight.debt(id, borrower), debtUnits, "initial debt");
 
@@ -748,15 +787,17 @@ contract MidnightBundlesV2TakerTest is Test {
                 buyUnits,
                 maxBuyerAssets,
                 true,
-                true,
                 buyOfferFills,
                 new CollateralTransfer[](0),
                 address(0),
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: true,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
         } else {
             vm.prank(borrower);
@@ -764,16 +805,18 @@ contract MidnightBundlesV2TakerTest is Test {
                 market,
                 buyUnits,
                 maxBuyerAssets,
-                true,
                 false,
                 buyOfferFills,
                 new CollateralTransfer[](0),
                 address(0),
-                0,
-                address(0),
-                type(uint256).max,
-                block.timestamp,
-                address(0)
+                TakeSettings({
+                    reduceOnly: true,
+                    maxContinuousFee: type(uint256).max,
+                    referralFeePct: 0,
+                    referralFeeRecipient: address(0),
+                    deadline: block.timestamp,
+                    wrappedNative: address(0)
+                })
             );
             assertEq(midnight.debt(id, borrower), debtUnits - buyUnits, "debt reduced");
         }
@@ -809,16 +852,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             type(uint256).max,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.debt(id, borrower), units, "units filled");
@@ -855,15 +900,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            false,
             receiver,
             new CollateralTransfer[](0),
             offerFills,
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.debt(id, borrower), units, "units sold");
@@ -902,16 +949,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetBuyerAssets,
             0,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(type(uint256).max - loanToken.balanceOf(lender), targetBuyerAssets, "taker total cost");
@@ -949,15 +998,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetSellerAssets,
             type(uint256).max,
-            false,
             receiver,
             new CollateralTransfer[](0),
             offerFills,
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(loanToken.balanceOf(receiver), targetSellerAssets, "receiver net");
@@ -986,15 +1037,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         uint256 expectedFee = repayUnits.mulDivDown(referralFeePct, WAD - referralFeePct);
@@ -1014,16 +1067,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             repayUnits,
             assets,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.debt(id, borrower), units - repayUnits, "debt");
@@ -1053,15 +1108,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             debt,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         uint256 expectedFee = debt.mulDivDown(referralFeePct, WAD - referralFeePct);
@@ -1082,16 +1139,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             debt,
             assets,
-            false,
             true,
             offerFills,
             withdrawals,
             collateralReceiver,
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.debt(id, borrower), 0, "debt fully repaid");
@@ -1132,15 +1191,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         // Offer for the borrower to buy back units from.
@@ -1169,16 +1230,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             buyUnits + repayUnits,
             maxBuyerAssets,
-            false,
             true,
             buyOfferFills,
             new CollateralTransfer[](0),
             address(0),
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.debt(id, borrower), units - buyUnits - repayUnits, "debt");
@@ -1216,15 +1279,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             debtUnits,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         // Offer for the borrower to buy back units from.
@@ -1248,16 +1313,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetBuyerAssets,
             0,
-            false,
             true,
             buyOfferFills,
             new CollateralTransfer[](0),
             address(0),
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.debt(id, borrower), 0, "debt fully repaid");
@@ -1287,15 +1354,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         // Offer for the borrower to buy back units from.
@@ -1325,15 +1394,17 @@ contract MidnightBundlesV2TakerTest is Test {
             buyUnits,
             maxBuyerAssets,
             false,
-            false,
             buyOfferFills,
             new CollateralTransfer[](0),
             address(0),
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.debt(id, borrower), units - buyUnits, "debt");
@@ -1365,15 +1436,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         uint256 expectedFee = repayUnits.mulDivDown(referralFeePct, WAD - referralFeePct);
@@ -1391,15 +1464,17 @@ contract MidnightBundlesV2TakerTest is Test {
             repayUnits,
             assets,
             false,
-            false,
             new OfferFill[](0),
             new CollateralTransfer[](0),
             address(0),
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.debt(id, borrower), units, "debt untouched");
@@ -1431,15 +1506,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         deal(address(loanToken), borrower, targetBuyerAssets);
@@ -1454,15 +1531,17 @@ contract MidnightBundlesV2TakerTest is Test {
             targetBuyerAssets,
             0,
             false,
-            false,
             new OfferFill[](0),
             new CollateralTransfer[](0),
             address(0),
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.debt(id, borrower), units, "debt untouched");
@@ -1498,15 +1577,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         uint256 price = TickLib.tickToPrice(MAX_TICK);
@@ -1534,15 +1615,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             sellUnits + withdrawUnits,
             0,
-            false,
             receiver,
             new CollateralTransfer[](0),
             offerFills,
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.credit(id, lender), units - sellUnits - withdrawUnits, "lender credit");
@@ -1585,15 +1668,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             creditUnits,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         // Borrower repays withdrawUnits to make them withdrawable, and buys back the units sold by the lender.
@@ -1615,15 +1700,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetSellerAssets,
             type(uint256).max,
-            false,
             receiver,
             new CollateralTransfer[](0),
             offerFills,
-            referralFeePct,
-            referrer,
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: referralFeePct,
+                referralFeeRecipient: referrer,
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.credit(id, lender), 0, "lender credit");
@@ -1652,15 +1739,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
         deal(address(loanToken), borrower, 2 * units);
         vm.prank(borrower);
@@ -1686,15 +1775,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             storedCredit,
             0,
-            false,
             receiver,
             new CollateralTransfer[](0),
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         uint256 price = TickLib.tickToPrice(MAX_TICK);
@@ -1727,15 +1818,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
         deal(address(loanToken), borrower, 2 * units);
         vm.prank(borrower);
@@ -1761,15 +1854,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             storedCredit,
             type(uint256).max,
-            false,
             receiver,
             new CollateralTransfer[](0),
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         uint256 price = TickLib.tickToPrice(MAX_TICK);
@@ -1792,32 +1887,36 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1,
             0,
-            false,
             true,
             buyOfferFills,
             new CollateralTransfer[](0),
             address(0),
-            WAD,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: WAD,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
         vm.expectRevert(IMidnightBundlesV2.PctExceeded.selector);
         midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
             market,
             1,
             0,
-            false,
             true,
             buyOfferFills,
             new CollateralTransfer[](0),
             address(0),
-            WAD,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: WAD,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
         vm.stopPrank();
 
@@ -1827,30 +1926,34 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             offerFills,
-            WAD,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: WAD,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
         vm.expectRevert(IMidnightBundlesV2.PctExceeded.selector);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
             market,
             1,
             type(uint256).max,
-            false,
             borrower,
             new CollateralTransfer[](0),
             offerFills,
-            WAD,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: WAD,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
         vm.stopPrank();
     }
@@ -1866,32 +1969,36 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1,
             0,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            past,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: past,
+                wrappedNative: address(0)
+            })
         );
         vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
             market,
             1,
             0,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            past,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: past,
+                wrappedNative: address(0)
+            })
         );
         vm.stopPrank();
 
@@ -1901,30 +2008,34 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             1,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            past,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: past,
+                wrappedNative: address(0)
+            })
         );
         vm.expectRevert(IMidnightBundlesV2.DeadlinePassed.selector);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
             market,
             1,
             type(uint256).max,
-            false,
             borrower,
             new CollateralTransfer[](0),
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            past,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: past,
+                wrappedNative: address(0)
+            })
         );
         vm.stopPrank();
     }
@@ -1985,16 +2096,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             maxBuyerAssets,
-            false,
             true,
             offerFills,
             withdrawals,
             receiver,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -2036,16 +2149,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetBuyerAssets,
             0,
-            false,
             true,
             offerFills,
             withdrawals,
             receiver,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -2077,15 +2192,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            false,
             borrower,
             supplies,
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -2116,15 +2233,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             sellOfferFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         uint256 maxWithdrawable = collateralAmount - _collateralAmount(0, units - repayUnits);
@@ -2147,16 +2266,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             repayUnits,
             repayUnits,
-            false,
             true,
             offerFills,
             withdrawals,
             collateralReceiver,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.debt(id, borrower), units - repayUnits, "debt");
@@ -2198,15 +2319,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetSellerAssets,
             type(uint256).max,
-            false,
             borrower,
             supplies,
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         for (uint256 i; i < numCollaterals; i++) {
@@ -2242,16 +2365,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             price - 1,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
     }
 
@@ -2278,15 +2403,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units,
             minSellerAssets,
-            false,
             borrower,
             new CollateralTransfer[](0),
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
     }
 
@@ -2315,16 +2442,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             units.mulDivUp(price, WAD),
             units + 2,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
     }
 
@@ -2351,15 +2480,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetSellerAssets,
             price + 1,
-            false,
             borrower,
             new CollateralTransfer[](0),
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
     }
 
@@ -2385,15 +2516,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             100,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.consumed(offers[0].maker, offers[0].group), 100, "consumed offer 0");
@@ -2427,15 +2560,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetSellerAssets,
             type(uint256).max,
-            false,
             borrower,
             new CollateralTransfer[](0),
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
@@ -2480,16 +2615,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             100,
             maxBuyerAssets,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         assertEq(midnight.consumed(offers[0].maker, offers[0].group), 100, "consumed offer 0");
@@ -2530,16 +2667,18 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             targetBuyerAssets,
             0,
-            false,
             true,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(0)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(0)
+            })
         );
 
         uint256 consumed0 = midnight.consumed(offers[0].maker, offers[0].group);
@@ -2605,15 +2744,17 @@ contract MidnightBundlesV2TakerTest is Test {
             units,
             maxBuyerAssets,
             false,
-            false,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(weth)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(weth)
+            })
         );
 
         assertEq(midnight.debt(IdLib.toId(wethMarket), borrower), units, "units bought");
@@ -2646,15 +2787,17 @@ contract MidnightBundlesV2TakerTest is Test {
             targetBuyerAssets,
             0,
             false,
-            false,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(weth)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(weth)
+            })
         );
 
         assertEq(weth.balanceOf(borrower), targetBuyerAssets, "maker receipt");
@@ -2709,15 +2852,17 @@ contract MidnightBundlesV2TakerTest is Test {
             wethCollateralMarket,
             units,
             0,
-            false,
             borrower,
             supplies,
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(weth)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(weth)
+            })
         );
 
         assertEq(midnight.collateral(wethCollateralId, borrower, 0), collateralAssets, "collateral supplied");
@@ -2793,15 +2938,17 @@ contract MidnightBundlesV2TakerTest is Test {
             wethCollateralMarket,
             units,
             0,
-            false,
             borrower,
             supplies,
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(weth)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(weth)
+            })
         );
 
         assertEq(midnight.collateral(wethCollateralId, borrower, wethIndex), collateralAssets, "wrapped collateral");
@@ -2842,15 +2989,17 @@ contract MidnightBundlesV2TakerTest is Test {
             wethCollateralMarket,
             targetSellerAssets,
             units,
-            false,
             borrower,
             supplies,
             offerFills,
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(weth)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(weth)
+            })
         );
 
         assertEq(midnight.collateral(wethCollateralId, borrower, wethIndex), collateralAssets, "wrapped collateral");
@@ -2885,15 +3034,17 @@ contract MidnightBundlesV2TakerTest is Test {
             units,
             maxBuyerAssets,
             false,
-            false,
             offerFills,
             new CollateralTransfer[](0),
             address(0),
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(weth)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(weth)
+            })
         );
 
         assertEq(weth.balanceOf(lender), 0, "existing wrapped native used");
@@ -2908,15 +3059,17 @@ contract MidnightBundlesV2TakerTest is Test {
             market,
             0,
             0,
-            false,
             borrower,
             new CollateralTransfer[](0),
             new OfferFill[](0),
-            0,
-            address(0),
-            type(uint256).max,
-            block.timestamp,
-            address(weth)
+            TakeSettings({
+                reduceOnly: false,
+                maxContinuousFee: type(uint256).max,
+                referralFeePct: 0,
+                referralFeeRecipient: address(0),
+                deadline: block.timestamp,
+                wrappedNative: address(weth)
+            })
         );
 
         assertEq(address(midnightBundles).balance, 0, "no native left in the bundle");
