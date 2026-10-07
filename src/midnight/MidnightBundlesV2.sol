@@ -23,7 +23,9 @@ import {
     IMidnightBundlesV2,
     GroupCancellation,
     CollateralTransfer,
-    OfferFill
+    OfferFill,
+    RatifierAuth,
+    TakeSettings
 } from "./interfaces/IMidnightBundlesV2.sol";
 
 /// @dev This contract enables:
@@ -80,14 +82,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bytes32 callbackSalt,
         Market memory market,
         CollateralTransfer[] memory collateralSupplies,
-        address ratifier,
-        bytes32 newRoot,
-        uint256 signatureHeight,
-        uint128 signatureNonce,
-        uint256 signatureDeadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s,
+        RatifierAuth memory auth, // was: ratifier, newRoot, signatureHeight, signatureNonce, signatureDeadline, v, r, s
         GroupCancellation[] memory groupsToCancel,
         bytes memory payloadToLog,
         uint256 deadline,
@@ -123,15 +118,23 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             IMorpho(BLUE).supply(blueMarket, assetsToPark, 0, blueBuyCallback, "");
         }
 
-        if (newRoot != bytes32(0)) {
-            IMidnight(MIDNIGHT).setIsAuthorized(ratifier, true, msg.sender);
-            if (v == 0 && r == 0 && s == 0) {
-                bytes32 res = IRatifiersV1Common(ratifier).setIsRootRatified(msg.sender, newRoot, true);
+        if (auth.newRoot != bytes32(0)) {
+            IMidnight(MIDNIGHT).setIsAuthorized(auth.ratifier, true, msg.sender);
+            if (auth.v == 0 && auth.r == 0 && auth.s == 0) {
+                bytes32 res = IRatifiersV1Common(auth.ratifier).setIsRootRatified(msg.sender, auth.newRoot, true);
                 require(res == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
             } else {
-                bytes32 res = IRatifiersV1Common(ratifier)
+                bytes32 res = IRatifiersV1Common(auth.ratifier)
                     .setIsRootRatifiedWithSig(
-                        msg.sender, newRoot, signatureHeight, true, signatureNonce, signatureDeadline, v, r, s
+                        msg.sender,
+                        auth.newRoot,
+                        auth.signatureHeight,
+                        true,
+                        auth.signatureNonce,
+                        auth.signatureDeadline,
+                        auth.v,
+                        auth.r,
+                        auth.s
                     );
                 require(res == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
             }
@@ -160,20 +163,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         Market memory market,
         uint256 targetUnits,
         uint256 maxBuyerAssets,
-        bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
         CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline,
-        address wrappedNative
+        TakeSettings memory settings
     ) external payable {
-        require(block.timestamp <= deadline, DeadlinePassed());
-        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
-        require(referralFeePct < WAD, PctExceeded());
+        require(block.timestamp <= settings.deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(settings.wrappedNative);
+        require(settings.referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
@@ -187,11 +185,11 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= settings.maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 targetUnits - filledUnits, fill.units, ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
             );
-            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
+            require(!settings.reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -220,8 +218,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 );
         }
 
-        uint256 referralFeeAssets = filledBuyerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
-        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
+        uint256 referralFeeAssets = filledBuyerAssets.mulDivDown(settings.referralFeePct, WAD - settings.referralFeePct);
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(loanToken, settings.referralFeeRecipient, referralFeeAssets);
+        }
 
         uint256 remainder = maxBuyerAssets - filledBuyerAssets - referralFeeAssets;
         if (remainder > 0) SafeTransferLib.safeTransfer(loanToken, msg.sender, remainder);
@@ -235,19 +235,14 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         Market memory market,
         uint256 targetUnits,
         uint256 minSellerAssets,
-        bool reduceOnly,
         address receiver,
         CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline,
-        address wrappedNative
+        TakeSettings memory settings
     ) external payable {
-        require(block.timestamp <= deadline, DeadlinePassed());
-        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
-        require(referralFeePct < WAD, PctExceeded());
+        require(block.timestamp <= settings.deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(settings.wrappedNative);
+        require(settings.referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
@@ -261,21 +256,23 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 );
         }
 
-        (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
-        uint256 withdrawUnits = min(targetUnits, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
-        IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
-        uint256 filledUnits = withdrawUnits;
-        uint256 filledSellerAssets = withdrawUnits;
+        uint256 filledUnits;
+        {
+            (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
+            filledUnits = min(targetUnits, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
+        }
+        IMidnight(MIDNIGHT).withdraw(market, filledUnits, msg.sender, address(this));
+        uint256 filledSellerAssets = filledUnits;
         for (uint256 i; i < offerFills.length && filledUnits < targetUnits; i++) {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= settings.maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 targetUnits - filledUnits, fill.units, ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
             );
-            if (reduceOnly) {
-                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
+            if (settings.reduceOnly) {
+                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(fill.offer.market, id, msg.sender);
                 require(unitsToTake <= takerCredit, NotReduceOnly());
             }
             try IMidnight(MIDNIGHT)
@@ -289,10 +286,12 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
         require(filledUnits == targetUnits, OutOfOffers());
 
-        uint256 referralFeeAssets = filledSellerAssets.mulDivDown(referralFeePct, WAD);
+        uint256 referralFeeAssets = filledSellerAssets.mulDivDown(settings.referralFeePct, WAD);
         require(filledSellerAssets - referralFeeAssets >= minSellerAssets, SellerAssetsTooLow());
         address loanToken = market.loanToken;
-        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(loanToken, settings.referralFeeRecipient, referralFeeAssets);
+        }
         SafeTransferLib.safeTransfer(loanToken, receiver, filledSellerAssets - referralFeeAssets);
     }
 
@@ -305,20 +304,15 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         Market memory market,
         uint256 targetBuyerAssets,
         uint256 minUnits,
-        bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
         CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline,
-        address wrappedNative
+        TakeSettings memory settings
     ) external payable {
-        require(block.timestamp <= deadline, DeadlinePassed());
-        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
-        require(referralFeePct < WAD, PctExceeded());
+        require(block.timestamp <= settings.deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(settings.wrappedNative);
+        require(settings.referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
@@ -326,8 +320,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         SafeTransferLib.safeTransferFrom(loanToken, msg.sender, address(this), targetBuyerAssets);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
-        uint256 referralFeeAssets = targetBuyerAssets.mulDivDown(referralFeePct, WAD);
-        uint256 targetFilledBuyerAssets = targetBuyerAssets - referralFeeAssets;
+        uint256 targetFilledBuyerAssets = targetBuyerAssets - targetBuyerAssets.mulDivDown(settings.referralFeePct, WAD);
 
         uint256 filledUnits;
         uint256 filledBuyerAssets;
@@ -335,7 +328,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             OfferFill memory fill = offerFills[i];
             require(!fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= settings.maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 TakeAmountsLib.buyerAssetsToUnits(
                     MIDNIGHT, id, fill.offer, targetFilledBuyerAssets - filledBuyerAssets
@@ -343,7 +336,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
             );
-            require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
+            require(!settings.reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
                 .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
@@ -374,7 +367,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 );
         }
 
-        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
+        uint256 referralFeeAssets = targetBuyerAssets - targetFilledBuyerAssets;
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(loanToken, settings.referralFeeRecipient, referralFeeAssets);
+        }
     }
 
     /// @dev Total loan assets received by the receiver is targetSellerAssets.
@@ -386,19 +382,14 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         Market memory market,
         uint256 targetSellerAssets,
         uint256 maxUnits,
-        bool reduceOnly,
         address receiver,
         CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
-        uint256 referralFeePct,
-        address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline,
-        address wrappedNative
+        TakeSettings memory settings
     ) external payable {
-        require(block.timestamp <= deadline, DeadlinePassed());
-        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
-        require(referralFeePct < WAD, PctExceeded());
+        require(block.timestamp <= settings.deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(settings.wrappedNative);
+        require(settings.referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
@@ -412,19 +403,22 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 );
         }
 
-        uint256 referralFeeAssets = targetSellerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
+        uint256 referralFeeAssets =
+            targetSellerAssets.mulDivDown(settings.referralFeePct, WAD - settings.referralFeePct);
         uint256 targetFilledSellerAssets = targetSellerAssets + referralFeeAssets;
 
-        (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
-        uint256 withdrawUnits = min(targetFilledSellerAssets, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
-        IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
-        uint256 filledUnits = withdrawUnits;
-        uint256 filledSellerAssets = withdrawUnits;
+        uint256 filledUnits;
+        {
+            (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
+            filledUnits = min(targetFilledSellerAssets, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
+        }
+        IMidnight(MIDNIGHT).withdraw(market, filledUnits, msg.sender, address(this));
+        uint256 filledSellerAssets = filledUnits;
         for (uint256 i; i < offerFills.length && filledSellerAssets < targetFilledSellerAssets; i++) {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
             require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= settings.maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 TakeAmountsLib.sellerAssetsToUnits(
                     MIDNIGHT, id, fill.offer, targetFilledSellerAssets - filledSellerAssets
@@ -432,8 +426,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer)
             );
-            if (reduceOnly) {
-                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
+            if (settings.reduceOnly) {
+                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(fill.offer.market, id, msg.sender);
                 require(unitsToTake <= takerCredit, NotReduceOnly());
             }
             try IMidnight(MIDNIGHT)
@@ -449,7 +443,9 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         require(filledUnits <= maxUnits, UnitsTooHigh());
 
         address loanToken = market.loanToken;
-        if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
+        if (referralFeeAssets > 0) {
+            SafeTransferLib.safeTransfer(loanToken, settings.referralFeeRecipient, referralFeeAssets);
+        }
         SafeTransferLib.safeTransfer(loanToken, receiver, targetSellerAssets);
     }
 
