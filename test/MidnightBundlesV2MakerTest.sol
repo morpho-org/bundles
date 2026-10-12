@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "../lib/forge-std/src/Test.sol";
 import {IMidnight, Market, Offer, CollateralParams} from "../lib/midnight/src/interfaces/IMidnight.sol";
 import {IBuyerAssetsBound} from "../lib/midnight/src/interfaces/ICallbacks.sol";
 import {EcrecoverRatifier} from "../lib/midnight/src/ratifiers/EcrecoverRatifier.sol";
@@ -26,7 +25,7 @@ import {BlueBuyCallbackFactory} from "../lib/midnight/src/periphery/blue-buy-cal
 import {IBlueBuyCallback} from "../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallback.sol";
 import {Log} from "../lib/midnight/src/periphery/log/Log.sol";
 import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
-import {ITestToken, deployToken, safeApprove} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {IMorpho, MarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
@@ -48,7 +47,7 @@ struct RootSignatureParams {
     bytes32 s;
 }
 
-contract MidnightBundlesV2MakerTest is Test {
+contract MidnightBundlesV2MakerTest is TokenTest {
     using MorphoBalancesLib for IMorpho;
 
     uint256 internal constant LLTV = 0.8e18;

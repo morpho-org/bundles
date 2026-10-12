@@ -2,8 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "../lib/forge-std/src/Test.sol";
-import {ITestToken, deployToken, safeApprove} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
 import {IEIP712} from "../lib/permit2/src/interfaces/IEIP712.sol";
 import {TokenLib, TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 
@@ -14,7 +13,7 @@ contract TokenLibHarness {
     }
 }
 
-contract TokenLibTest is Test {
+contract TokenLibTest is TokenTest {
     address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     TokenLibHarness internal harness;

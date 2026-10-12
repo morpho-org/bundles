@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "../lib/forge-std/src/Test.sol";
 import {IMorpho, MarketParams, Id, Authorization, Signature} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IOracle} from "../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
@@ -12,13 +11,13 @@ import {ORACLE_PRICE_SCALE, AUTHORIZATION_TYPEHASH} from "../lib/morpho-blue/src
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
-import {ITestToken, deployToken, safeApprove} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
 import {IPermit2} from "../lib/permit2/src/interfaces/IPermit2.sol";
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
 import {IBlueBundlesV1, SignedAuthorization, PublicAllocations} from "../src/blue/interfaces/IBlueBundlesV1.sol";
 import {TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 
-contract BlueBundlesTest is Test {
+contract BlueBundlesTest is TokenTest {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;

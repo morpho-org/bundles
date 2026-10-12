@@ -2,9 +2,8 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
-import {ITestToken, deployToken, safeApprove} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
 
 import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
 import {IVaultExitBundlesV1, Permit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
@@ -24,7 +23,7 @@ interface IERC20PermitVault {
     function DOMAIN_SEPARATOR() external view returns (bytes32);
 }
 
-contract VaultV1ExitBundlesTest is Test {
+contract VaultV1ExitBundlesTest is TokenTest {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;

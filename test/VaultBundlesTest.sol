@@ -2,9 +2,8 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
-import {ITestToken, deployToken, safeApprove} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
 
 import {VaultBundlesV1} from "../src/vault/VaultBundlesV1.sol";
 import {IVaultBundlesV1, Permit} from "../src/vault/interfaces/IVaultBundlesV1.sol";
@@ -34,7 +33,7 @@ interface IERC20PermitVault {
         external;
 }
 
-contract VaultBundlesTest is Test {
+contract VaultBundlesTest is TokenTest {
     using MarketParamsLib for MarketParams;
 
     uint256 internal constant LLTV = 0.8e18;

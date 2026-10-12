@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Vm} from "../../lib/forge-std/src/Vm.sol";
+import {Test} from "../../lib/forge-std/src/Test.sol";
 
 import {ERC20Permit} from "../../lib/midnight/test/erc20s/ERC20Permit.sol";
 import {ERC20NoRevert} from "../../lib/midnight/test/erc20s/ERC20NoRevert.sol";
@@ -68,25 +68,25 @@ contract TestERC20NoReturn is ERC20NoReturn {
     }
 }
 
-Vm constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
-
-/// @dev Resets to 0 before re-approving when the approval fails, to support USDT-like tokens.
-function safeApprove(ITestToken token, address spender, uint256 amount) {
-    try token.approve(spender, amount) {}
-    catch {
-        token.approve(spender, 0);
-        token.approve(spender, amount);
+abstract contract TokenTest is Test {
+    /// @dev Resets to 0 before re-approving when the approval fails, to support USDT-like tokens.
+    function safeApprove(ITestToken token, address spender, uint256 amount) internal {
+        try token.approve(spender, amount) {}
+        catch {
+            token.approve(spender, 0);
+            token.approve(spender, amount);
+        }
     }
-}
 
-/// @dev Deploys the token selected by TOKEN_TYPE, as in midnight's BaseTest:
-/// 0 = standard, 1 = no-revert, 2 = usdt, 3 = revert-to-zero, 4 = no-return.
-function deployToken(string memory name_) returns (ITestToken) {
-    uint256 tokenType = vm.envOr("TOKEN_TYPE", uint256(0));
-    if (tokenType == 0) return ITestToken(address(new TestERC20Permit(name_, name_)));
-    if (tokenType == 1) return ITestToken(address(new TestERC20NoRevert(name_)));
-    if (tokenType == 2) return ITestToken(address(new TestERC20USDT(name_)));
-    if (tokenType == 3) return ITestToken(address(new TestERC20RevertToZero(name_)));
-    if (tokenType == 4) return ITestToken(address(new TestERC20NoReturn(name_)));
-    revert("unknown TOKEN_TYPE");
+    /// @dev Deploys the token selected by TOKEN_TYPE, as in midnight's BaseTest:
+    /// 0 = standard, 1 = no-revert, 2 = usdt, 3 = revert-to-zero, 4 = no-return.
+    function deployToken(string memory name_) internal returns (ITestToken) {
+        uint256 tokenType = vm.envOr("TOKEN_TYPE", uint256(0));
+        if (tokenType == 0) return ITestToken(address(new TestERC20Permit(name_, name_)));
+        if (tokenType == 1) return ITestToken(address(new TestERC20NoRevert(name_)));
+        if (tokenType == 2) return ITestToken(address(new TestERC20USDT(name_)));
+        if (tokenType == 3) return ITestToken(address(new TestERC20RevertToZero(name_)));
+        if (tokenType == 4) return ITestToken(address(new TestERC20NoReturn(name_)));
+        revert("unknown TOKEN_TYPE");
+    }
 }

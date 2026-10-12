@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test, stdError} from "../lib/forge-std/src/Test.sol";
+import {stdError} from "../lib/forge-std/src/Test.sol";
 import {Market, Offer, CollateralParams} from "../lib/midnight/src/interfaces/IMidnight.sol";
 import {IBuyCallback, IBuyerAssetsBound} from "../lib/midnight/src/interfaces/ICallbacks.sol";
 import {UtilsLib} from "../lib/midnight/src/libraries/UtilsLib.sol";
@@ -17,14 +17,14 @@ import {
     maxSettlementFee
 } from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
-import {ITestToken, deployToken, safeApprove} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
 import {IMidnightBundlesV2, OfferFill, CollateralTransfer} from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
 
-contract MidnightBundlesV2TakerTest is Test {
+contract MidnightBundlesV2TakerTest is TokenTest {
     using UtilsLib for uint256;
 
     mapping(address => uint256) internal privateKey;
@@ -3500,7 +3500,8 @@ contract BuyCallbackMock is IBuyCallback {
         external
         returns (bytes32)
     {
-        safeApprove(ITestToken(market.loanToken), msg.sender, buyerAssets);
+        ITestToken(market.loanToken).approve(msg.sender, 0);
+        ITestToken(market.loanToken).approve(msg.sender, buyerAssets);
         return CALLBACK_SUCCESS;
     }
 }
