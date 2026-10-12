@@ -3,7 +3,7 @@
 pragma solidity ^0.8.0;
 
 import {Test, StdStorage, stdStorage} from "../lib/forge-std/src/Test.sol";
-import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
+import {ITestToken, deployToken, safeApprove} from "./helpers/TestToken.sol";
 
 import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
 import {Permit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
@@ -44,8 +44,8 @@ contract VaultExitMarginTest is Test {
 
     IMorpho internal morpho;
     VaultExitBundlesV1 internal exitBundles;
-    ERC20Mock internal loanToken;
-    ERC20Mock internal collateralToken;
+    ITestToken internal loanToken;
+    ITestToken internal collateralToken;
     OracleMock internal oracle;
 
     address internal owner = makeAddr("owner");
@@ -59,8 +59,8 @@ contract VaultExitMarginTest is Test {
 
     function setUp() public {
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
-        loanToken = new ERC20Mock(18);
-        collateralToken = new ERC20Mock(18);
+        loanToken = deployToken("loan");
+        collateralToken = deployToken("collateral");
         oracle = new OracleMock();
         oracle.setPrice(ORACLE_PRICE_SCALE);
 
@@ -80,7 +80,7 @@ contract VaultExitMarginTest is Test {
         address supplier = makeAddr("supplier");
         deal(address(loanToken), supplier, GLOBAL_LIQUIDITY);
         vm.startPrank(supplier);
-        loanToken.approve(address(morpho), type(uint256).max);
+        safeApprove(loanToken, address(morpho), type(uint256).max);
         morpho.supply(m, GLOBAL_LIQUIDITY, 0, supplier, "");
         vm.stopPrank();
     }
@@ -115,7 +115,7 @@ contract VaultExitMarginTest is Test {
         uint256 collateral = amount * WAD / marketParams.lltv * 2;
         deal(address(collateralToken), borrower, collateralToken.balanceOf(borrower) + collateral);
         vm.startPrank(borrower);
-        collateralToken.approve(address(morpho), type(uint256).max);
+        safeApprove(collateralToken, address(morpho), type(uint256).max);
         morpho.supplyCollateral(marketParams, collateral, borrower, "");
         morpho.borrow(marketParams, amount, 0, borrower, borrower);
         vm.stopPrank();
@@ -156,7 +156,7 @@ contract VaultExitMarginTest is Test {
         }
 
         deal(address(loanToken), address(this), totalAmount);
-        loanToken.approve(vault, type(uint256).max);
+        safeApprove(loanToken, vault, type(uint256).max);
         IMetaMorpho(vault).deposit(totalAmount, address(this));
 
         for (uint256 i = 0; i < marketAmounts.length; i++) {
@@ -212,7 +212,7 @@ contract VaultExitMarginTest is Test {
         }
 
         deal(address(loanToken), address(this), totalAmount);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         IVaultV2(vault).deposit(totalAmount, address(this));
 
         for (uint256 i = 0; i < marketAmounts.length; i++) {

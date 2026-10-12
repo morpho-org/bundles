@@ -17,7 +17,7 @@ import {
     maxSettlementFee
 } from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
-import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
+import {ITestToken, deployToken, safeApprove} from "./helpers/TestToken.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {DummyRatifier} from "../lib/midnight/test/helpers/DummyRatifier.sol";
 import {IMidnight} from "../lib/midnight/src/interfaces/IMidnight.sol";
@@ -31,9 +31,9 @@ contract MidnightBundlesV2TakerTest is Test {
 
     IMidnight internal midnight;
     MidnightBundlesV2 internal midnightBundles;
-    ERC20 internal loanToken;
-    ERC20 internal collateralToken1;
-    ERC20 internal collateralToken2;
+    ITestToken internal loanToken;
+    ITestToken internal collateralToken1;
+    ITestToken internal collateralToken2;
     Oracle internal oracle1;
     Oracle internal oracle2;
     DummyRatifier internal dummyRatifier;
@@ -64,20 +64,20 @@ contract MidnightBundlesV2TakerTest is Test {
         vm.prank(lender);
         midnight.setIsAuthorized(address(dummyRatifier), true, lender);
 
-        loanToken = new ERC20Permit("loan", "loan");
-        collateralToken1 = new ERC20Permit("collat1", "collat1");
-        collateralToken2 = new ERC20Permit("collat2", "collat2");
+        loanToken = deployToken("loan");
+        collateralToken1 = deployToken("collat1");
+        collateralToken2 = deployToken("collat2");
         oracle1 = new Oracle();
         oracle2 = new Oracle();
 
         vm.prank(lender);
-        loanToken.approve(address(midnight), type(uint256).max);
+        safeApprove(loanToken, address(midnight), type(uint256).max);
         vm.prank(borrower);
-        loanToken.approve(address(midnight), type(uint256).max);
+        safeApprove(loanToken, address(midnight), type(uint256).max);
 
-        loanToken.approve(address(midnight), type(uint256).max);
-        collateralToken1.approve(address(midnight), type(uint256).max);
-        collateralToken2.approve(address(midnight), type(uint256).max);
+        safeApprove(loanToken, address(midnight), type(uint256).max);
+        safeApprove(collateralToken1, address(midnight), type(uint256).max);
+        safeApprove(collateralToken2, address(midnight), type(uint256).max);
 
         address blue = makeAddr("blue");
         BlueBuyCallbackFactoryStub blueBuyCallbackFactory = new BlueBuyCallbackFactoryStub(address(midnight), blue);
@@ -147,7 +147,7 @@ contract MidnightBundlesV2TakerTest is Test {
         midnight.setIsAuthorized(address(this), true, lender);
 
         vm.prank(lender);
-        loanToken.approve(address(midnightBundles), type(uint256).max);
+        safeApprove(loanToken, address(midnightBundles), type(uint256).max);
     }
 
     function collateralize(Market memory _market, address _borrower, uint256 debt) internal {
@@ -157,8 +157,8 @@ contract MidnightBundlesV2TakerTest is Test {
         deal(address(_market.collateralParams[0].token), _borrower, collateral);
 
         vm.startPrank(_borrower);
-        ERC20(_market.collateralParams[0].token).approve(address(midnight), 0);
-        ERC20(_market.collateralParams[0].token).approve(address(midnight), collateral);
+        safeApprove(ITestToken(_market.collateralParams[0].token), address(midnight), 0);
+        safeApprove(ITestToken(_market.collateralParams[0].token), address(midnight), collateral);
         midnight.supplyCollateral(_market, 0, collateral, _borrower);
         vm.stopPrank();
     }
@@ -375,7 +375,7 @@ contract MidnightBundlesV2TakerTest is Test {
         offerFills[1] = OfferFill({offer: secondOffer, units: secondUnits, ratifierData: hex""});
 
         vm.prank(lender);
-        loanToken.approve(address(fakeBundles), targetUnits);
+        safeApprove(loanToken, address(fakeBundles), targetUnits);
         vm.prank(lender);
         vm.expectRevert(IMidnightBundlesV2.ContinuousFeeAboveMax.selector);
         fakeBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
@@ -773,7 +773,7 @@ contract MidnightBundlesV2TakerTest is Test {
         uint256 maxBuyerAssets = buyUnits.mulDivUp(price, WAD);
         deal(address(loanToken), borrower, maxBuyerAssets);
         vm.prank(borrower);
-        loanToken.approve(address(midnightBundles), maxBuyerAssets);
+        safeApprove(loanToken, address(midnightBundles), maxBuyerAssets);
 
         if (buyUnits > debtUnits) {
             vm.prank(borrower);
@@ -886,7 +886,7 @@ contract MidnightBundlesV2TakerTest is Test {
         uint256 maxBuyerAssets = units.mulDivUp(TickLib.tickToPrice(MAX_TICK), WAD);
         deal(address(loanToken), taker, maxBuyerAssets);
         vm.prank(taker);
-        loanToken.approve(address(midnightBundles), maxBuyerAssets);
+        safeApprove(loanToken, address(midnightBundles), maxBuyerAssets);
 
         vm.prank(taker);
         midnightBundles.midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
@@ -944,7 +944,7 @@ contract MidnightBundlesV2TakerTest is Test {
         uint256 targetBuyerAssets = units.mulDivUp(TickLib.tickToPrice(MAX_TICK), WAD);
         deal(address(loanToken), taker, targetBuyerAssets);
         vm.prank(taker);
-        loanToken.approve(address(midnightBundles), targetBuyerAssets);
+        safeApprove(loanToken, address(midnightBundles), targetBuyerAssets);
 
         vm.prank(taker);
         midnightBundles.midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
@@ -1316,7 +1316,7 @@ contract MidnightBundlesV2TakerTest is Test {
         deal(address(loanToken), borrower, assets);
 
         vm.prank(borrower);
-        loanToken.approve(address(midnightBundles), assets);
+        safeApprove(loanToken, address(midnightBundles), assets);
 
         // Repay through the buy function, with no units bought.
         OfferFill[] memory offerFills = new OfferFill[](0);
@@ -1380,7 +1380,7 @@ contract MidnightBundlesV2TakerTest is Test {
 
         deal(address(loanToken), borrower, assets);
         vm.prank(borrower);
-        loanToken.approve(address(midnightBundles), assets);
+        safeApprove(loanToken, address(midnightBundles), assets);
 
         // Withdrawing all the collateral is only possible because the repay is done before the withdrawals.
         CollateralTransfer[] memory withdrawals = new CollateralTransfer[](1);
@@ -1408,7 +1408,7 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(midnight.debt(id, borrower), 0, "debt fully repaid");
         assertEq(midnight.collateral(id, borrower, 0), 0, "collateral fully withdrawn");
         assertEq(
-            ERC20(market.collateralParams[0].token).balanceOf(collateralReceiver),
+            ITestToken(market.collateralParams[0].token).balanceOf(collateralReceiver),
             collateralAmount,
             "collateral receiver"
         );
@@ -1436,11 +1436,13 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(midnight.collateral(id, borrower, 0), 0, "liquidated collateral withdrawn");
         assertEq(midnight.collateral(id, borrower, 1), 0, "other collateral withdrawn");
         assertEq(
-            ERC20(market.collateralParams[0].token).balanceOf(receiver),
+            ITestToken(market.collateralParams[0].token).balanceOf(receiver),
             2 * debt - seizedAssets,
             "liquidated collateral received"
         );
-        assertEq(ERC20(market.collateralParams[1].token).balanceOf(receiver), 2 * debt, "other collateral received");
+        assertEq(
+            ITestToken(market.collateralParams[1].token).balanceOf(receiver), 2 * debt, "other collateral received"
+        );
         assertEq(loanToken.balanceOf(makeAddr("referrer")), expectedFee, "fee on actual repayment");
         assertEq(loanToken.balanceOf(borrower), maxBuyerAssets - (debt - 1) - expectedFee, "unused budget refunded");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
@@ -1458,11 +1460,13 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(midnight.collateral(id, borrower, 1), 0, "other collateral withdrawn");
         address receiver = makeAddr("collateralReceiver");
         assertEq(
-            ERC20(market.collateralParams[0].token).balanceOf(receiver),
+            ITestToken(market.collateralParams[0].token).balanceOf(receiver),
             2 * debt - seizedAssets,
             "remaining collateral received"
         );
-        assertEq(ERC20(market.collateralParams[1].token).balanceOf(receiver), 2 * debt, "other collateral received");
+        assertEq(
+            ITestToken(market.collateralParams[1].token).balanceOf(receiver), 2 * debt, "other collateral received"
+        );
         assertEq(loanToken.balanceOf(borrower), debt, "full budget refunded");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
 
@@ -1545,11 +1549,13 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(midnight.collateral(id, borrower, 0), 0, "first collateral withdrawn");
         assertEq(midnight.collateral(id, borrower, 1), 0, "second collateral withdrawn");
         assertEq(
-            ERC20(market.collateralParams[0].token).balanceOf(receiver),
+            ITestToken(market.collateralParams[0].token).balanceOf(receiver),
             2 * debt - seizedAssets,
             "remaining collateral received"
         );
-        assertEq(ERC20(market.collateralParams[1].token).balanceOf(receiver), 2 * debt, "other collateral received");
+        assertEq(
+            ITestToken(market.collateralParams[1].token).balanceOf(receiver), 2 * debt, "other collateral received"
+        );
         assertEq(loanToken.balanceOf(borrower), 1, "exact assets spent");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
     }
@@ -1560,17 +1566,17 @@ contract MidnightBundlesV2TakerTest is Test {
             midnight.setMarketSettlementFee(id, i, 0);
         }
         for (uint256 i; i < market.collateralParams.length; i++) {
-            ERC20 collateralToken = ERC20(market.collateralParams[i].token);
+            ITestToken collateralToken = ITestToken(market.collateralParams[i].token);
             deal(address(collateralToken), borrower, 2 * debt);
             vm.startPrank(borrower);
-            collateralToken.approve(address(midnight), 2 * debt);
+            safeApprove(collateralToken, address(midnight), 2 * debt);
             midnight.supplyCollateral(market, i, 2 * debt, borrower);
             vm.stopPrank();
         }
         offers[0].maxUnits = debt.toUint128();
         vm.startPrank(borrower);
         midnight.take(offers[0], hex"", debt, borrower, borrower, address(0), hex"");
-        loanToken.approve(address(midnightBundles), type(uint256).max);
+        safeApprove(loanToken, address(midnightBundles), type(uint256).max);
         vm.stopPrank();
     }
 
@@ -1579,7 +1585,7 @@ contract MidnightBundlesV2TakerTest is Test {
         deal(address(loanToken), liquidator, units);
         vm.warp(market.maturity + 1);
         vm.startPrank(liquidator);
-        loanToken.approve(address(midnight), units);
+        safeApprove(loanToken, address(midnight), units);
         (seizedAssets,) = midnight.liquidate(market, 0, 0, units, borrower, true, liquidator, address(0), hex"");
         vm.stopPrank();
     }
@@ -1689,7 +1695,7 @@ contract MidnightBundlesV2TakerTest is Test {
 
         deal(address(loanToken), borrower, maxBuyerAssets);
         vm.prank(borrower);
-        loanToken.approve(address(midnightBundles), maxBuyerAssets);
+        safeApprove(loanToken, address(midnightBundles), maxBuyerAssets);
 
         // The offer only covers buyUnits, the remaining repayUnits are repaid.
         vm.expectCall(address(midnight), abi.encodeWithSelector(IMidnight.repay.selector), repayUnits > 0 ? 1 : 0);
@@ -1773,7 +1779,7 @@ contract MidnightBundlesV2TakerTest is Test {
 
         deal(address(loanToken), borrower, targetBuyerAssets);
         vm.prank(borrower);
-        loanToken.approve(address(midnightBundles), targetBuyerAssets);
+        safeApprove(loanToken, address(midnightBundles), targetBuyerAssets);
 
         vm.expectCall(address(midnight), abi.encodeWithSelector(IMidnight.repay.selector), repayUnits > 0 ? 1 : 0);
         vm.prank(borrower);
@@ -1852,7 +1858,7 @@ contract MidnightBundlesV2TakerTest is Test {
 
         deal(address(loanToken), borrower, maxBuyerAssets);
         vm.prank(borrower);
-        loanToken.approve(address(midnightBundles), maxBuyerAssets);
+        safeApprove(loanToken, address(midnightBundles), maxBuyerAssets);
 
         // The offers cover the whole target, and the repay is disabled: the remaining debt is untouched.
         vm.prank(borrower);
@@ -1916,7 +1922,7 @@ contract MidnightBundlesV2TakerTest is Test {
 
         deal(address(loanToken), borrower, assets);
         vm.prank(borrower);
-        loanToken.approve(address(midnightBundles), assets);
+        safeApprove(loanToken, address(midnightBundles), assets);
 
         // Without offers and with the repay disabled, nothing can fill the target.
         vm.prank(borrower);
@@ -1978,7 +1984,7 @@ contract MidnightBundlesV2TakerTest is Test {
 
         deal(address(loanToken), borrower, targetBuyerAssets);
         vm.prank(borrower);
-        loanToken.approve(address(midnightBundles), targetBuyerAssets);
+        safeApprove(loanToken, address(midnightBundles), targetBuyerAssets);
 
         // Without offers and with the repay disabled, nothing can fill the target.
         vm.prank(borrower);
@@ -2529,7 +2535,7 @@ contract MidnightBundlesV2TakerTest is Test {
             amounts[i] = _collateralAmount(i, units / numCollaterals + 1);
             deal(market.collateralParams[i].token, taker, amounts[i]);
             vm.startPrank(taker);
-            ERC20(market.collateralParams[i].token).approve(address(midnight), amounts[i]);
+            safeApprove(ITestToken(market.collateralParams[i].token), address(midnight), amounts[i]);
             midnight.supplyCollateral(market, i, amounts[i], taker);
             vm.stopPrank();
         }
@@ -2582,7 +2588,7 @@ contract MidnightBundlesV2TakerTest is Test {
 
         for (uint256 i; i < numCollaterals; i++) {
             assertEq(midnight.collateral(id, lender, i), amounts[i] - amounts[i] / 4);
-            assertEq(ERC20(market.collateralParams[i].token).balanceOf(receiver), amounts[i] / 4);
+            assertEq(ITestToken(market.collateralParams[i].token).balanceOf(receiver), amounts[i] / 4);
         }
     }
 
@@ -2633,7 +2639,7 @@ contract MidnightBundlesV2TakerTest is Test {
 
         for (uint256 i; i < numCollaterals; i++) {
             assertEq(midnight.collateral(id, lender, i), amounts[i] - amounts[i] / 4);
-            assertEq(ERC20(market.collateralParams[i].token).balanceOf(receiver), amounts[i] / 4);
+            assertEq(ITestToken(market.collateralParams[i].token).balanceOf(receiver), amounts[i] / 4);
         }
     }
 
@@ -2648,7 +2654,7 @@ contract MidnightBundlesV2TakerTest is Test {
             uint256 amount = _collateralAmount(i, units / numCollaterals + 1);
             deal(market.collateralParams[i].token, borrower, amount);
             vm.prank(borrower);
-            ERC20(market.collateralParams[i].token).approve(address(midnightBundles), amount);
+            safeApprove(ITestToken(market.collateralParams[i].token), address(midnightBundles), amount);
             supplies[i] = CollateralTransfer({collateralIndex: i, assets: amount});
         }
 
@@ -2703,7 +2709,7 @@ contract MidnightBundlesV2TakerTest is Test {
         address collateralReceiver = makeAddr("collateralReceiver");
 
         vm.prank(borrower);
-        loanToken.approve(address(midnightBundles), repayUnits);
+        safeApprove(loanToken, address(midnightBundles), repayUnits);
 
         CollateralTransfer[] memory withdrawals = new CollateralTransfer[](1);
         withdrawals[0] = CollateralTransfer({collateralIndex: 0, assets: withdrawAssets});
@@ -2733,7 +2739,9 @@ contract MidnightBundlesV2TakerTest is Test {
         assertEq(midnight.debt(id, borrower), units - repayUnits, "debt");
         assertEq(midnight.collateral(id, borrower, 0), collateralAmount - withdrawAssets, "remaining collateral");
         assertEq(
-            ERC20(market.collateralParams[0].token).balanceOf(collateralReceiver), withdrawAssets, "collateral receiver"
+            ITestToken(market.collateralParams[0].token).balanceOf(collateralReceiver),
+            withdrawAssets,
+            "collateral receiver"
         );
         assertEq(loanToken.balanceOf(borrower), borrowerLoanBalanceBefore - repayUnits, "borrower loan balance");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundler residual");
@@ -2757,7 +2765,7 @@ contract MidnightBundlesV2TakerTest is Test {
             uint256 amount = _collateralAmount(i, units / numCollaterals + 1);
             deal(market.collateralParams[i].token, borrower, amount);
             vm.prank(borrower);
-            ERC20(market.collateralParams[i].token).approve(address(midnightBundles), amount);
+            safeApprove(ITestToken(market.collateralParams[i].token), address(midnightBundles), amount);
             supplies[i] = CollateralTransfer({collateralIndex: i, assets: amount});
         }
 
@@ -3351,7 +3359,7 @@ contract MidnightBundlesV2TakerTest is Test {
         vm.prank(borrower);
         weth.approve(address(midnightBundles), type(uint256).max);
         vm.prank(borrower);
-        collateralToken1.approve(address(midnightBundles), collateralAssets);
+        safeApprove(collateralToken1, address(midnightBundles), collateralAssets);
 
         vm.prank(borrower);
         midnightBundles.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget{value: collateralAssets}(
@@ -3398,7 +3406,7 @@ contract MidnightBundlesV2TakerTest is Test {
         vm.prank(borrower);
         weth.approve(address(midnightBundles), type(uint256).max);
         vm.prank(borrower);
-        collateralToken1.approve(address(midnightBundles), collateralAssets);
+        safeApprove(collateralToken1, address(midnightBundles), collateralAssets);
 
         uint256 targetSellerAssets = units.mulDivDown(TickLib.tickToPrice(MAX_TICK), WAD);
         vm.prank(borrower);
@@ -3492,14 +3500,14 @@ contract BuyCallbackMock is IBuyCallback {
         external
         returns (bytes32)
     {
-        ERC20(market.loanToken).approve(msg.sender, buyerAssets);
+        safeApprove(ITestToken(market.loanToken), msg.sender, buyerAssets);
         return CALLBACK_SUCCESS;
     }
 }
 
 contract BoundedBuyCallbackMock is BuyCallbackMock, IBuyerAssetsBound {
     function buyerAssetsBound(bytes32, Market memory market, address, bytes memory) external view returns (uint256) {
-        return ERC20(market.loanToken).balanceOf(address(this));
+        return ITestToken(market.loanToken).balanceOf(address(this));
     }
 }
 

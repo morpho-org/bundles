@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
+import {ITestToken, deployToken, safeApprove} from "./helpers/TestToken.sol";
 
 import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
 import {IVaultExitBundlesV1, Permit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
@@ -38,8 +39,8 @@ contract VaultV1ExitBundlesTest is Test {
     IMetaMorpho internal vault;
     VaultExitBundlesV1 internal vaultBundles;
 
-    ERC20Mock internal loanToken;
-    ERC20Mock internal collateralToken;
+    ITestToken internal loanToken;
+    ITestToken internal collateralToken;
     OracleMock internal oracle;
 
     MarketParams internal marketParams; // vault market (made illiquid)
@@ -57,8 +58,8 @@ contract VaultV1ExitBundlesTest is Test {
 
     function setUp() public {
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
-        loanToken = new ERC20Mock(18);
-        collateralToken = new ERC20Mock(18);
+        loanToken = deployToken("loan");
+        collateralToken = deployToken("collateral");
         oracle = new OracleMock();
         oracle.setPrice(ORACLE_PRICE_SCALE);
 
@@ -129,7 +130,7 @@ contract VaultV1ExitBundlesTest is Test {
         // Depositing allocates to the market through the supply queue.
         deal(address(loanToken), depositor, assets);
         vm.startPrank(depositor);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(assets, depositor);
         vm.stopPrank();
         assertGt(morpho.supplyShares(marketParams.id(), address(vault)), 0, "allocation");
@@ -137,7 +138,7 @@ contract VaultV1ExitBundlesTest is Test {
         // Borrow everything out of the vault's market ⇒ illiquid.
         deal(address(collateralToken), borrower, 2 * assets);
         vm.startPrank(borrower);
-        collateralToken.approve(address(morpho), type(uint256).max);
+        safeApprove(collateralToken, address(morpho), type(uint256).max);
         morpho.supplyCollateral(marketParams, 2 * assets, borrower, "");
         morpho.borrow(marketParams, assets, 0, borrower, borrower);
         vm.stopPrank();
@@ -145,7 +146,7 @@ contract VaultV1ExitBundlesTest is Test {
         // Morpho global liquidity (funds the flash loan) from another market sharing the loan token.
         deal(address(loanToken), liquidityProvider, 2 * assets);
         vm.startPrank(liquidityProvider);
-        loanToken.approve(address(morpho), type(uint256).max);
+        safeApprove(loanToken, address(morpho), type(uint256).max);
         morpho.supply(otherMarket, 2 * assets, 0, liquidityProvider, "");
         vm.stopPrank();
 
@@ -176,7 +177,7 @@ contract VaultV1ExitBundlesTest is Test {
     function _borrowOut(MarketParams memory mp, uint256 amount) internal {
         deal(address(collateralToken), borrower, 2 * amount);
         vm.startPrank(borrower);
-        collateralToken.approve(address(morpho), type(uint256).max);
+        safeApprove(collateralToken, address(morpho), type(uint256).max);
         morpho.supplyCollateral(mp, 2 * amount, borrower, "");
         morpho.borrow(mp, amount, 0, borrower, borrower);
         vm.stopPrank();
@@ -210,7 +211,7 @@ contract VaultV1ExitBundlesTest is Test {
 
         // Depositing allocates marketParams up to its cap, then the rest to otherMarket.
         deal(address(loanToken), address(this), assets1 + assets2);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(assets1 + assets2, address(this));
         assertApproxEqAbs(morpho.expectedSupplyAssets(marketParams, address(vault)), assets1, 1, "market1 allocation");
         assertApproxEqAbs(morpho.expectedSupplyAssets(otherMarket, address(vault)), assets2, 1, "market2 allocation");
@@ -228,7 +229,7 @@ contract VaultV1ExitBundlesTest is Test {
         uint256 liquidity = 4 * (assets1 + assets2);
         deal(address(loanToken), liquidityProvider, liquidity);
         vm.startPrank(liquidityProvider);
-        loanToken.approve(address(morpho), type(uint256).max);
+        safeApprove(loanToken, address(morpho), type(uint256).max);
         morpho.supply(liquidityMarket, liquidity, 0, liquidityProvider, "");
         vm.stopPrank();
 
@@ -369,7 +370,7 @@ contract VaultV1ExitBundlesTest is Test {
         vm.stopPrank();
 
         deal(address(loanToken), address(this), assets);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(assets, address(this));
         assertEq(morpho.supplyShares(marketParams.id(), address(vault)), 0, "marketParams empty");
         assertGt(morpho.supplyShares(otherMarket.id(), address(vault)), 0, "otherMarket funded");
@@ -385,7 +386,7 @@ contract VaultV1ExitBundlesTest is Test {
         morpho.createMarket(liquidityMarket);
         deal(address(loanToken), liquidityProvider, 4 * assets);
         vm.startPrank(liquidityProvider);
-        loanToken.approve(address(morpho), type(uint256).max);
+        safeApprove(loanToken, address(morpho), type(uint256).max);
         morpho.supply(liquidityMarket, 4 * assets, 0, liquidityProvider, "");
         vm.stopPrank();
 
