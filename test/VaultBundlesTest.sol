@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
+import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
 
 import {VaultBundlesV1} from "../src/vault/VaultBundlesV1.sol";
 import {IVaultBundlesV1, Permit} from "../src/vault/interfaces/IVaultBundlesV1.sol";
@@ -33,7 +33,7 @@ interface IERC20PermitVault {
         external;
 }
 
-contract VaultBundlesTest is Test {
+contract VaultBundlesTest is TokenTest {
     using MarketParamsLib for MarketParams;
 
     uint256 internal constant LLTV = 0.8e18;
@@ -47,9 +47,9 @@ contract VaultBundlesTest is Test {
     VaultBundlesV1 internal bundles;
     IVaultV2Factory internal vaultV2Factory;
 
-    ERC20Mock internal loanToken;
-    ERC20Mock internal collateralToken;
-    ERC20Mock internal otherToken;
+    ITestToken internal loanToken;
+    ITestToken internal collateralToken;
+    ITestToken internal otherToken;
     OracleMock internal oracle;
 
     MarketParams internal marketParams;
@@ -78,9 +78,9 @@ contract VaultBundlesTest is Test {
 
     function setUp() public {
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
-        loanToken = new ERC20Mock(18);
-        collateralToken = new ERC20Mock(18);
-        otherToken = new ERC20Mock(18);
+        loanToken = deployToken("loan");
+        collateralToken = deployToken("collateral");
+        otherToken = deployToken("other");
         oracle = new OracleMock();
         oracle.setPrice(ORACLE_PRICE_SCALE);
 
@@ -97,12 +97,12 @@ contract VaultBundlesTest is Test {
 
         vaultV1 = _deployMetaMorpho();
         vaultV1b = _deployMetaMorpho();
-        vaultV2 = _deployVaultV2(loanToken, bytes32(uint256(1)));
-        vaultV2b = _deployVaultV2(loanToken, bytes32(uint256(2)));
-        vaultOther = _deployVaultV2(otherToken, bytes32(uint256(3)));
+        vaultV2 = _deployVaultV2(address(loanToken), bytes32(uint256(1)));
+        vaultV2b = _deployVaultV2(address(loanToken), bytes32(uint256(2)));
+        vaultOther = _deployVaultV2(address(otherToken), bytes32(uint256(3)));
 
         // The user lets the bundler pull its loan token for deposits.
-        loanToken.approve(address(bundles), type(uint256).max);
+        safeApprove(loanToken, address(bundles), type(uint256).max);
     }
 
     /// HELPERS ///
@@ -125,14 +125,14 @@ contract VaultBundlesTest is Test {
         return IERC4626(vault);
     }
 
-    function _deployVaultV2(ERC20Mock asset, bytes32 salt) internal returns (IERC4626) {
-        return IERC4626(vaultV2Factory.createVaultV2(owner, address(asset), salt));
+    function _deployVaultV2(address asset, bytes32 salt) internal returns (IERC4626) {
+        return IERC4626(vaultV2Factory.createVaultV2(owner, asset, salt));
     }
 
     /// @dev The user deposits assets into vault directly and approves the bundler over the resulting shares, as required by withdraw and migrate.
     function _deposited(IERC4626 vault, uint256 assets) internal {
         deal(address(loanToken), user, assets);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(assets, user);
         vault.approve(address(bundles), type(uint256).max);
         deal(address(loanToken), user, 0);
@@ -235,7 +235,7 @@ contract VaultBundlesTest is Test {
 
         // Vault whose asset is the wrapped-native token.
         WETHMock weth = new WETHMock();
-        IERC4626 wethVault = _deployVaultV2(weth, bytes32(uint256(4)));
+        IERC4626 wethVault = _deployVaultV2(address(weth), bytes32(uint256(4)));
 
         vm.deal(user, assets);
         // When native tokens are sent, assets must equal msg.value and no assetPermit may be set.
@@ -387,7 +387,7 @@ contract VaultBundlesTest is Test {
     function _testWithdrawRequiresApproval(IERC4626 vault) internal {
         uint256 assets = 100e18;
         deal(address(loanToken), user, assets);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(assets, user);
         // No approval of the bundler over the vault shares.
 
@@ -438,7 +438,7 @@ contract VaultBundlesTest is Test {
 
         deal(address(loanToken), sigUser, assets);
         vm.startPrank(sigUser);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(assets, sigUser);
         vm.stopPrank();
 
@@ -460,7 +460,7 @@ contract VaultBundlesTest is Test {
 
         deal(address(loanToken), sigUser, assets);
         vm.startPrank(sigUser);
-        loanToken.approve(address(vaultV1), type(uint256).max);
+        safeApprove(loanToken, address(vaultV1), type(uint256).max);
         vaultV1.deposit(assets, sigUser);
         vm.stopPrank();
 
@@ -492,7 +492,7 @@ contract VaultBundlesTest is Test {
 
         deal(address(loanToken), sigUser, assets);
         vm.startPrank(sigUser);
-        loanToken.approve(address(vaultV1), type(uint256).max);
+        safeApprove(loanToken, address(vaultV1), type(uint256).max);
         vaultV1.deposit(assets, sigUser);
         vm.stopPrank();
 
@@ -759,7 +759,7 @@ contract VaultBundlesTest is Test {
         // bundler set, so the whitelisted deposit below still sees an unset initiator.
         deal(address(loanToken), notWhitelisted, assets);
         vm.prank(notWhitelisted);
-        loanToken.approve(address(bundles), type(uint256).max);
+        safeApprove(loanToken, address(bundles), type(uint256).max);
 
         vm.prank(notWhitelisted);
         vm.expectRevert(ErrorsLib.CannotSendAssets.selector);
@@ -768,7 +768,7 @@ contract VaultBundlesTest is Test {
         // The whitelisted deposit succeeds: the gate reads initiator() == whitelisted.
         deal(address(loanToken), whitelisted, assets);
         vm.prank(whitelisted);
-        loanToken.approve(address(bundles), type(uint256).max);
+        safeApprove(loanToken, address(bundles), type(uint256).max);
 
         vm.prank(whitelisted);
         bundles.vaultBundlesV1Deposit(address(vaultV2), assets, RAY, noPermit, 0, address(0), block.timestamp);
