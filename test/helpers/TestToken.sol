@@ -70,8 +70,7 @@ contract TestERC20NoReturn is ERC20NoReturn {
 
 Vm constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
-/// @dev Approves `amount`, clearing any existing allowance first when the token requires it
-/// (USDT-style tokens revert on non-zero to non-zero approve).
+/// @dev Resets to 0 before re-approving when the approval fails, to support USDT-like tokens.
 function safeApprove(ITestToken token, address spender, uint256 amount) {
     try token.approve(spender, amount) {}
     catch {
@@ -80,8 +79,8 @@ function safeApprove(ITestToken token, address spender, uint256 amount) {
     }
 }
 
-/// @dev Deploys the token selected by the TOKEN_TYPE env var (mirrors midnight's BaseTest):
-/// 0 = standard (with permit), 1 = no-revert, 2 = usdt, 3 = revert-to-zero, 4 = no-return.
+/// @dev Deploys the token selected by TOKEN_TYPE, as in midnight's BaseTest:
+/// 0 = standard, 1 = no-revert, 2 = usdt, 3 = revert-to-zero, 4 = no-return.
 function deployToken(string memory name_) returns (ITestToken) {
     uint256 tokenType = vm.envOr("TOKEN_TYPE", uint256(0));
     if (tokenType == 0) return ITestToken(address(new TestERC20Permit(name_, name_)));
