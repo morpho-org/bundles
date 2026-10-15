@@ -64,4 +64,4 @@ Audits can be found in the [audits](./audits/) folder.
 
 ## License
 
-Files in this repository are publicly available under license `GPL-2.0-or-later`, see [LICENSE](./LICENSE).
+Files in this repository are publicly available under `MIT`, see [LICENSE](./LICENSE).
