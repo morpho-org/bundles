@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 
 // Proves no ERC20 residue and no spending of pre-existing native tokens.
 // Assumes standard ERC20 accounting and no external callbacks or donations to the bundler.
