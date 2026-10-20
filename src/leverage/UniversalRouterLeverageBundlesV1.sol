@@ -33,7 +33,6 @@ contract UniversalRouterLeverageBundlesV1 is
         uint256 collateralAssets,
         uint256 leverage,
         uint256 maxBorrowAssets,
-        uint256 maxLtv,
         bytes calldata commands,
         bytes[] calldata inputs,
         uint256 deadline
@@ -52,8 +51,6 @@ contract UniversalRouterLeverageBundlesV1 is
                 maxBorrowAssets,
                 abi.encode(msg.sender, this.universalRouterLeverageBundlesV1Open.selector, operationData)
             );
-
-        requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
     /// @dev Routes a collateral flash loan into loan tokens, repays debt, and withdraws the spent collateral.
@@ -61,7 +58,6 @@ contract UniversalRouterLeverageBundlesV1 is
         MarketParams memory marketParams,
         uint256 repayAssets,
         uint256 maxCollateralIn,
-        uint256 maxLtv,
         bytes calldata commands,
         bytes[] calldata inputs,
         uint256 deadline
@@ -75,8 +71,6 @@ contract UniversalRouterLeverageBundlesV1 is
                 maxCollateralIn,
                 abi.encode(msg.sender, this.universalRouterLeverageBundlesV1Delever.selector, operationData)
             );
-
-        requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
     /// @dev Routes a collateral flash loan into enough loan tokens to repay all borrow shares.

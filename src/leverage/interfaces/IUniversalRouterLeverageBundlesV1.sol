@@ -16,7 +16,6 @@ interface IUniversalRouterLeverageBundlesV1 is IBlueLeverageBase {
         uint256 collateralAssets,
         uint256 leverage,
         uint256 maxBorrowAssets,
-        uint256 maxLtv,
         bytes calldata commands,
         bytes[] calldata inputs,
         uint256 deadline
@@ -26,7 +25,6 @@ interface IUniversalRouterLeverageBundlesV1 is IBlueLeverageBase {
         MarketParams memory marketParams,
         uint256 repayAssets,
         uint256 maxCollateralIn,
-        uint256 maxLtv,
         bytes calldata commands,
         bytes[] calldata inputs,
         uint256 deadline

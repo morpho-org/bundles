@@ -7,7 +7,6 @@ interface IBlueLeverageBase {
     error DeadlinePassed();
     error IncompleteFill();
     error InvalidLeverage();
-    error LtvExceeded();
     error UnauthorizedCallback();
 
     /// STORAGE GETTERS ///

@@ -23,7 +23,6 @@ interface IUniswapV4LeverageBundlesV1 is IBlueLeverageBase {
         uint256 collateralAssets,
         uint256 leverage,
         uint256 maxBorrowAssets,
-        uint256 maxLtv,
         uint256 deadline
     ) external;
 
@@ -32,7 +31,6 @@ interface IUniswapV4LeverageBundlesV1 is IBlueLeverageBase {
         PoolKey memory poolKey,
         uint256 repayAssets,
         uint256 maxCollateralIn,
-        uint256 maxLtv,
         uint256 deadline
     ) external;
 

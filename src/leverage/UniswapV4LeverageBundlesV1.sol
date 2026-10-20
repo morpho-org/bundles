@@ -35,7 +35,6 @@ contract UniswapV4LeverageBundlesV1 is IUniswapV4LeverageBundlesV1, BlueLeverage
         uint256 collateralAssets,
         uint256 leverage,
         uint256 maxBorrowAssets,
-        uint256 maxLtv,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -49,8 +48,6 @@ contract UniswapV4LeverageBundlesV1 is IUniswapV4LeverageBundlesV1, BlueLeverage
             abi.encode(marketParams, poolKey, collateralAssets, collateralToBuy, maxBorrowAssets);
         IPoolManager(POOL_MANAGER)
             .unlock(abi.encode(this.uniswapV4LeverageBundlesV1Open.selector, msg.sender, operationData));
-
-        requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
     /// @dev Swaps collateral for loan tokens and repays the requested debt amount.
@@ -59,7 +56,6 @@ contract UniswapV4LeverageBundlesV1 is IUniswapV4LeverageBundlesV1, BlueLeverage
         PoolKey memory poolKey,
         uint256 repayAssets,
         uint256 maxCollateralIn,
-        uint256 maxLtv,
         uint256 deadline
     ) external {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -68,8 +64,6 @@ contract UniswapV4LeverageBundlesV1 is IUniswapV4LeverageBundlesV1, BlueLeverage
         bytes memory operationData = abi.encode(marketParams, poolKey, repayAssets, maxCollateralIn);
         IPoolManager(POOL_MANAGER)
             .unlock(abi.encode(this.uniswapV4LeverageBundlesV1Delever.selector, msg.sender, operationData));
-
-        requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
     /// @dev Swaps enough collateral to repay all borrow shares, then returns remaining collateral and loan tokens.

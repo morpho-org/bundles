@@ -33,7 +33,7 @@ contract UniswapV4LeverageBundlesV1Test is LeverageTest {
 
         vm.prank(user);
         bundle.uniswapV4LeverageBundlesV1Open(
-            marketParams, poolKey, equity, leverage, type(uint256).max, LLTV, block.timestamp
+            marketParams, poolKey, equity, leverage, type(uint256).max, block.timestamp
         );
 
         Position memory position = morpho.position(marketParams.id(), user);
@@ -49,9 +49,7 @@ contract UniswapV4LeverageBundlesV1Test is LeverageTest {
         fundUser(address(bundle), equity);
 
         vm.prank(user);
-        bundle.uniswapV4LeverageBundlesV1Open(
-            marketParams, poolKey, equity, 2e18, type(uint256).max, LLTV, block.timestamp
-        );
+        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, equity, 2e18, type(uint256).max, block.timestamp);
 
         assertGt(morpho.position(marketParams.id(), user).borrowShares, 0);
         closeAllTokenBalances(address(bundle));
@@ -61,9 +59,7 @@ contract UniswapV4LeverageBundlesV1Test is LeverageTest {
         uint256 equity = 10e18;
         fundUser(address(bundle), equity);
         vm.prank(user);
-        bundle.uniswapV4LeverageBundlesV1Open(
-            marketParams, poolKey, equity, 2e18, type(uint256).max, LLTV, block.timestamp
-        );
+        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, equity, 2e18, type(uint256).max, block.timestamp);
 
         Position memory beforePosition = morpho.position(marketParams.id(), user);
         Market memory market = morpho.market(marketParams.id());
@@ -73,7 +69,7 @@ contract UniswapV4LeverageBundlesV1Test is LeverageTest {
 
         vm.prank(user);
         bundle.uniswapV4LeverageBundlesV1Delever(
-            marketParams, poolKey, debtBefore / 2, maxCollateralIn, LLTV, block.timestamp
+            marketParams, poolKey, debtBefore / 2, maxCollateralIn, block.timestamp
         );
 
         Position memory afterPosition = morpho.position(marketParams.id(), user);
@@ -90,7 +86,7 @@ contract UniswapV4LeverageBundlesV1Test is LeverageTest {
         uint256 timestamp = vm.getBlockTimestamp();
         fundUser(address(bundle), equity);
         vm.prank(user);
-        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, equity, 2e18, type(uint256).max, LLTV, timestamp);
+        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, equity, 2e18, type(uint256).max, timestamp);
 
         uint256 collateralBefore = morpho.position(marketParams.id(), user).collateral;
         vm.warp(timestamp + 365 days);
@@ -124,9 +120,7 @@ contract UniswapV4LeverageBundlesV1Test is LeverageTest {
 
     function testRejectsInvalidLeverage() public {
         vm.expectRevert(IBlueLeverageBase.InvalidLeverage.selector);
-        bundle.uniswapV4LeverageBundlesV1Open(
-            marketParams, poolKey, 1e18, 1e18, type(uint256).max, LLTV, block.timestamp
-        );
+        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, 1e18, 1e18, type(uint256).max, block.timestamp);
     }
 
     function testOpenRequiresBlueAuthorization() public {
@@ -137,37 +131,24 @@ contract UniswapV4LeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert();
         vm.prank(user);
-        bundle.uniswapV4LeverageBundlesV1Open(
-            marketParams, poolKey, equity, 2e18, type(uint256).max, LLTV, block.timestamp
-        );
+        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, equity, 2e18, type(uint256).max, block.timestamp);
     }
 
     function testRejectsInconsistentPoolTokens() public {
         vm.expectRevert(IUniswapV4LeverageBundlesV1.InconsistentTokens.selector);
         bundle.uniswapV4LeverageBundlesV1Delever(
-            marketParams, loanIntermediatePoolKey, 1e18, type(uint256).max, LLTV, block.timestamp
+            marketParams, loanIntermediatePoolKey, 1e18, type(uint256).max, block.timestamp
         );
     }
 
     function testRejectsExpiredDeadline() public {
         vm.expectRevert(IBlueLeverageBase.DeadlinePassed.selector);
-        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, 1e18, 2e18, 1e18, LLTV, 0);
+        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, 1e18, 2e18, 1e18, 0);
     }
 
     function testRejectsUnauthorizedCallback() public {
         vm.expectRevert(IBlueLeverageBase.UnauthorizedCallback.selector);
         bundle.unlockCallback("");
-    }
-
-    function testOpenRejectsLtvAboveLimit() public {
-        uint256 equity = 10e18;
-        fundUser(address(bundle), equity);
-
-        vm.expectRevert(IBlueLeverageBase.LtvExceeded.selector);
-        vm.prank(user);
-        bundle.uniswapV4LeverageBundlesV1Open(
-            marketParams, poolKey, equity, 2e18, type(uint256).max, 0.4e18, block.timestamp
-        );
     }
 
     function testOpenRejectsOutputBeyondPoolCapacity() public {
@@ -177,7 +158,7 @@ contract UniswapV4LeverageBundlesV1Test is LeverageTest {
         vm.expectRevert(SafeCast.SafeCastOverflow.selector);
         vm.prank(user);
         bundle.uniswapV4LeverageBundlesV1Open(
-            marketParams, poolKey, collateralAssets, 2e18, type(uint256).max, LLTV, block.timestamp
+            marketParams, poolKey, collateralAssets, 2e18, type(uint256).max, block.timestamp
         );
     }
 
@@ -187,29 +168,25 @@ contract UniswapV4LeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert(IUniswapV4LeverageBundlesV1.SlippageExceeded.selector);
         vm.prank(user);
-        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, equity, 2e18, 1, LLTV, block.timestamp);
+        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, equity, 2e18, 1, block.timestamp);
     }
 
     function testDeleverRejectsInsufficientInputLimit() public {
         uint256 equity = 10e18;
         fundUser(address(bundle), equity);
         vm.prank(user);
-        bundle.uniswapV4LeverageBundlesV1Open(
-            marketParams, poolKey, equity, 2e18, type(uint256).max, LLTV, block.timestamp
-        );
+        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, equity, 2e18, type(uint256).max, block.timestamp);
 
         vm.expectRevert(IUniswapV4LeverageBundlesV1.SlippageExceeded.selector);
         vm.prank(user);
-        bundle.uniswapV4LeverageBundlesV1Delever(marketParams, poolKey, 1e18, 1, LLTV, block.timestamp);
+        bundle.uniswapV4LeverageBundlesV1Delever(marketParams, poolKey, 1e18, 1, block.timestamp);
     }
 
     function testCloseRejectsInsufficientInputLimit() public {
         uint256 equity = 10e18;
         fundUser(address(bundle), equity);
         vm.prank(user);
-        bundle.uniswapV4LeverageBundlesV1Open(
-            marketParams, poolKey, equity, 2e18, type(uint256).max, LLTV, block.timestamp
-        );
+        bundle.uniswapV4LeverageBundlesV1Open(marketParams, poolKey, equity, 2e18, type(uint256).max, block.timestamp);
 
         vm.expectRevert(IUniswapV4LeverageBundlesV1.SlippageExceeded.selector);
         vm.prank(user);
