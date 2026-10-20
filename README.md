@@ -42,6 +42,22 @@ The taker is msg.sender and must authorize the bundle on Midnight and approve it
 
 The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollateralAndBorrow`, `blueBundlesV1Withdraw`, and `blueBundlesV1MigrateBorrowPosition`) support VaultV2's BluePublicAllocator.
 
+## Leverage bundles (PoC)
+
+Callers must authorize the selected bundle on Morpho Blue; opening also requires approval to pull collateral.
+
+### [UniswapV4LeverageBundlesV1](src/leverage/UniswapV4LeverageBundlesV1.sol)
+
+- `uniswapV4LeverageBundlesV1Open` — supply collateral and increase leverage with an exact-output Uniswap v4 swap.
+- `uniswapV4LeverageBundlesV1Delever` — repay part of the debt by swapping collateral for loan tokens through Uniswap v4.
+- `uniswapV4LeverageBundlesV1Close` — repay all borrow shares and withdraw the remaining collateral through Uniswap v4.
+
+### [UniversalRouterLeverageBundlesV1](src/leverage/UniversalRouterLeverageBundlesV1.sol)
+
+- `universalRouterLeverageBundlesV1Open` — supply collateral and increase leverage with an exact-output Universal Router route.
+- `universalRouterLeverageBundlesV1Delever` — repay part of the debt by routing collateral for loan tokens.
+- `universalRouterLeverageBundlesV1Close` — repay all borrow shares and withdraw the remaining collateral through a Universal Router route.
+
 ### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 
 - `vaultBundlesV1Deposit` — deposit assets into a vault.
