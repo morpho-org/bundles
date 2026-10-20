@@ -2,6 +2,18 @@
   "lib/forge-std": {
     "rev": "620536fa5277db4e3fd46772d5cbc1ea0696fb43"
   },
+  "lib/universal-router": {
+    "rev": "543e1a19d6e21e31ced2512eec5792b50f13a0ba"
+  },
+  "lib/v2-core": {
+    "rev": "6a9e7c97860676e0992f22a49665760444c1cdf5"
+  },
+  "lib/v3-core": {
+    "rev": "aab5aa019b5acb312acc01aff7f03a1b09755197"
+  },
+  "lib/v4-core": {
+    "rev": "59d3ecf53afa9264a16bba0e38f4c5d2231f80bc"
+  },
   "lib/metamorpho": {
     "rev": "ae732258e55be466b959705ad2e6bc6c66e1819d"
   },
