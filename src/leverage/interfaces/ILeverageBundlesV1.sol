@@ -5,36 +5,31 @@ pragma solidity >=0.8.0;
 import {IBlueLeverageBase} from "./IBlueLeverageBase.sol";
 import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 
-interface IUniversalRouterLeverageBundlesV1 is IBlueLeverageBase {
-    /// STORAGE GETTERS ///
-    function UNIVERSAL_ROUTER() external view returns (address);
-
-    /// FUNCTIONS ///
-
-    function universalRouterLeverageBundlesV1Open(
+interface ILeverageBundlesV1 is IBlueLeverageBase {
+    function leverageBundlesV1Open(
         MarketParams memory marketParams,
         uint256 collateralAssets,
         uint256 leverage,
         uint256 maxBorrowAssets,
-        bytes calldata commands,
-        bytes[] calldata inputs,
+        address adapter,
+        bytes calldata swapData,
         uint256 deadline
     ) external;
 
-    function universalRouterLeverageBundlesV1Delever(
+    function leverageBundlesV1Delever(
         MarketParams memory marketParams,
         uint256 repayAssets,
         uint256 maxCollateralIn,
-        bytes calldata commands,
-        bytes[] calldata inputs,
+        address adapter,
+        bytes calldata swapData,
         uint256 deadline
     ) external;
 
-    function universalRouterLeverageBundlesV1Close(
+    function leverageBundlesV1Close(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,
-        bytes calldata commands,
-        bytes[] calldata inputs,
+        address adapter,
+        bytes calldata swapData,
         uint256 deadline
     ) external;
 }
