@@ -69,6 +69,24 @@ contract LeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testOpenOverridesRouteAmount() public {
+        uint256 equity = 10e18;
+        uint256 maxBorrowAssets = equity.mulDivUp(101, 100) + 1;
+        fundUser(address(bundle), equity);
+        uint256 userCollateralBefore = collateralToken.balanceOf(user);
+        (bytes memory commands, bytes[] memory inputs) =
+            buildSingleHopRoute(address(loanToken), address(collateralToken), 1, maxBorrowAssets, poolKey);
+
+        vm.prank(user);
+        bundle.leverageBundlesV1Open(
+            marketParams, equity, 2e18, maxBorrowAssets, address(adapter), abi.encode(commands, inputs), block.timestamp
+        );
+
+        assertEq(morpho.position(marketParams.id(), user).collateral, 2 * equity);
+        assertLe(collateralToken.balanceOf(user), userCollateralBefore);
+        assertNoResiduals();
+    }
+
     function testMultiHopOpen() public {
         uint256 equity = 10e18;
         uint256 amountOut = equity;
@@ -169,6 +187,44 @@ contract LeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testCloseWithStaleRouteAmount() public {
+        uint256 equity = 10e18;
+        uint256 maxBorrowAssets = equity.mulDivUp(101, 100) + 1;
+        uint256 timestamp = vm.getBlockTimestamp();
+        fundUser(address(bundle), equity);
+        (bytes memory openCommands, bytes[] memory openInputs) =
+            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, maxBorrowAssets, poolKey);
+
+        vm.prank(user);
+        bundle.leverageBundlesV1Open(
+            marketParams,
+            equity,
+            2e18,
+            maxBorrowAssets,
+            address(adapter),
+            abi.encode(openCommands, openInputs),
+            timestamp
+        );
+
+        vm.warp(timestamp + 365 days);
+        morpho.accrueInterest(marketParams);
+        Position memory beforePosition = morpho.position(marketParams.id(), user);
+        uint256 loanBalanceBeforeClose = loanToken.balanceOf(user);
+        (bytes memory commands, bytes[] memory inputs) =
+            buildSingleHopRoute(address(collateralToken), address(loanToken), 1, beforePosition.collateral, poolKey);
+
+        vm.prank(user);
+        bundle.leverageBundlesV1Close(
+            marketParams, beforePosition.collateral, address(adapter), abi.encode(commands, inputs), block.timestamp
+        );
+
+        Position memory afterPosition = morpho.position(marketParams.id(), user);
+        assertEq(afterPosition.borrowShares, 0);
+        assertEq(afterPosition.collateral, 0);
+        assertEq(loanToken.balanceOf(user), loanBalanceBeforeClose);
+        assertNoResiduals();
+    }
+
     function testCloseWithoutDebtReturnsAllCollateral() public {
         uint256 collateral = 5e18;
         deal(address(collateralToken), user, collateral);
@@ -252,7 +308,7 @@ contract LeverageBundlesV1Test is LeverageTest {
         uint256 maxBorrowAssets = equity.mulDivUp(101, 100) + 1;
         fundUser(address(bundle), equity);
         (bytes memory commands, bytes[] memory inputs) =
-            buildSingleHopRoute(address(loanToken), address(collateralToken), equity - 1, maxBorrowAssets, poolKey);
+            buildSingleHopExactInputRoute(address(loanToken), address(collateralToken), equity, 0, poolKey);
 
         vm.expectRevert(IBlueLeverageBase.IncompleteFill.selector);
         vm.prank(user);
@@ -300,6 +356,36 @@ contract LeverageBundlesV1Test is LeverageTest {
                 zeroForOne: tokenIn == Currency.unwrap(key.currency0),
                 amountOut: amountOut.toUint128(),
                 amountInMaximum: maxIn.toUint128(),
+                minHopPriceX36: 0,
+                hookData: ""
+            })
+        );
+        params[1] = abi.encode(Currency.wrap(tokenIn), uint256(ActionConstants.OPEN_DELTA), false);
+        params[2] = abi.encode(Currency.wrap(tokenOut), ActionConstants.MSG_SENDER, uint256(ActionConstants.OPEN_DELTA));
+
+        commands = abi.encodePacked(uint8(Commands.V4_SWAP), uint8(Commands.SWEEP));
+        inputs = new bytes[](2);
+        inputs[0] = abi.encode(actions, params);
+        inputs[1] = abi.encode(tokenIn, ActionConstants.MSG_SENDER, uint256(0));
+    }
+
+    function buildSingleHopExactInputRoute(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 amountOutMinimum,
+        PoolKey memory key
+    ) internal pure returns (bytes memory commands, bytes[] memory inputs) {
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE), uint8(Actions.TAKE)
+        );
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(
+            IV4Router.ExactInputSingleParams({
+                poolKey: key,
+                zeroForOne: tokenIn == Currency.unwrap(key.currency0),
+                amountIn: amountIn.toUint128(),
+                amountOutMinimum: amountOutMinimum.toUint128(),
                 minHopPriceX36: 0,
                 hookData: ""
             })

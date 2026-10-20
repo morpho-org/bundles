@@ -61,6 +61,7 @@ Callers must authorize the selected bundle on Morpho Blue; opening also requires
 The bundle checks its own token balances around each adapter call. Available adapters include
 [UniversalRouterSwapAdapter](src/leverage/adapters/UniversalRouterSwapAdapter.sol) and
 [ParaswapSwapAdapter](src/leverage/adapters/ParaswapSwapAdapter.sol).
+When a route contains exactly one exact-output swap, the Universal Router adapter overrides that swap's output amount and input cap with the on-chain amounts; routes with zero or multiple exact-output swaps are left unchanged.
 
 ### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 
