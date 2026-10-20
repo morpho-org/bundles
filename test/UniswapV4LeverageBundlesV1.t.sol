@@ -18,6 +18,10 @@ contract UniswapV4LeverageBundlesV1Test is LeverageTest {
     UniswapV4LeverageBundlesV1 internal bundle;
 
     function setUp() public {
+        if (tokenType() == 2 || tokenType() == 4) {
+            // v4-core's PoolModifyLiquidityTest requires bool-returning transferFrom.
+            vm.skip(true);
+        }
         setUpLeverage(false);
         bundle = new UniswapV4LeverageBundlesV1(address(morpho), address(poolManager));
     }
