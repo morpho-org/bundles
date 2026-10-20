@@ -44,7 +44,7 @@ abstract contract LeverageTest is TokenTest {
     address internal supplier;
     address internal user;
 
-    function setUpLeverage(bool loanTokenIsCurrency1) internal {
+    function setUpLeverageMarketOnly(bool loanTokenIsCurrency1) internal {
         owner = makeAddr("owner");
         supplier = makeAddr("supplier");
         user = makeAddr("user");
@@ -83,8 +83,9 @@ abstract contract LeverageTest is TokenTest {
         safeApprove(loanToken, address(morpho), type(uint256).max);
         morpho.supply(marketParams, LIQUIDITY, 0, supplier, "");
         vm.stopPrank();
-        deal(address(collateralToken), address(morpho), LIQUIDITY);
+    }
 
+    function setUpLeveragePool() internal {
         poolManager = IPoolManager(deployCode("PoolManager.sol:PoolManager", abi.encode(owner)));
         liquidityRouter = IPoolModifyLiquidityTest(
             deployCode("PoolModifyLiquidityTest.sol:PoolModifyLiquidityTest", abi.encode(address(poolManager)))
@@ -93,6 +94,11 @@ abstract contract LeverageTest is TokenTest {
         poolKey = createPool(address(loanToken), address(collateralToken));
         loanIntermediatePoolKey = createPool(address(loanToken), address(intermediateToken));
         intermediateCollateralPoolKey = createPool(address(intermediateToken), address(collateralToken));
+    }
+
+    function setUpLeverage(bool loanTokenIsCurrency1) internal {
+        setUpLeverageMarketOnly(loanTokenIsCurrency1);
+        setUpLeveragePool();
     }
 
     function createPool(address tokenA, address tokenB) internal returns (PoolKey memory key) {
