@@ -8,20 +8,32 @@ methods {
     function BLUE() external returns (address) envfree;
 
     // Token pulls.
-    function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 value) internal => pull(from);
-    function _.transferFrom(address from, address to, uint256 value) external => pullReturns(from) expect(bool);
-    function _.permitTransferFrom(ISignatureTransfer.PermitTransferFrom permit, ISignatureTransfer.SignatureTransferDetails transferDetails, address owner, bytes signature) external => pull(owner) expect void;
+    function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 value) internal => onlyCaller(TRANSFER_FROM(), from);
+    function _.transferFrom(address from, address to, uint256 value) external => onlyCallerReturnsBool(TRANSFER_FROM(), from) expect(bool);
+    function _.permitTransferFrom(ISignatureTransfer.PermitTransferFrom permit, ISignatureTransfer.SignatureTransferDetails transferDetails, address owner, bytes signature) external => onlyCaller(PERMIT2(), owner) expect void;
 
     // Blue operations on behalf of a user.
-    function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => onlyCallerReturns(onBehalf) expect(uint256, uint256);
-    function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => onlyCallerReturns(onBehalf) expect(uint256, uint256);
-    function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address receiver) external => onlyCaller(onBehalf) expect void;
-    function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => onlyCaller(authorization.authorizer) expect void;
+    function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => onlyCallerReturns(WITHDRAW(), onBehalf) expect(uint256, uint256);
+    function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => onlyCallerReturns(BORROW(), onBehalf) expect(uint256, uint256);
+    function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address receiver) external => onlyCaller(WITHDRAW_COLLATERAL(), onBehalf) expect void;
+    function _.setAuthorizationWithSig(BlueBundlesV1.Authorization authorization, BlueBundlesV1.Signature signature) external => onlyCaller(SET_AUTHORIZATION_WITH_SIG(), authorization.authorizer) expect void;
 
     // Blue callbacks.
     function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(assets, data) expect void;
     function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(data) expect(uint256, uint256);
 }
+
+definition TRANSFER_FROM() returns uint8 = 0;
+
+definition PERMIT2() returns uint8 = 1;
+
+definition WITHDRAW() returns uint8 = 2;
+
+definition BORROW() returns uint8 = 3;
+
+definition WITHDRAW_COLLATERAL() returns uint8 = 4;
+
+definition SET_AUTHORIZATION_WITH_SIG() returns uint8 = 5;
 
 // The initiator of the bundle.
 persistent ghost address caller;
@@ -29,25 +41,21 @@ persistent ghost address caller;
 // Whether the bundler pulled tokens from, or acted on behalf of, an account other than the initiator.
 persistent ghost bool actedForOther;
 
-function onlyCaller(address account) {
+// Which summaries were reached, to check that each of them is matched.
+persistent ghost mapping(uint8 => bool) reached;
+
+function onlyCaller(uint8 summary, address account) {
+    reached[summary] = true;
     if (account != caller) actedForOther = true;
 }
 
-// Whether the bundler pulled tokens, to check that pulls are summarized.
-persistent ghost bool pulled;
-
-function pull(address from) {
-    pulled = true;
-    onlyCaller(from);
-}
-
-function pullReturns(address from) returns (bool) {
-    pull(from);
+function onlyCallerReturnsBool(uint8 summary, address account) returns (bool) {
+    onlyCaller(summary, account);
     return true;
 }
 
-function onlyCallerReturns(address account) returns (uint256, uint256) {
-    onlyCaller(account);
+function onlyCallerReturns(uint8 summary, address account) returns (uint256, uint256) {
+    onlyCaller(summary, account);
     uint256 x;
     uint256 y;
     return (x, y);
@@ -91,10 +99,41 @@ rule onMorphoRepayOnlyFromBlue(env e, uint256 assets, bytes data) {
     assert e.msg.sender != blue => lastReverted;
 }
 
-rule pullIsReachable(env e, calldataarg args) {
-    require !pulled, "initial state";
+// Reachability of each summary, so that noThirdPartyPull cannot pass because a pull escapes the summaries.
 
+rule transferFromIsReached(env e, calldataarg args) {
+    require !reached[TRANSFER_FROM()], "initial state";
     blueBundlesV1Supply(e, args);
+    satisfy reached[TRANSFER_FROM()];
+}
 
-    satisfy pulled;
+rule permit2IsReached(env e, calldataarg args) {
+    require !reached[PERMIT2()], "initial state";
+    blueBundlesV1Supply(e, args);
+    satisfy reached[PERMIT2()];
+}
+
+rule withdrawIsReached(env e, calldataarg args) {
+    require !reached[WITHDRAW()], "initial state";
+    blueBundlesV1Withdraw(e, args);
+    satisfy reached[WITHDRAW()];
+}
+
+// Also reaches the flashLoan and repay callbacks.
+rule borrowIsReached(env e, calldataarg args) {
+    require !reached[BORROW()], "initial state";
+    blueBundlesV1MigrateBorrowPosition(e, args);
+    satisfy reached[BORROW()];
+}
+
+rule withdrawCollateralIsReached(env e, calldataarg args) {
+    require !reached[WITHDRAW_COLLATERAL()], "initial state";
+    blueBundlesV1RepayAndWithdrawCollateral(e, args);
+    satisfy reached[WITHDRAW_COLLATERAL()];
+}
+
+rule setAuthorizationWithSigIsReached(env e, calldataarg args) {
+    require !reached[SET_AUTHORIZATION_WITH_SIG()], "initial state";
+    blueBundlesV1Withdraw(e, args);
+    satisfy reached[SET_AUTHORIZATION_WITH_SIG()];
 }

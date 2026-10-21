@@ -1,24 +1,33 @@
 // SPDX-License-Identifier: MIT
 
-// Proves that the bundler only pulls tokens and vault shares from msg.sender, and only force deallocates on behalf of msg.sender.
+// Proves that the bundler only pulls vault shares from msg.sender, and only force deallocates on behalf of msg.sender.
 // Assumes that Blue only calls back the caller of flashLoan and supply, so the callbacks are only reached through the bundler's entrypoints.
 // Assumes no other reentrancy into the bundler.
 
 methods {
     function BLUE() external returns (address) envfree;
 
-    // Token pulls.
-    function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 value) internal => onlyCaller(from);
+    // Token pulls, which the bundler does not do.
+    function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 value) internal => onlyCaller(TRANSFER_FROM(), from);
+    function _.transferFrom(address from, address to, uint256 value) external => onlyCallerReturnsBool(TRANSFER_FROM(), from) expect(bool);
 
     // Vault share pulls.
-    function _.withdraw(uint256 assets, address receiver, address onBehalf) external => pullReturns(onBehalf) expect(uint256);
-    function _.redeem(uint256 shares, address receiver, address onBehalf) external => pullReturns(onBehalf) expect(uint256);
-    function _.forceDeallocate(address adapter, bytes data, uint256 assets, address onBehalf) external => onlyCallerReturns(onBehalf) expect(uint256);
+    function _.withdraw(uint256 assets, address receiver, address onBehalf) external => onlyCallerReturns(WITHDRAW(), onBehalf) expect(uint256);
+    function _.redeem(uint256 shares, address receiver, address onBehalf) external => onlyCallerReturns(REDEEM(), onBehalf) expect(uint256);
+    function _.forceDeallocate(address adapter, bytes data, uint256 assets, address onBehalf) external => onlyCallerReturns(FORCE_DEALLOCATE(), onBehalf) expect(uint256);
 
     // Blue callbacks.
     function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(assets, data) expect void;
     function _.supply(VaultExitBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(assets, data) expect(uint256, uint256);
 }
+
+definition TRANSFER_FROM() returns uint8 = 0;
+
+definition WITHDRAW() returns uint8 = 1;
+
+definition REDEEM() returns uint8 = 2;
+
+definition FORCE_DEALLOCATE() returns uint8 = 3;
 
 // The initiator of the bundle.
 persistent ghost address caller;
@@ -26,22 +35,21 @@ persistent ghost address caller;
 // Whether the bundler pulled tokens or shares from, or acted on behalf of, an account other than the initiator.
 persistent ghost bool actedForOther;
 
-function onlyCaller(address account) {
+// Which summaries were reached, to check that each of them is matched.
+persistent ghost mapping(uint8 => bool) reached;
+
+function onlyCaller(uint8 summary, address account) {
+    reached[summary] = true;
     if (account != caller) actedForOther = true;
 }
 
-// Whether the bundler pulled vault shares, to check that share pulls are summarized.
-persistent ghost bool pulled;
-
-function pullReturns(address account) returns (uint256) {
-    pulled = true;
-    onlyCaller(account);
-    uint256 res;
-    return res;
+function onlyCallerReturnsBool(uint8 summary, address account) returns (bool) {
+    onlyCaller(summary, account);
+    return true;
 }
 
-function onlyCallerReturns(address account) returns (uint256) {
-    onlyCaller(account);
+function onlyCallerReturns(uint8 summary, address account) returns (uint256) {
+    onlyCaller(summary, account);
     uint256 res;
     return res;
 }
@@ -83,10 +91,18 @@ rule onMorphoSupplyOnlyFromBlue(env e, uint256 assets, bytes data) {
     assert e.msg.sender != blue => lastReverted;
 }
 
-rule pullIsReachable(env e, calldataarg args) {
-    require !pulled, "initial state";
+// Reachability of each summary used by the bundler, so that noThirdPartyPull cannot pass because a pull escapes the summaries.
 
+// Also reaches the flashLoan callback.
+rule withdrawIsReached(env e, calldataarg args) {
+    require !reached[WITHDRAW()], "initial state";
     vaultExitBundlesV1InKindRedemptionVaultV1(e, args);
+    satisfy reached[WITHDRAW()];
+}
 
-    satisfy pulled;
+// Also reaches the supply callback.
+rule forceDeallocateIsReached(env e, calldataarg args) {
+    require !reached[FORCE_DEALLOCATE()], "initial state";
+    vaultExitBundlesV1InKindRedemptionVaultV2(e, args);
+    satisfy reached[FORCE_DEALLOCATE()];
 }

@@ -11,4 +11,4 @@ Concretely, every account the bundler pulls tokens or vault shares from, and eve
 For Midnight, it is also proven that the bundler never passes a callback that Midnight would pull tokens from.
 
 The Blue callbacks are proven to revert unless called by Blue, and are otherwise verified through the entrypoints that trigger them, assuming that Blue only calls back the caller of `flashLoan`, `repay` and `supply`.
-Each spec also checks that its pull summaries are reached, so that a pull escaping the summaries would not go unnoticed for the bundler's main pulling entrypoint.
+Each spec also checks that each summary the bundler uses is reached from some entrypoint, so that a pull escaping its summary would not go unnoticed.
