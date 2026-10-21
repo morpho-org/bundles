@@ -2,7 +2,6 @@
 
 // Proves that the bundler only pulls tokens from msg.sender.
 // Also proves that the bundler never makes Midnight pull tokens from a callback, which could hold someone else's tokens.
-// Assumes no reentrancy into the bundler.
 
 methods {
     function _.transferFrom(address from, address to, uint256 value) external => pullFromReturnsBool(from) expect(bool);
@@ -16,12 +15,8 @@ persistent ghost address caller;
 // Whether tokens were pulled from an account other than the initiator.
 persistent ghost bool pulledFromOther;
 
-function pullFrom(address from) {
-    if (from != caller) pulledFromOther = true;
-}
-
 function pullFromReturnsBool(address from) returns (bool) {
-    pullFrom(from);
+    if (from != caller) pulledFromOther = true;
     return true;
 }
 

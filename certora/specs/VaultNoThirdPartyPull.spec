@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 // Proves that the bundler only pulls tokens from msg.sender.
-// Assumes no reentrancy into the bundler.
 
 methods {
     function _.transferFrom(address from, address to, uint256 value) external => pullFromReturnsBool(from) expect(bool);
@@ -19,7 +18,7 @@ function pullFrom(address from) {
 }
 
 function pullFromReturnsBool(address from) returns (bool) {
-    pullFrom(from);
+    if (from != caller) pulledFromOther = true;
     return true;
 }
 
