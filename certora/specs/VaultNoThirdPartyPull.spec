@@ -4,7 +4,6 @@
 // Assumes no reentrancy into the bundler.
 
 methods {
-    function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 value) internal => pullFrom(TRANSFER_FROM(), from);
     function _.transferFrom(address from, address to, uint256 value) external => pullFromReturnsBool(TRANSFER_FROM(), from) expect(bool);
     function _.permitTransferFrom(ISignatureTransfer.PermitTransferFrom permit, ISignatureTransfer.SignatureTransferDetails transferDetails, address owner, bytes signature) external => pullFrom(PERMIT2(), owner) expect void;
 }

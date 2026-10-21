@@ -5,7 +5,6 @@
 // Assumes no reentrancy into the bundler.
 
 methods {
-    function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 value) internal => pullFrom(TRANSFER_FROM(), from);
     function _.transferFrom(address from, address to, uint256 value) external => pullFromReturnsBool(TRANSFER_FROM(), from) expect(bool);
     function _.take(Midnight.Offer offer, bytes ratifierData, uint256 units, address taker, address receiverIfTakerIsSeller, address takerCallback, bytes takerCallbackData) external => noCallbackReturns(TAKE(), takerCallback) expect(uint256, uint256);
     function _.repay(Midnight.Market market, uint256 units, address onBehalf, address callback, bytes data) external => noCallback(REPAY(), callback) expect void;
