@@ -6,4 +6,4 @@ Each spec verifies a bundler against its underlying protocol; see the repository
 
 ## No third party pull
 
-The `*NoThirdPartyPull` specs prove that no bundler entrypoint pulls tokens or shares from, or acts in the underlying protocol for, an account other than `msg.sender`.
+The `*NoThirdPartyPull` specs prove that the Blue, Midnight and Vault bundlers only pull tokens from `msg.sender` (the Vault exit bundler pulls no tokens).
