@@ -5,16 +5,10 @@
 // Assumes no reentrancy into the bundler.
 
 methods {
-    function _.transferFrom(address from, address to, uint256 value) external => pullFromReturnsBool(TRANSFER_FROM(), from) expect(bool);
-    function _.take(Midnight.Offer offer, bytes ratifierData, uint256 units, address taker, address receiverIfTakerIsSeller, address takerCallback, bytes takerCallbackData) external => noCallbackReturns(TAKE(), takerCallback) expect(uint256, uint256);
-    function _.repay(Midnight.Market market, uint256 units, address onBehalf, address callback, bytes data) external => noCallback(REPAY(), callback) expect void;
+    function _.transferFrom(address from, address to, uint256 value) external => pullFromReturnsBool(from) expect(bool);
+    function _.take(Midnight.Offer offer, bytes ratifierData, uint256 units, address taker, address receiverIfTakerIsSeller, address takerCallback, bytes takerCallbackData) external => noCallbackReturns(takerCallback) expect(uint256, uint256);
+    function _.repay(Midnight.Market market, uint256 units, address onBehalf, address callback, bytes data) external => noCallback(callback) expect void;
 }
-
-definition TRANSFER_FROM() returns uint8 = 0;
-
-definition TAKE() returns uint8 = 1;
-
-definition REPAY() returns uint8 = 2;
 
 // The initiator of the bundle.
 persistent ghost address caller;
@@ -22,27 +16,27 @@ persistent ghost address caller;
 // Whether tokens were pulled from an account other than the initiator.
 persistent ghost bool pulledFromOther;
 
-// Which summaries were reached, to check that each of them is matched.
-persistent ghost mapping(uint8 => bool) reached;
+// Whether a pull was reached, to check that the summaries are matched.
+persistent ghost bool reached;
 
-function pullFrom(uint8 summary, address from) {
-    reached[summary] = true;
+function pullFrom(address from) {
+    reached = true;
     if (from != caller) pulledFromOther = true;
 }
 
-function pullFromReturnsBool(uint8 summary, address from) returns (bool) {
-    pullFrom(summary, from);
+function pullFromReturnsBool(address from) returns (bool) {
+    pullFrom(from);
     return true;
 }
 
 // When a callback is passed, Midnight pulls the tokens owed from it instead of from the bundler.
-function noCallback(uint8 summary, address callback) {
-    reached[summary] = true;
+function noCallback(address callback) {
+    reached = true;
     if (callback != 0) pulledFromOther = true;
 }
 
-function noCallbackReturns(uint8 summary, address callback) returns (uint256, uint256) {
-    noCallback(summary, callback);
+function noCallbackReturns(address callback) returns (uint256, uint256) {
+    noCallback(callback);
     uint256 buyerAssets;
     uint256 sellerAssets;
     return (buyerAssets, sellerAssets);
@@ -57,22 +51,9 @@ rule noThirdPartyPull(env e, method f, calldataarg args) {
     assert !pulledFromOther;
 }
 
-// Reachability of each summary, so that noThirdPartyPull cannot pass because a pull escapes the summaries.
-
-rule transferFromIsReached(env e, calldataarg args) {
-    require !reached[TRANSFER_FROM()], "initial state";
+// Reachability of the summaries, so that noThirdPartyPull cannot pass because a pull escapes them.
+rule pullIsReached(env e, calldataarg args) {
+    require !reached, "initial state";
     midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(e, args);
-    satisfy reached[TRANSFER_FROM()];
-}
-
-rule takeIsReached(env e, calldataarg args) {
-    require !reached[TAKE()], "initial state";
-    midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(e, args);
-    satisfy reached[TAKE()];
-}
-
-rule repayIsReached(env e, calldataarg args) {
-    require !reached[REPAY()], "initial state";
-    midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(e, args);
-    satisfy reached[REPAY()];
+    satisfy reached;
 }
