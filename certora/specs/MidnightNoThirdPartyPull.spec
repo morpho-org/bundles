@@ -20,3 +20,5 @@ function noCallbackReturns(address callback) returns (uint256, uint256) {
     uint256 sellerAssets;
     return (buyerAssets, sellerAssets);
 }
+
+use rule noThirdPartyPull;
