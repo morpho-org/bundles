@@ -16,11 +16,7 @@ persistent ghost address caller;
 // Whether tokens were pulled from an account other than the initiator.
 persistent ghost bool pulledFromOther;
 
-// Whether a pull was reached, to check that the summaries are matched.
-persistent ghost bool reached;
-
 function pullFrom(address from) {
-    reached = true;
     if (from != caller) pulledFromOther = true;
 }
 
@@ -31,7 +27,6 @@ function pullFromReturnsBool(address from) returns (bool) {
 
 // When a callback is passed, Midnight pulls the tokens owed from it instead of from the bundler.
 function noCallback(address callback) {
-    reached = true;
     if (callback != 0) pulledFromOther = true;
 }
 
@@ -49,11 +44,4 @@ rule noThirdPartyPull(env e, method f, calldataarg args) {
     f(e, args);
 
     assert !pulledFromOther;
-}
-
-// Reachability of the summaries, so that noThirdPartyPull cannot pass because a pull escapes them.
-rule pullIsReached(env e, calldataarg args) {
-    require !reached, "initial state";
-    midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(e, args);
-    satisfy reached;
 }

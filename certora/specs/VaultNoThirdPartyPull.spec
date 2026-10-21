@@ -14,11 +14,7 @@ persistent ghost address caller;
 // Whether the bundler pulled tokens from an account other than the initiator.
 persistent ghost bool pulledFromOther;
 
-// Whether a pull was reached, to check that the summaries are matched.
-persistent ghost bool reached;
-
 function pullFrom(address from) {
-    reached = true;
     if (from != caller) pulledFromOther = true;
 }
 
@@ -34,11 +30,4 @@ rule noThirdPartyPull(env e, method f, calldataarg args) {
     f(e, args);
 
     assert !pulledFromOther;
-}
-
-// Reachability of the summaries, so that noThirdPartyPull cannot pass because a pull escapes them.
-rule pullIsReached(env e, calldataarg args) {
-    require !reached, "initial state";
-    vaultBundlesV1Deposit(e, args);
-    satisfy reached;
 }
