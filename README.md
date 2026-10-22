@@ -58,6 +58,11 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 
 Changes between versions and source code of all versions are listed in the [CHANGELOG](./CHANGELOG.md).
 
+## Formal verification using Certora
+
+The bundles are formally verified with the [Certora Prover](https://www.certora.com/prover).
+See the [Certora README](./certora/README.md) for the full list of verified properties and the modeling assumptions they rely on.
+
 ## Audits
 
 Audits can be found in the [audits](./audits/) folder.
