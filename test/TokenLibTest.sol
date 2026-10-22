@@ -1,9 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "../lib/forge-std/src/Test.sol";
-import {ERC20Permit} from "../lib/midnight/test/erc20s/ERC20Permit.sol";
+import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
 import {IEIP712} from "../lib/permit2/src/interfaces/IEIP712.sol";
 import {TokenLib, TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 
@@ -14,17 +13,17 @@ contract TokenLibHarness {
     }
 }
 
-contract TokenLibTest is Test {
+contract TokenLibTest is TokenTest {
     address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     TokenLibHarness internal harness;
-    ERC20Permit internal token;
+    ITestToken internal token;
     address internal holder;
     uint256 internal holderKey;
 
     function setUp() public {
         harness = new TokenLibHarness();
-        token = new ERC20Permit("token", "token");
+        token = deployToken("token");
         deployCodeTo("Permit2", PERMIT2);
 
         (holder, holderKey) = makeAddrAndKey("holder");
@@ -63,7 +62,7 @@ contract TokenLibTest is Test {
     function testPullTokenNoPermit() public {
         uint256 amount = 100e18;
         vm.prank(holder);
-        token.approve(address(harness), amount);
+        safeApprove(token, address(harness), amount);
 
         harness.pullToken(address(token), holder, amount, _noPermit());
 
@@ -98,7 +97,7 @@ contract TokenLibTest is Test {
     function testPullTokenPermit2() public {
         uint256 amount = 100e18;
         vm.prank(holder);
-        token.approve(PERMIT2, amount);
+        safeApprove(token, PERMIT2, amount);
 
         TokenPermit memory permit = _permit2(amount, 0, vm.getBlockTimestamp() + 1);
         harness.pullToken(address(token), holder, amount, permit);
@@ -111,7 +110,7 @@ contract TokenLibTest is Test {
     function testPullTokenPermit2AlreadyConsumed() public {
         uint256 amount = 100e18;
         vm.prank(holder);
-        token.approve(PERMIT2, 2 * amount);
+        safeApprove(token, PERMIT2, 2 * amount);
 
         TokenPermit memory permit = _permit2(amount, 0, vm.getBlockTimestamp() + 1);
         harness.pullToken(address(token), holder, amount, permit);

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Morpho Association
 pragma solidity >=0.8.0;
 
@@ -91,7 +91,6 @@ interface IMidnightBundlesV2 {
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
-        uint256 maxContinuousFee,
         uint256 deadline,
         address wrappedNative
     ) external payable;
@@ -122,7 +121,6 @@ interface IMidnightBundlesV2 {
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
-        uint256 maxContinuousFee,
         uint256 deadline,
         address wrappedNative
     ) external payable;
