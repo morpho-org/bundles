@@ -60,7 +60,7 @@ Changes between versions and source code of all versions are listed in the [CHAN
 
 ## Formal verification using Certora
 
-The bundles are formally verified with the [Certora Prover](https://www.certora.com/prover).
+Formal verification of the bundles is done with the [Certora Prover](https://www.certora.com/prover).
 See the [Certora README](./certora/README.md) for the full list of verified properties and the modeling assumptions they rely on.
 
 ## Audits
