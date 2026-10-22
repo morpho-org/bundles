@@ -52,11 +52,16 @@ Callers must authorize the selected bundle on Morpho Blue; opening also requires
 - `uniswapV4LeverageBundlesV1Delever` — repay part of the debt by swapping collateral for loan tokens through Uniswap v4.
 - `uniswapV4LeverageBundlesV1Close` — repay all borrow shares and withdraw the remaining collateral through Uniswap v4.
 
-### [UniversalRouterLeverageBundlesV1](src/leverage/UniversalRouterLeverageBundlesV1.sol)
+### [LeverageBundlesV1](src/leverage/LeverageBundlesV1.sol)
 
-- `universalRouterLeverageBundlesV1Open` — supply collateral and increase leverage with an exact-output Universal Router route.
-- `universalRouterLeverageBundlesV1Delever` — repay part of the debt by routing collateral for loan tokens.
-- `universalRouterLeverageBundlesV1Close` — repay all borrow shares and withdraw the remaining collateral through a Universal Router route.
+- `leverageBundlesV1Open` — supply collateral and increase leverage with an exact-output swap through a caller-selected adapter.
+- `leverageBundlesV1Delever` — repay part of the debt by swapping collateral for loan tokens through a caller-selected adapter.
+- `leverageBundlesV1Close` — repay all borrow shares and withdraw the remaining collateral through a caller-selected adapter.
+
+The bundle checks its own token balances around each adapter call. Available adapters include
+[UniversalRouterSwapAdapter](src/leverage/adapters/UniversalRouterSwapAdapter.sol) and
+[ParaswapSwapAdapter](src/leverage/adapters/ParaswapSwapAdapter.sol).
+When a route contains exactly one exact-output swap, the Universal Router adapter overrides that swap's output amount and input cap with the on-chain amounts; routes with zero or multiple exact-output swaps are left unchanged.
 
 ### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 

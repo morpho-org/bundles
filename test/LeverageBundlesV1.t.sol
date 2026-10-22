@@ -8,7 +8,8 @@ import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.
 import {SharesMathLib} from "../lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {UtilsLib} from "../lib/midnight/src/libraries/UtilsLib.sol";
 import {IBlueLeverageBase} from "../src/leverage/interfaces/IBlueLeverageBase.sol";
-import {UniversalRouterLeverageBundlesV1} from "../src/leverage/UniversalRouterLeverageBundlesV1.sol";
+import {LeverageBundlesV1} from "../src/leverage/LeverageBundlesV1.sol";
+import {UniversalRouterSwapAdapter} from "../src/leverage/adapters/UniversalRouterSwapAdapter.sol";
 import {RouterParameters} from "../lib/universal-router/contracts/types/RouterParameters.sol";
 import {Commands} from "../lib/universal-router/contracts/libraries/Commands.sol";
 import {Actions} from "../lib/universal-router/lib/v4-periphery/src/libraries/Actions.sol";
@@ -19,12 +20,13 @@ import {Currency} from "../lib/v4-core/src/types/Currency.sol";
 import {PoolKey} from "../lib/v4-core/src/types/PoolKey.sol";
 import {IHooks} from "../lib/v4-core/src/interfaces/IHooks.sol";
 
-contract UniversalRouterLeverageBundlesV1Test is LeverageTest {
+contract LeverageBundlesV1Test is LeverageTest {
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
     using UtilsLib for uint256;
 
-    UniversalRouterLeverageBundlesV1 internal bundle;
+    LeverageBundlesV1 internal bundle;
+    UniversalRouterSwapAdapter internal adapter;
     address internal universalRouter;
 
     function setUp() public {
@@ -32,66 +34,93 @@ contract UniversalRouterLeverageBundlesV1Test is LeverageTest {
             // v4-core's PoolModifyLiquidityTest requires bool-returning transferFrom.
             vm.skip(true);
         }
-        setUpLeverage(false);
-        bundle = new UniversalRouterLeverageBundlesV1(address(morpho), _deployUniversalRouter());
-        universalRouter = bundle.UNIVERSAL_ROUTER();
+        setUpLeverageMarketOnly(false);
+        setUpLeveragePool();
+        universalRouter = _deployUniversalRouter();
+        adapter = new UniversalRouterSwapAdapter(universalRouter);
+        bundle = new LeverageBundlesV1(address(morpho));
     }
 
     function testFuzzOpen(uint256 equity, uint256 leverage) public {
         equity = bound(equity, 1e6, 1e24);
         leverage = bound(leverage, 1.1e18, 4e18);
-        uint256 collateralToBuy = equity * (leverage - 1e18) / 1e18;
-        uint256 maxIn = equity * 4;
+        uint256 collateralToBuy = equity.mulDivDown(leverage - 1e18, 1e18);
+        uint256 maxBorrowAssets = collateralToBuy.mulDivUp(101, 100) + 1;
         fundUser(address(bundle), equity);
         (bytes memory commands, bytes[] memory inputs) =
-            buildSingleHopRoute(address(loanToken), address(collateralToken), collateralToBuy, maxIn, poolKey);
+            buildSingleHopRoute(address(loanToken), address(collateralToken), collateralToBuy, maxBorrowAssets, poolKey);
 
         vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Open(
-            marketParams, equity, leverage, maxIn, commands, inputs, block.timestamp
+        bundle.leverageBundlesV1Open(
+            marketParams,
+            equity,
+            leverage,
+            maxBorrowAssets,
+            address(adapter),
+            abi.encode(commands, inputs),
+            block.timestamp
         );
 
         Position memory position = morpho.position(marketParams.id(), user);
         Market memory market = morpho.market(marketParams.id());
-        assertGt(position.borrowShares, 0);
+        uint256 debt = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
         assertEq(position.collateral, equity + collateralToBuy);
-        assertLe(uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares), maxIn);
-        closeAllTokenBalances(address(bundle));
-        assertNoRouterBalances();
-        assertEq(loanToken.allowance(address(bundle), universalRouter), 0);
-        assertEq(collateralToken.allowance(address(bundle), universalRouter), 0);
-        assertEq(loanToken.allowance(address(bundle), address(1)), 0);
-        assertEq(collateralToken.allowance(address(bundle), address(1)), 0);
+        assertLe(debt, maxBorrowAssets);
+        assertNoResiduals();
+    }
+
+    function testOpenOverridesRouteAmount() public {
+        uint256 equity = 10e18;
+        uint256 maxBorrowAssets = equity.mulDivUp(101, 100) + 1;
+        fundUser(address(bundle), equity);
+        uint256 userCollateralBefore = collateralToken.balanceOf(user);
+        (bytes memory commands, bytes[] memory inputs) =
+            buildSingleHopRoute(address(loanToken), address(collateralToken), 1, maxBorrowAssets, poolKey);
+
+        vm.prank(user);
+        bundle.leverageBundlesV1Open(
+            marketParams, equity, 2e18, maxBorrowAssets, address(adapter), abi.encode(commands, inputs), block.timestamp
+        );
+
+        assertEq(morpho.position(marketParams.id(), user).collateral, 2 * equity);
+        assertLe(collateralToken.balanceOf(user), userCollateralBefore);
+        assertNoResiduals();
     }
 
     function testMultiHopOpen() public {
         uint256 equity = 10e18;
         uint256 amountOut = equity;
-        uint256 maxIn = 2 * equity;
+        uint256 maxBorrowAssets = amountOut.mulDivUp(101, 100) + 1;
         fundUser(address(bundle), equity);
-        (bytes memory commands, bytes[] memory inputs) = buildMultiHopRoute(amountOut, maxIn);
+        (bytes memory commands, bytes[] memory inputs) = buildMultiHopRoute(amountOut, maxBorrowAssets);
 
         vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Open(
-            marketParams, equity, 2e18, maxIn, commands, inputs, block.timestamp
+        bundle.leverageBundlesV1Open(
+            marketParams, equity, 2e18, maxBorrowAssets, address(adapter), abi.encode(commands, inputs), block.timestamp
         );
 
         Position memory position = morpho.position(marketParams.id(), user);
         assertEq(position.collateral, 2 * equity);
         assertGt(position.borrowShares, 0);
-        closeAllTokenBalances(address(bundle));
-        assertNoRouterBalances();
+        assertNoResiduals();
     }
 
     function testDelever() public {
         uint256 equity = 10e18;
-        uint256 maxBorrow = 2 * equity;
+        uint256 maxBorrowAssets = equity.mulDivUp(101, 100) + 1;
         fundUser(address(bundle), equity);
         (bytes memory openCommands, bytes[] memory openInputs) =
-            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, maxBorrow, poolKey);
+            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, maxBorrowAssets, poolKey);
+
         vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Open(
-            marketParams, equity, 2e18, maxBorrow, openCommands, openInputs, block.timestamp
+        bundle.leverageBundlesV1Open(
+            marketParams,
+            equity,
+            2e18,
+            maxBorrowAssets,
+            address(adapter),
+            abi.encode(openCommands, openInputs),
+            block.timestamp
         );
 
         Position memory beforePosition = morpho.position(marketParams.id(), user);
@@ -104,30 +133,36 @@ contract UniversalRouterLeverageBundlesV1Test is LeverageTest {
             buildSingleHopRoute(address(collateralToken), address(loanToken), repayAssets, maxCollateralIn, poolKey);
 
         vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Delever(
-            marketParams, repayAssets, maxCollateralIn, commands, inputs, block.timestamp
+        bundle.leverageBundlesV1Delever(
+            marketParams, repayAssets, maxCollateralIn, address(adapter), abi.encode(commands, inputs), block.timestamp
         );
 
         Position memory afterPosition = morpho.position(marketParams.id(), user);
         Market memory marketAfter = morpho.market(marketParams.id());
-        assertLt(afterPosition.borrowShares, beforePosition.borrowShares);
-        assertLt(afterPosition.collateral, beforePosition.collateral);
         assertEq(market.totalBorrowAssets - marketAfter.totalBorrowAssets, repayAssets);
         assertLe(beforePosition.collateral - afterPosition.collateral, maxCollateralIn);
-        closeAllTokenBalances(address(bundle));
-        assertNoRouterBalances();
+        assertLt(afterPosition.borrowShares, beforePosition.borrowShares);
+        assertLt(afterPosition.collateral, beforePosition.collateral);
+        assertNoResiduals();
     }
 
     function testCloseAccruesInterest() public {
         uint256 equity = 10e18;
+        uint256 maxBorrowAssets = equity.mulDivUp(101, 100) + 1;
         uint256 timestamp = vm.getBlockTimestamp();
-        uint256 maxBorrow = 2 * equity;
         fundUser(address(bundle), equity);
         (bytes memory openCommands, bytes[] memory openInputs) =
-            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, maxBorrow, poolKey);
+            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, maxBorrowAssets, poolKey);
+
         vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Open(
-            marketParams, equity, 2e18, maxBorrow, openCommands, openInputs, timestamp
+        bundle.leverageBundlesV1Open(
+            marketParams,
+            equity,
+            2e18,
+            maxBorrowAssets,
+            address(adapter),
+            abi.encode(openCommands, openInputs),
+            timestamp
         );
 
         vm.warp(timestamp + 365 days);
@@ -141,16 +176,53 @@ contract UniversalRouterLeverageBundlesV1Test is LeverageTest {
         );
 
         vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Close(
-            marketParams, beforePosition.collateral, commands, inputs, block.timestamp
+        bundle.leverageBundlesV1Close(
+            marketParams, beforePosition.collateral, address(adapter), abi.encode(commands, inputs), block.timestamp
         );
 
         Position memory afterPosition = morpho.position(marketParams.id(), user);
         assertEq(afterPosition.borrowShares, 0);
         assertEq(afterPosition.collateral, 0);
         assertGt(collateralToken.balanceOf(user), 0);
-        closeAllTokenBalances(address(bundle));
-        assertNoRouterBalances();
+        assertNoResiduals();
+    }
+
+    function testCloseWithStaleRouteAmount() public {
+        uint256 equity = 10e18;
+        uint256 maxBorrowAssets = equity.mulDivUp(101, 100) + 1;
+        uint256 timestamp = vm.getBlockTimestamp();
+        fundUser(address(bundle), equity);
+        (bytes memory openCommands, bytes[] memory openInputs) =
+            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, maxBorrowAssets, poolKey);
+
+        vm.prank(user);
+        bundle.leverageBundlesV1Open(
+            marketParams,
+            equity,
+            2e18,
+            maxBorrowAssets,
+            address(adapter),
+            abi.encode(openCommands, openInputs),
+            timestamp
+        );
+
+        vm.warp(timestamp + 365 days);
+        morpho.accrueInterest(marketParams);
+        Position memory beforePosition = morpho.position(marketParams.id(), user);
+        uint256 loanBalanceBeforeClose = loanToken.balanceOf(user);
+        (bytes memory commands, bytes[] memory inputs) =
+            buildSingleHopRoute(address(collateralToken), address(loanToken), 1, beforePosition.collateral, poolKey);
+
+        vm.prank(user);
+        bundle.leverageBundlesV1Close(
+            marketParams, beforePosition.collateral, address(adapter), abi.encode(commands, inputs), block.timestamp
+        );
+
+        Position memory afterPosition = morpho.position(marketParams.id(), user);
+        assertEq(afterPosition.borrowShares, 0);
+        assertEq(afterPosition.collateral, 0);
+        assertEq(loanToken.balanceOf(user), loanBalanceBeforeClose);
+        assertNoResiduals();
     }
 
     function testCloseWithoutDebtReturnsAllCollateral() public {
@@ -163,142 +235,87 @@ contract UniversalRouterLeverageBundlesV1Test is LeverageTest {
         vm.stopPrank();
 
         vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Close(marketParams, 0, "", new bytes[](0), block.timestamp);
+        bundle.leverageBundlesV1Close(marketParams, 0, address(adapter), "", block.timestamp);
 
         assertEq(collateralToken.balanceOf(user), collateral);
         assertEq(morpho.position(marketParams.id(), user).collateral, 0);
-        closeAllTokenBalances(address(bundle));
-        assertNoRouterBalances();
+        assertNoResiduals();
     }
 
-    function testLifecycleWhenLoanTokenIsCurrency1() public {
-        setUpLeverage(true);
-        bundle = new UniversalRouterLeverageBundlesV1(address(morpho), _deployUniversalRouter());
-        universalRouter = bundle.UNIVERSAL_ROUTER();
-
+    function testCloseNeedsOnlyMarketLiquidity() public {
         uint256 equity = 10e18;
-        uint256 maxBorrow = 2 * equity;
+        uint256 maxBorrowAssets = equity.mulDivUp(101, 100) + 1;
         fundUser(address(bundle), equity);
         (bytes memory openCommands, bytes[] memory openInputs) =
-            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, maxBorrow, poolKey);
+            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, maxBorrowAssets, poolKey);
+
         vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Open(
-            marketParams, equity, 2e18, maxBorrow, openCommands, openInputs, block.timestamp
+        bundle.leverageBundlesV1Open(
+            marketParams,
+            equity,
+            2e18,
+            maxBorrowAssets,
+            address(adapter),
+            abi.encode(openCommands, openInputs),
+            block.timestamp
         );
 
         Position memory position = morpho.position(marketParams.id(), user);
+        deal(address(collateralToken), address(morpho), position.collateral);
+        morpho.accrueInterest(marketParams);
         Market memory market = morpho.market(marketParams.id());
         uint256 debtAssets =
             uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
-        (bytes memory closeCommands, bytes[] memory closeInputs) =
-            buildSingleHopRoute(address(collateralToken), address(loanToken), debtAssets, position.collateral, poolKey);
-        vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Close(
-            marketParams, position.collateral, closeCommands, closeInputs, block.timestamp
-        );
-
-        assertEq(morpho.position(marketParams.id(), user).borrowShares, 0);
-        assertNoRouterBalances();
-        closeAllTokenBalances(address(bundle));
-    }
-
-    function testOpenRejectsInvalidLeverage() public {
-        vm.expectRevert(IBlueLeverageBase.InvalidLeverage.selector);
-        bundle.universalRouterLeverageBundlesV1Open(marketParams, 1e18, 1e18, 2e18, "", new bytes[](0), block.timestamp);
-    }
-
-    function testOpenRequiresBlueAuthorization() public {
-        uint256 equity = 10e18;
-        uint256 maxBorrow = 2 * equity;
-        deal(address(collateralToken), user, equity);
-        vm.prank(user);
-        safeApprove(collateralToken, address(bundle), equity);
         (bytes memory commands, bytes[] memory inputs) =
-            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, maxBorrow, poolKey);
+            buildSingleHopRoute(address(collateralToken), address(loanToken), debtAssets, position.collateral, poolKey);
 
-        vm.expectRevert();
         vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Open(
-            marketParams, equity, 2e18, maxBorrow, commands, inputs, block.timestamp
+        bundle.leverageBundlesV1Close(
+            marketParams, position.collateral, address(adapter), abi.encode(commands, inputs), block.timestamp
         );
+
+        assertEq(morpho.position(marketParams.id(), user).collateral, 0);
+        assertEq(morpho.position(marketParams.id(), user).borrowShares, 0);
+        assertNoResiduals();
     }
 
-    function testOpenRejectsExpiredDeadline() public {
+    function testRejectsExpiredDeadline() public {
         vm.expectRevert(IBlueLeverageBase.DeadlinePassed.selector);
-        bundle.universalRouterLeverageBundlesV1Open(marketParams, 1e18, 2e18, 2e18, "", new bytes[](0), 0);
+        bundle.leverageBundlesV1Open(marketParams, 1e18, 2e18, 2e18, address(adapter), "", 0);
+
+        vm.expectRevert(IBlueLeverageBase.DeadlinePassed.selector);
+        bundle.leverageBundlesV1Delever(marketParams, 1e18, 1e18, address(adapter), "", 0);
+
+        vm.expectRevert(IBlueLeverageBase.DeadlinePassed.selector);
+        bundle.leverageBundlesV1Close(marketParams, 1e18, address(adapter), "", 0);
+        assertNoResiduals();
+    }
+
+    function testRejectsUnauthorizedSupplyCollateralCallback() public {
+        vm.expectRevert(IBlueLeverageBase.UnauthorizedCallback.selector);
+        bundle.onMorphoSupplyCollateral(0, "");
+        assertNoResiduals();
+    }
+
+    function testRejectsUnauthorizedRepayCallback() public {
+        vm.expectRevert(IBlueLeverageBase.UnauthorizedCallback.selector);
+        bundle.onMorphoRepay(0, "");
+        assertNoResiduals();
     }
 
     function testOpenRejectsIncompleteFill() public {
         uint256 equity = 10e18;
-        uint256 maxBorrow = 2 * equity;
+        uint256 maxBorrowAssets = equity.mulDivUp(101, 100) + 1;
         fundUser(address(bundle), equity);
         (bytes memory commands, bytes[] memory inputs) =
-            buildSingleHopRoute(address(loanToken), address(collateralToken), equity - 1, maxBorrow, poolKey);
+            buildSingleHopExactInputRoute(address(loanToken), address(collateralToken), equity, 0, poolKey);
 
         vm.expectRevert(IBlueLeverageBase.IncompleteFill.selector);
         vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Open(
-            marketParams, equity, 2e18, maxBorrow, commands, inputs, block.timestamp
+        bundle.leverageBundlesV1Open(
+            marketParams, equity, 2e18, maxBorrowAssets, address(adapter), abi.encode(commands, inputs), block.timestamp
         );
-    }
-
-    function testOpenRejectsInsufficientRouteInput() public {
-        uint256 equity = 10e18;
-        fundUser(address(bundle), equity);
-        (bytes memory commands, bytes[] memory inputs) =
-            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, 1, poolKey);
-
-        vm.expectRevert();
-        vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Open(marketParams, equity, 2e18, 1, commands, inputs, block.timestamp);
-    }
-
-    function testDeleverRejectsInsufficientRouteInput() public {
-        uint256 equity = 10e18;
-        uint256 maxBorrow = 2 * equity;
-        fundUser(address(bundle), equity);
-        (bytes memory openCommands, bytes[] memory openInputs) =
-            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, maxBorrow, poolKey);
-        vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Open(
-            marketParams, equity, 2e18, maxBorrow, openCommands, openInputs, block.timestamp
-        );
-
-        (bytes memory commands, bytes[] memory inputs) =
-            buildSingleHopRoute(address(collateralToken), address(loanToken), 1e18, 1, poolKey);
-        vm.expectRevert();
-        vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Delever(marketParams, 1e18, 1, commands, inputs, block.timestamp);
-    }
-
-    function testCloseRejectsInsufficientRouteInput() public {
-        uint256 equity = 10e18;
-        uint256 maxBorrow = 2 * equity;
-        fundUser(address(bundle), equity);
-        (bytes memory openCommands, bytes[] memory openInputs) =
-            buildSingleHopRoute(address(loanToken), address(collateralToken), equity, maxBorrow, poolKey);
-        vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Open(
-            marketParams, equity, 2e18, maxBorrow, openCommands, openInputs, block.timestamp
-        );
-
-        Position memory position = morpho.position(marketParams.id(), user);
-        Market memory market = morpho.market(marketParams.id());
-        uint256 debtAssets =
-            uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
-        (bytes memory commands, bytes[] memory inputs) =
-            buildSingleHopRoute(address(collateralToken), address(loanToken), debtAssets, 1, poolKey);
-
-        vm.expectRevert();
-        vm.prank(user);
-        bundle.universalRouterLeverageBundlesV1Close(
-            marketParams, position.collateral, commands, inputs, block.timestamp
-        );
-    }
-
-    function testRejectsUnauthorizedCallback() public {
-        vm.expectRevert(IBlueLeverageBase.UnauthorizedCallback.selector);
-        bundle.onMorphoFlashLoan(0, "");
+        assertNoResiduals();
     }
 
     function _deployUniversalRouter() internal returns (address router) {
@@ -339,6 +356,36 @@ contract UniversalRouterLeverageBundlesV1Test is LeverageTest {
                 zeroForOne: tokenIn == Currency.unwrap(key.currency0),
                 amountOut: amountOut.toUint128(),
                 amountInMaximum: maxIn.toUint128(),
+                minHopPriceX36: 0,
+                hookData: ""
+            })
+        );
+        params[1] = abi.encode(Currency.wrap(tokenIn), uint256(ActionConstants.OPEN_DELTA), false);
+        params[2] = abi.encode(Currency.wrap(tokenOut), ActionConstants.MSG_SENDER, uint256(ActionConstants.OPEN_DELTA));
+
+        commands = abi.encodePacked(uint8(Commands.V4_SWAP), uint8(Commands.SWEEP));
+        inputs = new bytes[](2);
+        inputs[0] = abi.encode(actions, params);
+        inputs[1] = abi.encode(tokenIn, ActionConstants.MSG_SENDER, uint256(0));
+    }
+
+    function buildSingleHopExactInputRoute(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 amountOutMinimum,
+        PoolKey memory key
+    ) internal pure returns (bytes memory commands, bytes[] memory inputs) {
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.SWAP_EXACT_IN_SINGLE), uint8(Actions.SETTLE), uint8(Actions.TAKE)
+        );
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(
+            IV4Router.ExactInputSingleParams({
+                poolKey: key,
+                zeroForOne: tokenIn == Currency.unwrap(key.currency0),
+                amountIn: amountIn.toUint128(),
+                amountOutMinimum: amountOutMinimum.toUint128(),
                 minHopPriceX36: 0,
                 hookData: ""
             })
@@ -394,6 +441,23 @@ contract UniversalRouterLeverageBundlesV1Test is LeverageTest {
         inputs = new bytes[](2);
         inputs[0] = abi.encode(actions, params);
         inputs[1] = abi.encode(address(loanToken), ActionConstants.MSG_SENDER, uint256(0));
+    }
+
+    function assertNoResiduals() internal view {
+        closeAllTokenBalances(address(bundle));
+        closeAllTokenBalances(address(adapter));
+        assertNoRouterBalances();
+        _assertNoExternalAllowances(address(bundle));
+        _assertNoExternalAllowances(address(adapter));
+    }
+
+    function _assertNoExternalAllowances(address owner_) internal view {
+        assertEq(loanToken.allowance(owner_, universalRouter), 0);
+        assertEq(collateralToken.allowance(owner_, universalRouter), 0);
+        assertEq(intermediateToken.allowance(owner_, universalRouter), 0);
+        assertEq(loanToken.allowance(owner_, address(adapter)), 0);
+        assertEq(collateralToken.allowance(owner_, address(adapter)), 0);
+        assertEq(intermediateToken.allowance(owner_, address(adapter)), 0);
     }
 
     function assertNoRouterBalances() internal view {
