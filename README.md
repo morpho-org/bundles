@@ -60,6 +60,8 @@ Changes between versions and source code of all versions are listed in the [CHAN
 
 ## Developers
 
+Compilation, testing and formatting are done with [forge](https://book.getfoundry.sh/getting-started/installation).
+
 Formal verification of the bundles is done with the [Certora Prover](https://www.certora.com/prover).
 See the [Certora README](./certora/README.md) for the full list of verified properties and the modeling assumptions they rely on.
 
