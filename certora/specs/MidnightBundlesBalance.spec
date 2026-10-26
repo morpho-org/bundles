@@ -117,7 +117,7 @@ rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Marke
     assert spent == boughtAssets + repaidAssets + fees;
 }
 
-rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, Utils.Market market, uint256 targetUnits, uint256 minSellerAssets, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralTransfer[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative) {
+rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, Utils.Market market, uint256 targetUnits, uint256 minSellerAssets, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralTransfer[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, address wrappedNative) {
     address loanToken = market.loanToken;
 
     // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
@@ -130,7 +130,7 @@ rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, Utils.Market 
     withdrawnAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
     uint256 receiverBalanceBefore = tokenBalance[loanToken][receiver];
-    midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(e, market, targetUnits, minSellerAssets, reduceOnly, receiver, collateralSupplies, offerFills, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline, wrappedNative);
+    midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(e, market, targetUnits, minSellerAssets, reduceOnly, receiver, collateralSupplies, offerFills, referralFeePct, referralFeeRecipient, deadline, wrappedNative);
     uint256 receiverBalanceAfter = tokenBalance[loanToken][receiver];
     uint256 feeBalanceAfter = tokenBalance[loanToken][referralFeeRecipient];
 
@@ -140,7 +140,7 @@ rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, Utils.Market 
     assert received == soldAssets + withdrawnAssets - fees;
 }
 
-rule supplyCollateralAndSellWithAssetsTargetDoesntLoseTokens(env e, Utils.Market market, uint256 targetSellerAssets, uint256 maxUnits, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralTransfer[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative) {
+rule supplyCollateralAndSellWithAssetsTargetDoesntLoseTokens(env e, Utils.Market market, uint256 targetSellerAssets, uint256 maxUnits, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralTransfer[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, address wrappedNative) {
     address loanToken = market.loanToken;
 
     // Assume different addresses to have correct accounting, using hardcoded addresses as a trick.
@@ -153,7 +153,7 @@ rule supplyCollateralAndSellWithAssetsTargetDoesntLoseTokens(env e, Utils.Market
     withdrawnAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[loanToken][referralFeeRecipient];
     uint256 receiverBalanceBefore = tokenBalance[loanToken][receiver];
-    midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(e, market, targetSellerAssets, maxUnits, reduceOnly, receiver, collateralSupplies, offerFills, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline, wrappedNative);
+    midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(e, market, targetSellerAssets, maxUnits, reduceOnly, receiver, collateralSupplies, offerFills, referralFeePct, referralFeeRecipient, deadline, wrappedNative);
     uint256 receiverBalanceAfter = tokenBalance[loanToken][receiver];
     uint256 feeBalanceAfter = tokenBalance[loanToken][referralFeeRecipient];
 
