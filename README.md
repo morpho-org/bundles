@@ -79,6 +79,13 @@ When a route contains exactly one exact-output swap, the Universal Router adapte
 
 Changes between versions and source code of all versions are listed in the [CHANGELOG](./CHANGELOG.md).
 
+## Developers
+
+Compilation, testing and formatting are done with [forge](https://book.getfoundry.sh/getting-started/installation).
+
+Formal verification of the bundles is done with the [Certora Prover](https://www.certora.com/prover).
+See the [Certora README](./certora/README.md) for the full list of verified properties and the modeling assumptions they rely on.
+
 ## Audits
 
 Audits can be found in the [audits](./audits/) folder.
