@@ -97,16 +97,6 @@ name = "london-1000000"
 evm_version = "london"
 optimizer_runs = 1000000
 
-[[profile.default.additional_compiler_profiles]]
-name = "uniswap-0.8.26"
-evm_version = "cancun"
-optimizer_runs = 100000
-
-[[profile.default.additional_compiler_profiles]]
-name = "universal-router"
-evm_version = "cancun"
-optimizer_runs = 1
-
 [[profile.default.compilation_restrictions]]
 paths = "test/imports/BlueImport.sol"
 evm_version = "paris"
@@ -131,33 +121,3 @@ optimizer_runs = 200
 paths = "test/imports/Permit2Import.sol"
 evm_version = "london"
 optimizer_runs = 1000000
-
-[[profile.default.compilation_restrictions]]
-paths = "test/imports/V4Import.sol"
-version = "=0.8.26"
-evm_version = "cancun"
-optimizer_runs = 100000
-
-[[profile.default.compilation_restrictions]]
-paths = "lib/v4-core/src/PoolManager.sol"
-version = "=0.8.26"
-evm_version = "cancun"
-optimizer_runs = 100000
-
-[[profile.default.compilation_restrictions]]
-paths = "lib/v4-core/src/test/PoolModifyLiquidityTest.sol"
-version = "=0.8.26"
-evm_version = "cancun"
-optimizer_runs = 100000
-
-[[profile.default.compilation_restrictions]]
-paths = "test/imports/UniversalRouterImport.sol"
-version = "=0.8.26"
-evm_version = "cancun"
-optimizer_runs = 1
-
-[[profile.default.compilation_restrictions]]
-paths = "lib/universal-router/contracts/UniversalRouter.sol"
-version = "=0.8.26"
-evm_version = "cancun"
-optimizer_runs = 1

@@ -69,10 +69,6 @@ contract TestERC20NoReturn is ERC20NoReturn {
 }
 
 abstract contract TokenTest is Test {
-    function tokenType() internal view returns (uint256) {
-        return vm.envOr("TOKEN_TYPE", uint256(0));
-    }
-
     /// @dev Resets to 0 before re-approving when the approval fails, to support USDT-like tokens.
     function safeApprove(ITestToken token, address spender, uint256 amount) internal {
         try token.approve(spender, amount) {}
@@ -85,12 +81,12 @@ abstract contract TokenTest is Test {
     /// @dev Deploys the token selected by TOKEN_TYPE, as in midnight's BaseTest:
     /// 0 = standard, 1 = no-revert, 2 = usdt, 3 = revert-to-zero, 4 = no-return.
     function deployToken(string memory name_) internal returns (ITestToken) {
-        uint256 type_ = tokenType();
-        if (type_ == 0) return ITestToken(address(new TestERC20Permit(name_, name_)));
-        if (type_ == 1) return ITestToken(address(new TestERC20NoRevert(name_)));
-        if (type_ == 2) return ITestToken(address(new TestERC20USDT(name_)));
-        if (type_ == 3) return ITestToken(address(new TestERC20RevertToZero(name_)));
-        if (type_ == 4) return ITestToken(address(new TestERC20NoReturn(name_)));
+        uint256 tokenType = vm.envOr("TOKEN_TYPE", uint256(0));
+        if (tokenType == 0) return ITestToken(address(new TestERC20Permit(name_, name_)));
+        if (tokenType == 1) return ITestToken(address(new TestERC20NoRevert(name_)));
+        if (tokenType == 2) return ITestToken(address(new TestERC20USDT(name_)));
+        if (tokenType == 3) return ITestToken(address(new TestERC20RevertToZero(name_)));
+        if (tokenType == 4) return ITestToken(address(new TestERC20NoReturn(name_)));
         revert("unknown TOKEN_TYPE");
     }
 }

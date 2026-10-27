@@ -2,9 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {ILeverageBundlesV1} from "./interfaces/ILeverageBundlesV1.sol";
-import {ISwapAdapter} from "./interfaces/ISwapAdapter.sol";
-import {BlueLeverageBase} from "./BlueLeverageBase.sol";
+import {IVeloraLeverageBundlesV1} from "./interfaces/IVeloraLeverageBundlesV1.sol";
 import {IMorpho, MarketParams, Position} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {
     IMorphoRepayCallback,
@@ -16,29 +14,29 @@ import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 
-contract LeverageBundlesV1 is
-    ILeverageBundlesV1,
-    BlueLeverageBase,
-    IMorphoSupplyCollateralCallback,
-    IMorphoRepayCallback
-{
+/// @notice Executes exact-output swaps using Augustus v6.2 calldata whose beneficiary is this bundle.
+contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyCollateralCallback, IMorphoRepayCallback {
     using MarketParamsLib for MarketParams;
     using UtilsLib for uint256;
 
-    constructor(address blue) BlueLeverageBase(blue) {}
+    address public immutable override BLUE;
+    address public immutable override AUGUSTUS;
 
-    /// ENTRYPOINTS ///
+    constructor(address blue, address augustus) {
+        BLUE = blue;
+        AUGUSTUS = augustus;
+    }
 
-    /// @dev Supplies caller collateral and borrows the remaining collateral through a swap.
-    function leverageBundlesV1Open(
+    /// @notice Opens a leveraged position by supplying caller collateral and swapping borrowed assets.
+    /// @param swapData Augustus v6.2 calldata with `beneficiary` set to this bundle and an exact-output target at least the collateral required by the operation.
+    function veloraLeverageBundlesV1Open(
         MarketParams memory marketParams,
         uint256 collateralAssets,
         uint256 leverage,
         uint256 maxBorrowAssets,
-        address adapter,
         bytes calldata swapData,
         uint256 deadline
-    ) external {
+    ) external override {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(leverage > 1e18, InvalidLeverage());
 
@@ -51,19 +49,19 @@ contract LeverageBundlesV1 is
                 marketParams,
                 collateralAssets + collateralToBuy,
                 msg.sender,
-                abi.encode(msg.sender, marketParams, collateralToBuy, maxBorrowAssets, adapter, swapData)
+                abi.encode(msg.sender, marketParams, collateralToBuy, maxBorrowAssets, swapData)
             );
     }
 
-    /// @dev Repays part of the caller's debt by withdrawing and swapping collateral.
-    function leverageBundlesV1Delever(
+    /// @notice Repays part of the caller's debt by withdrawing and swapping collateral.
+    /// @param swapData Augustus v6.2 calldata with `beneficiary` set to this bundle and an exact-output target at least `repayAssets`.
+    function veloraLeverageBundlesV1Delever(
         MarketParams memory marketParams,
         uint256 repayAssets,
         uint256 maxCollateralIn,
-        address adapter,
         bytes calldata swapData,
         uint256 deadline
-    ) external {
+    ) external override {
         require(block.timestamp <= deadline, DeadlinePassed());
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
@@ -74,21 +72,21 @@ contract LeverageBundlesV1 is
                 0,
                 msg.sender,
                 abi.encode(
-                    this.leverageBundlesV1Delever.selector,
+                    this.veloraLeverageBundlesV1Delever.selector,
                     msg.sender,
-                    abi.encode(marketParams, maxCollateralIn, adapter, swapData)
+                    abi.encode(marketParams, maxCollateralIn, swapData)
                 )
             );
     }
 
-    /// @dev Repays all borrow shares and returns the remaining collateral.
-    function leverageBundlesV1Close(
+    /// @notice Repays all borrow shares and returns the remaining collateral.
+    /// @param swapData Augustus v6.2 calldata with `beneficiary` set to this bundle and an exact-output target at least the debt computed by Morpho.
+    function veloraLeverageBundlesV1Close(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,
-        address adapter,
         bytes calldata swapData,
         uint256 deadline
-    ) external {
+    ) external override {
         require(block.timestamp <= deadline, DeadlinePassed());
 
         Position memory position = IMorpho(BLUE).position(marketParams.id(), msg.sender);
@@ -105,16 +103,14 @@ contract LeverageBundlesV1 is
                 position.borrowShares,
                 msg.sender,
                 abi.encode(
-                    this.leverageBundlesV1Close.selector,
+                    this.veloraLeverageBundlesV1Close.selector,
                     msg.sender,
-                    abi.encode(marketParams, position.collateral, maxCollateralIn, adapter, swapData)
+                    abi.encode(marketParams, position.collateral, maxCollateralIn, swapData)
                 )
             );
     }
 
-    /// CALLBACKS ///
-
-    function onMorphoSupplyCollateral(uint256, bytes calldata data) external {
+    function onMorphoSupplyCollateral(uint256, bytes calldata data) external override {
         require(msg.sender == BLUE, UnauthorizedCallback());
 
         (
@@ -122,13 +118,12 @@ contract LeverageBundlesV1 is
             MarketParams memory marketParams,
             uint256 collateralToBuy,
             uint256 maxBorrowAssets,
-            address adapter,
             bytes memory swapData
-        ) = abi.decode(data, (address, MarketParams, uint256, uint256, address, bytes));
+        ) = abi.decode(data, (address, MarketParams, uint256, uint256, bytes));
 
         IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, user, address(this));
         (uint256 spent, uint256 received) = _swapExactOut(
-            adapter, marketParams.loanToken, marketParams.collateralToken, maxBorrowAssets, collateralToBuy, swapData
+            marketParams.loanToken, marketParams.collateralToken, maxBorrowAssets, collateralToBuy, swapData
         );
 
         if (maxBorrowAssets > spent) {
@@ -140,29 +135,26 @@ contract LeverageBundlesV1 is
         }
     }
 
-    function onMorphoRepay(uint256 assets, bytes calldata data) external {
+    function onMorphoRepay(uint256 assets, bytes calldata data) external override {
         require(msg.sender == BLUE, UnauthorizedCallback());
 
         (bytes4 selector, address user, bytes memory operationData) = abi.decode(data, (bytes4, address, bytes));
-        if (selector == this.leverageBundlesV1Delever.selector) {
+        if (selector == this.veloraLeverageBundlesV1Delever.selector) {
             _deleverCallback(assets, user, operationData);
-        } else if (selector == this.leverageBundlesV1Close.selector) {
+        } else if (selector == this.veloraLeverageBundlesV1Close.selector) {
             _closeCallback(assets, user, operationData);
         } else {
             revert UnauthorizedCallback();
         }
     }
 
-    /// INTERNALS ///
-
     function _deleverCallback(uint256 assets, address user, bytes memory operationData) internal {
-        (MarketParams memory marketParams, uint256 maxCollateralIn, address adapter, bytes memory swapData) =
-            abi.decode(operationData, (MarketParams, uint256, address, bytes));
+        (MarketParams memory marketParams, uint256 maxCollateralIn, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, bytes));
 
         IMorpho(BLUE).withdrawCollateral(marketParams, maxCollateralIn, user, address(this));
-        (uint256 spent, uint256 received) = _swapExactOut(
-            adapter, marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData
-        );
+        (uint256 spent, uint256 received) =
+            _swapExactOut(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
 
         if (maxCollateralIn > spent) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
@@ -174,18 +166,12 @@ contract LeverageBundlesV1 is
     }
 
     function _closeCallback(uint256 assets, address user, bytes memory operationData) internal {
-        (
-            MarketParams memory marketParams,
-            uint256 collateral,
-            uint256 maxCollateralIn,
-            address adapter,
-            bytes memory swapData
-        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
+        (MarketParams memory marketParams, uint256 collateral, uint256 maxCollateralIn, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
-        (uint256 spent, uint256 received) = _swapExactOut(
-            adapter, marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData
-        );
+        (uint256 spent, uint256 received) =
+            _swapExactOut(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
 
         if (collateral > spent) {
             SafeTransferLib.safeTransfer(marketParams.collateralToken, user, collateral - spent);
@@ -195,27 +181,30 @@ contract LeverageBundlesV1 is
         }
     }
 
-    function _swapExactOut(
-        address adapter,
-        address tokenIn,
-        address tokenOut,
-        uint256 maxIn,
-        uint256 amountOut,
-        bytes memory data
-    ) internal returns (uint256 spent, uint256 received) {
-        uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));
-        SafeTransferLib.safeTransfer(tokenIn, adapter, maxIn);
+    function _swapExactOut(address tokenIn, address tokenOut, uint256 maxIn, uint256 amountOut, bytes memory data)
+        internal
+        returns (uint256 spent, uint256 received)
+    {
         uint256 inBefore = IERC20(tokenIn).balanceOf(address(this));
+        uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));
 
-        ISwapAdapter(adapter).swapExactOut(tokenIn, tokenOut, maxIn, amountOut, data);
+        TokenLib.safeApprove(tokenIn, AUGUSTUS, maxIn);
+        (bool success, bytes memory returnData) = AUGUSTUS.call(data);
+        if (!success) {
+            assembly ("memory-safe") {
+                revert(add(returnData, 0x20), mload(returnData))
+            }
+        }
+        TokenLib.safeApprove(tokenIn, AUGUSTUS, 0);
 
         uint256 inAfter = IERC20(tokenIn).balanceOf(address(this));
-        require(inAfter >= inBefore, IncompleteFill());
-        uint256 unspent = inAfter - inBefore;
-        require(unspent <= maxIn, IncompleteFill());
+        require(inAfter <= inBefore, IncompleteFill());
+        spent = inBefore - inAfter;
+        require(spent <= maxIn, IncompleteFill());
 
-        spent = maxIn - unspent;
-        received = IERC20(tokenOut).balanceOf(address(this)) - outBefore;
+        uint256 outAfter = IERC20(tokenOut).balanceOf(address(this));
+        require(outAfter >= outBefore, IncompleteFill());
+        received = outAfter - outBefore;
         require(received >= amountOut, IncompleteFill());
     }
 }

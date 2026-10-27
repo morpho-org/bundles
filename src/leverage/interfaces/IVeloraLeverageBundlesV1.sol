@@ -2,42 +2,38 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity >=0.8.0;
 
-import {IBlueLeverageBase} from "./IBlueLeverageBase.sol";
 import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
-import {PoolKey} from "../../../lib/v4-core/src/types/PoolKey.sol";
 
-interface IUniswapV4LeverageBundlesV1 is IBlueLeverageBase {
-    /// ERRORS ///
-    error InconsistentTokens();
-    error SlippageExceeded();
+interface IVeloraLeverageBundlesV1 {
+    error DeadlinePassed();
+    error IncompleteFill();
+    error InvalidLeverage();
+    error UnauthorizedCallback();
 
-    /// STORAGE GETTERS ///
+    function BLUE() external view returns (address);
+    function AUGUSTUS() external view returns (address);
 
-    function POOL_MANAGER() external view returns (address);
-
-    /// FUNCTIONS ///
-
-    function uniswapV4LeverageBundlesV1Open(
+    function veloraLeverageBundlesV1Open(
         MarketParams memory marketParams,
-        PoolKey memory poolKey,
         uint256 collateralAssets,
         uint256 leverage,
         uint256 maxBorrowAssets,
+        bytes calldata swapData,
         uint256 deadline
     ) external;
 
-    function uniswapV4LeverageBundlesV1Delever(
+    function veloraLeverageBundlesV1Delever(
         MarketParams memory marketParams,
-        PoolKey memory poolKey,
         uint256 repayAssets,
         uint256 maxCollateralIn,
+        bytes calldata swapData,
         uint256 deadline
     ) external;
 
-    function uniswapV4LeverageBundlesV1Close(
+    function veloraLeverageBundlesV1Close(
         MarketParams memory marketParams,
-        PoolKey memory poolKey,
         uint256 maxCollateralIn,
+        bytes calldata swapData,
         uint256 deadline
     ) external;
 }
