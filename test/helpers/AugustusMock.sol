@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.34;
 
-import {IAugustusV6} from "../../src/leverage/adapters/ParaswapSwapAdapter.sol";
+import {IAugustusV6} from "../../src/leverage/interfaces/IAugustusV6.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 
