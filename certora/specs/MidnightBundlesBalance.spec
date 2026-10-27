@@ -19,6 +19,7 @@ methods {
     // Token modeling.
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
+
     function _.take(MidnightBundlesV2.Offer offer, bytes ratifierData, uint256 units, address taker, address receiverIfTakerIsSeller, address takerCallback, bytes takerCallbackData) external => summaryTake() expect(uint256, uint256);
     function _.repay(Utils.Market, uint256 units, address, address, bytes) external => summaryRepay(units) expect void;
     function _.withdraw(Utils.Market, uint256 units, address, address) external => summaryWithdraw(units) expect void;
@@ -93,12 +94,12 @@ rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Market
     boughtAssets = 0;
     repaidAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 balanceBefore = tokenBalance[token][e.msg.sender];
+    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
     midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(e, market, targetUnits, maxBuyerAssets, reduceOnly, repayEnabled, offerFills, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline, wrappedNative);
-    uint256 balanceAfter = tokenBalance[token][e.msg.sender];
+    uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
     uint256 feeBalanceAfter = tokenBalance[token][referralFeeRecipient];
 
-    mathint spent = balanceBefore - balanceAfter;
+    mathint spent = senderBalanceBefore - senderBalanceAfter;
     mathint fees = feeBalanceAfter - feeBalanceBefore;
 
     assert token == loanToken => spent == boughtAssets + repaidAssets + fees;
@@ -117,12 +118,12 @@ rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Marke
     boughtAssets = 0;
     repaidAssets = 0;
     uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 balanceBefore = tokenBalance[token][e.msg.sender];
+    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
     midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(e, market, targetBuyerAssets, minUnits, reduceOnly, repayEnabled, offerFills, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline, wrappedNative);
-    uint256 balanceAfter = tokenBalance[token][e.msg.sender];
+    uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
     uint256 feeBalanceAfter = tokenBalance[token][referralFeeRecipient];
 
-    mathint spent = balanceBefore - balanceAfter;
+    mathint spent = senderBalanceBefore - senderBalanceAfter;
     mathint fees = feeBalanceAfter - feeBalanceBefore;
 
     assert token == loanToken => spent == boughtAssets + repaidAssets + fees;
@@ -203,11 +204,11 @@ rule cancelAndMakeDoesntLoseTokens(env e, MidnightBundlesV2.MarketParams blueMar
 
     parkedAssets = 0;
     mathint suppliedBefore = suppliedCollateral[token];
-    uint256 balanceBefore = tokenBalance[token][e.msg.sender];
+    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
     midnightBundlesV2CancelAndMake(e, blueMarket, assetsToPark, callbackSalt, market, collateralSupplies, ratifier, newRoot, signatureHeight, signatureNonce, signatureDeadline, v, r, s, groupsToCancel, payload, deadline, wrappedNative);
-    uint256 balanceAfter = tokenBalance[token][e.msg.sender];
+    uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
 
-    mathint spent = balanceBefore - balanceAfter;
+    mathint spent = senderBalanceBefore - senderBalanceAfter;
     mathint supplied = suppliedCollateral[token] - suppliedBefore;
 
     assert token == loanToken => spent == parkedAssets + supplied;
