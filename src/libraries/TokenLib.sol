@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Morpho Association
 pragma solidity >=0.8.0;
 
@@ -89,18 +89,6 @@ library TokenLib {
             IWNative(token).deposit{value: msg.value}();
         } else {
             pullToken(token, from, amount, permit);
-        }
-    }
-
-    /// @dev Transfers `amount` of `token` from `from` to this contract.
-    /// @dev When wrapNative is true, instead wraps msg.value into token.
-    // forge-lint: disable-next-item(msg-value-loop) msg.value is used only once, even when there is a loop.
-    function transferFromOrWrapNative(address token, address from, uint256 amount, bool wrapNative) internal {
-        if (wrapNative) {
-            require(amount == msg.value, InconsistentAmountAndNative());
-            IWNative(token).deposit{value: msg.value}();
-        } else {
-            SafeTransferLib.safeTransferFrom(token, from, address(this), amount);
         }
     }
 

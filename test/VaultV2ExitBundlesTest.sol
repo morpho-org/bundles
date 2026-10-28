@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "../lib/forge-std/src/Test.sol";
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
+import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
 
 import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
 import {IVaultExitBundlesV1, Permit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
@@ -31,7 +31,7 @@ interface IERC20PermitVault {
     function DOMAIN_SEPARATOR() external view returns (bytes32);
 }
 
-contract VaultV2ExitBundlesTest is Test {
+contract VaultV2ExitBundlesTest is TokenTest {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;
@@ -50,8 +50,8 @@ contract VaultV2ExitBundlesTest is Test {
     IMorphoMarketV1AdapterV2 internal adapter;
     VaultExitBundlesV1 internal vaultBundles;
 
-    ERC20Mock internal loanToken;
-    ERC20Mock internal collateralToken;
+    ITestToken internal loanToken;
+    ITestToken internal collateralToken;
     OracleMock internal oracle;
 
     MarketParams internal marketParams; // vault market (made illiquid)
@@ -73,8 +73,8 @@ contract VaultV2ExitBundlesTest is Test {
 
     function setUp() public {
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
-        loanToken = new ERC20Mock(18);
-        collateralToken = new ERC20Mock(18);
+        loanToken = deployToken("loan");
+        collateralToken = deployToken("collateral");
         oracle = new OracleMock();
         oracle.setPrice(ORACLE_PRICE_SCALE);
 
@@ -194,7 +194,7 @@ contract VaultV2ExitBundlesTest is Test {
     function _setUpIlliquid(uint256 assets, address depositor, bool approveBundler) internal {
         deal(address(loanToken), depositor, assets);
         vm.startPrank(depositor);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(assets, depositor);
         vm.stopPrank();
 
@@ -205,7 +205,7 @@ contract VaultV2ExitBundlesTest is Test {
         // Borrow everything out of the vault's market ⇒ illiquid.
         deal(address(collateralToken), borrower, 2 * assets);
         vm.startPrank(borrower);
-        collateralToken.approve(address(morpho), type(uint256).max);
+        safeApprove(collateralToken, address(morpho), type(uint256).max);
         morpho.supplyCollateral(marketParams, 2 * assets, borrower, "");
         morpho.borrow(marketParams, assets, 0, borrower, borrower);
         vm.stopPrank();
@@ -213,7 +213,7 @@ contract VaultV2ExitBundlesTest is Test {
         // Morpho global liquidity (from another market sharing the loan token).
         deal(address(loanToken), liquidityProvider, 2 * assets);
         vm.startPrank(liquidityProvider);
-        loanToken.approve(address(morpho), type(uint256).max);
+        safeApprove(loanToken, address(morpho), type(uint256).max);
         morpho.supply(otherMarket, 2 * assets, 0, liquidityProvider, "");
         vm.stopPrank();
 
@@ -231,7 +231,7 @@ contract VaultV2ExitBundlesTest is Test {
     /// borrowed out, so the market stays liquid and the assets can be deallocated directly from it.
     function _setUpLiquid(uint256 assets) internal {
         deal(address(loanToken), address(this), assets);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(assets, address(this));
 
         vm.prank(allocator);
@@ -253,7 +253,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         uint256 total = assets1 + assets2;
         deal(address(loanToken), address(this), total);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(total, address(this));
 
         vm.startPrank(allocator);
@@ -293,7 +293,7 @@ contract VaultV2ExitBundlesTest is Test {
 
         uint256 total = assets1 + assets2;
         deal(address(loanToken), address(this), total);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(total, address(this));
 
         vm.startPrank(allocator);
@@ -304,7 +304,7 @@ contract VaultV2ExitBundlesTest is Test {
         // Borrow everything out of both markets ⇒ both illiquid.
         deal(address(collateralToken), borrower, 4 * total);
         vm.startPrank(borrower);
-        collateralToken.approve(address(morpho), type(uint256).max);
+        safeApprove(collateralToken, address(morpho), type(uint256).max);
         morpho.supplyCollateral(marketParams, 2 * assets1, borrower, "");
         morpho.borrow(marketParams, assets1, 0, borrower, borrower);
         morpho.supplyCollateral(otherMarket, 2 * assets2, borrower, "");
@@ -323,7 +323,7 @@ contract VaultV2ExitBundlesTest is Test {
         morpho.createMarket(liquidityMarket);
         deal(address(loanToken), liquidityProvider, 2 * total);
         vm.startPrank(liquidityProvider);
-        loanToken.approve(address(morpho), type(uint256).max);
+        safeApprove(loanToken, address(morpho), type(uint256).max);
         morpho.supply(liquidityMarket, 2 * total, 0, liquidityProvider, "");
         vm.stopPrank();
 
@@ -437,7 +437,7 @@ contract VaultV2ExitBundlesTest is Test {
     function testInKindRedemptionOnlyIdleAssets(uint256 assets) public {
         assets = bound(assets, MIN_ASSETS, MAX_ASSETS);
         deal(address(loanToken), address(this), assets);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(assets, address(this));
         vault.approve(address(vaultBundles), type(uint256).max);
         deal(address(loanToken), address(this), 0);
@@ -739,7 +739,7 @@ contract VaultV2ExitBundlesTest is Test {
         // Borrow 40 out of the first market ⇒ only 60 of the adapter's 100 position is withdrawable there.
         deal(address(collateralToken), borrower, 100e18);
         vm.startPrank(borrower);
-        collateralToken.approve(address(morpho), type(uint256).max);
+        safeApprove(collateralToken, address(morpho), type(uint256).max);
         morpho.supplyCollateral(marketParams, 100e18, borrower, "");
         morpho.borrow(marketParams, 40e18, 0, borrower, borrower);
         vm.stopPrank();
@@ -764,7 +764,7 @@ contract VaultV2ExitBundlesTest is Test {
         // Borrow everything out of the first market ⇒ nothing of the adapter's 100 position is withdrawable there.
         deal(address(collateralToken), borrower, 200e18);
         vm.startPrank(borrower);
-        collateralToken.approve(address(morpho), type(uint256).max);
+        safeApprove(collateralToken, address(morpho), type(uint256).max);
         morpho.supplyCollateral(marketParams, 200e18, borrower, "");
         morpho.borrow(marketParams, 100e18, 0, borrower, borrower);
         vm.stopPrank();
@@ -832,7 +832,7 @@ contract VaultV2ExitBundlesTest is Test {
     /// @dev The vault's idle assets are withdrawn first, without penalty; only the remainder is force deallocated.
     function testForceWithdrawIdleAssetsFirst() public {
         deal(address(loanToken), address(this), 100e18);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(100e18, address(this));
 
         // Allocate only 70 ⇒ 30 stay idle in the vault.

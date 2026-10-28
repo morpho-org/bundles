@@ -1,13 +1,13 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 
-// No token residue: every entry point preserves the bundler's balance of every token, and spends exactly msg.value of native tokens.
+// No token residue: every entry point preserves the bundler's balance of every token, and sends out exactly msg.value of native tokens (wrapped and forwarded to the caller).
 // Scope: all entry points.
 // Assumptions shared with the BlueBundles suite:
 //   - no bundler donations: the caller, the referral fee recipient and the token receivers are different from the bundler.
 //   - well-behaved ERC20 (no fee-on-transfer/rebasing).
-//   - calls not summarized below (Midnight views, touchMarket, setConsumed, setIsAuthorized, the ratifier, the callback factory and LOG) don't change the bundler's balance of any token.
+//   - calls not summarized below (Midnight views, setConsumed, setIsAuthorized, the ratifier, the callback factory, the buyer assets bound and LOG) don't change the bundler's balance of any token.
 // Assumptions specific to the Midnight bundles:
-//   - Midnight moves exactly the amounts it reports: take pulls buyerAssets from the bundler when it buys without a callback and sends sellerAssets to the receiver when it sells, repay pulls units, withdraw sends units.
+//   - Midnight moves exactly the amounts it reports: take pulls buyerAssets from the bundler when the offer sells and there is no taker callback and sends sellerAssets to the receiver when it sells, repay pulls units, withdraw sends units.
 //   - market ids are injective in the loan token: offers whose id matches the market's id have the market's loan token.
 
 methods {
@@ -28,7 +28,6 @@ methods {
 
     // Wrapped native transfers.
     function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
-    function _.withdraw(uint256 amount) external => summaryUnwrapNative(calledContract, amount) expect void;
 
     // Balance-neutral calls.
     function TokenLib.safeApprove(address token, address spender, uint256 value) internal => NONDET;
@@ -46,9 +45,6 @@ methods {
 
 // Bundler ERC20 balances.
 persistent ghost mapping(address => mathint) bundlerBalance;
-
-// Native received from wrapped-native withdrawals.
-persistent ghost mathint unwrappedNative;
 
 // Successful native outflow from the bundler.
 persistent ghost mathint nativeSentByBundler;
@@ -114,70 +110,60 @@ function summaryWrapNative(address token, uint256 value) {
     bundlerBalance[token] = bundlerBalance[token] + value;
 }
 
-function summaryUnwrapNative(address token, uint256 amount) {
-    bundlerBalance[token] = bundlerBalance[token] - amount;
-    unwrappedNative = unwrappedNative + amount;
-}
-
-rule cancelAndMakePreservesBalance(env e, Utils.MarketParams blueMarket, uint256 assetsToPark, bytes32 callbackSalt, Utils.Market market, MidnightBundlesV2.CollateralSupply[] collateralSupplies, address ratifier, bytes32 newRoot, bytes rootSignature, MidnightBundlesV2.GroupCancellation[] groupsToCancel, bytes payload, address token, uint256 deadline) {
+rule cancelAndMakePreservesBalance(env e, Utils.MarketParams blueMarket, uint256 assetsToPark, bytes32 callbackSalt, Utils.Market market, MidnightBundlesV2.CollateralTransfer[] collateralSupplies, address ratifier, bytes32 newRoot, uint256 signatureHeight, uint128 signatureNonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s, MidnightBundlesV2.GroupCancellation[] groupsToCancel, bytes payload, uint256 deadline, address wrappedNative, address token) {
     require e.msg.sender != currentContract, "external caller";
 
     mathint before = bundlerBalance[token];
     mathint nativeSentBefore = nativeSentByBundler;
-    mathint nativeReceivedBefore = unwrappedNative;
-    midnightBundlesV2CancelAndMake(e, blueMarket, assetsToPark, callbackSalt, market, collateralSupplies, ratifier, newRoot, rootSignature, groupsToCancel, payload, deadline);
+    midnightBundlesV2CancelAndMake(e, blueMarket, assetsToPark, callbackSalt, market, collateralSupplies, ratifier, newRoot, signatureHeight, signatureNonce, signatureDeadline, v, r, s, groupsToCancel, payload, deadline, wrappedNative);
     assert bundlerBalance[token] == before;
-    assert nativeSentByBundler - nativeSentBefore - (unwrappedNative - nativeReceivedBefore) == e.msg.value;
+    assert nativeSentByBundler - nativeSentBefore == e.msg.value;
 }
 
-rule buyWithUnitsTargetAndWithdrawCollateralPreservesBalance(env e, Utils.Market market, uint256 targetUnits, uint256 maxBuyerAssets, bool reduceOnly, bool repayEnabled, MidnightBundlesV2.OfferFill[] offerFills, MidnightBundlesV2.CollateralWithdrawal[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, address token, uint256 deadline) {
+rule buyWithUnitsTargetAndWithdrawCollateralPreservesBalance(env e, Utils.Market market, uint256 targetUnits, uint256 maxBuyerAssets, bool reduceOnly, bool repayEnabled, MidnightBundlesV2.OfferFill[] offerFills, MidnightBundlesV2.CollateralTransfer[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative, address token) {
     require e.msg.sender != currentContract, "external caller";
     require collateralReceiver != currentContract, "no collateral residue";
     require referralFeeRecipient != currentContract, "no fee residue";
 
     mathint before = bundlerBalance[token];
     mathint nativeSentBefore = nativeSentByBundler;
-    mathint nativeReceivedBefore = unwrappedNative;
-    midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(e, market, targetUnits, maxBuyerAssets, reduceOnly, repayEnabled, offerFills, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline);
+    midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(e, market, targetUnits, maxBuyerAssets, reduceOnly, repayEnabled, offerFills, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline, wrappedNative);
     assert bundlerBalance[token] == before;
-    assert nativeSentByBundler - nativeSentBefore - (unwrappedNative - nativeReceivedBefore) == e.msg.value;
+    assert nativeSentByBundler - nativeSentBefore == e.msg.value;
 }
 
-rule supplyCollateralAndSellWithUnitsTargetPreservesBalance(env e, Utils.Market market, uint256 targetUnits, uint256 minSellerAssets, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralSupply[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, address token, uint256 deadline) {
+rule supplyCollateralAndSellWithUnitsTargetPreservesBalance(env e, Utils.Market market, uint256 targetUnits, uint256 minSellerAssets, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralTransfer[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, address wrappedNative, address token) {
     require e.msg.sender != currentContract, "external caller";
     require receiver != currentContract, "no loan residue";
     require referralFeeRecipient != currentContract, "no fee residue";
 
     mathint before = bundlerBalance[token];
     mathint nativeSentBefore = nativeSentByBundler;
-    mathint nativeReceivedBefore = unwrappedNative;
-    midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(e, market, targetUnits, minSellerAssets, reduceOnly, receiver, collateralSupplies, offerFills, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline);
+    midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(e, market, targetUnits, minSellerAssets, reduceOnly, receiver, collateralSupplies, offerFills, referralFeePct, referralFeeRecipient, deadline, wrappedNative);
     assert bundlerBalance[token] == before;
-    assert nativeSentByBundler - nativeSentBefore - (unwrappedNative - nativeReceivedBefore) == e.msg.value;
+    assert nativeSentByBundler - nativeSentBefore == e.msg.value;
 }
 
-rule buyWithAssetsTargetAndWithdrawCollateralPreservesBalance(env e, Utils.Market market, uint256 targetBuyerAssets, uint256 minUnits, bool reduceOnly, bool repayEnabled, MidnightBundlesV2.OfferFill[] offerFills, MidnightBundlesV2.CollateralWithdrawal[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, address token, uint256 deadline) {
+rule buyWithAssetsTargetAndWithdrawCollateralPreservesBalance(env e, Utils.Market market, uint256 targetBuyerAssets, uint256 minUnits, bool reduceOnly, bool repayEnabled, MidnightBundlesV2.OfferFill[] offerFills, MidnightBundlesV2.CollateralTransfer[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative, address token) {
     require e.msg.sender != currentContract, "external caller";
     require collateralReceiver != currentContract, "no collateral residue";
     require referralFeeRecipient != currentContract, "no fee residue";
 
     mathint before = bundlerBalance[token];
     mathint nativeSentBefore = nativeSentByBundler;
-    mathint nativeReceivedBefore = unwrappedNative;
-    midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(e, market, targetBuyerAssets, minUnits, reduceOnly, repayEnabled, offerFills, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline);
+    midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(e, market, targetBuyerAssets, minUnits, reduceOnly, repayEnabled, offerFills, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline, wrappedNative);
     assert bundlerBalance[token] == before;
-    assert nativeSentByBundler - nativeSentBefore - (unwrappedNative - nativeReceivedBefore) == e.msg.value;
+    assert nativeSentByBundler - nativeSentBefore == e.msg.value;
 }
 
-rule supplyCollateralAndSellWithAssetsTargetPreservesBalance(env e, Utils.Market market, uint256 targetSellerAssets, uint256 maxUnits, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralSupply[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, address token, uint256 deadline) {
+rule supplyCollateralAndSellWithAssetsTargetPreservesBalance(env e, Utils.Market market, uint256 targetSellerAssets, uint256 maxUnits, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralTransfer[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, address wrappedNative, address token) {
     require e.msg.sender != currentContract, "external caller";
     require receiver != currentContract, "no loan residue";
     require referralFeeRecipient != currentContract, "no fee residue";
 
     mathint before = bundlerBalance[token];
     mathint nativeSentBefore = nativeSentByBundler;
-    mathint nativeReceivedBefore = unwrappedNative;
-    midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(e, market, targetSellerAssets, maxUnits, reduceOnly, receiver, collateralSupplies, offerFills, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline);
+    midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(e, market, targetSellerAssets, maxUnits, reduceOnly, receiver, collateralSupplies, offerFills, referralFeePct, referralFeeRecipient, deadline, wrappedNative);
     assert bundlerBalance[token] == before;
-    assert nativeSentByBundler - nativeSentBefore - (unwrappedNative - nativeReceivedBefore) == e.msg.value;
+    assert nativeSentByBundler - nativeSentBefore == e.msg.value;
 }

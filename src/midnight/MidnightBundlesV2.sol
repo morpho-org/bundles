@@ -1,8 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IMidnight, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol";
+import {IMidnight, Market, Offer} from "../../lib/midnight/src/interfaces/IMidnight.sol";
+import {IBuyerAssetsBound} from "../../lib/midnight/src/interfaces/ICallbacks.sol";
 import {
     IBlueBuyCallbackFactory
 } from "../../lib/midnight/src/periphery/blue-buy-callback/interfaces/IBlueBuyCallbackFactory.sol";
@@ -22,20 +23,20 @@ import {IWNative} from "../libraries/interfaces/IWNative.sol";
 import {
     IMidnightBundlesV2,
     GroupCancellation,
-    CollateralSupply,
-    CollateralWithdrawal,
+    CollateralTransfer,
     OfferFill
 } from "./interfaces/IMidnightBundlesV2.sol";
 
-/// @dev Maker-side Midnight offer creation and reposting, including callback-funded lend offers and collateralized borrow offers.
-/// @dev Taker-side buying and selling against Midnight offers, including collateral supply/withdrawal and debt repayment.
+/// @dev This contract enables:
+/// - Midnight offer creation and reposting, including BlueBuyCallback-funded lend offers and collateralized borrow offers.
+/// - Midnight batch-takes, including collateral supply/withdrawal and repayment at face value.
 /// @dev Inherits the token safety requirements of Midnight and Morpho Blue.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev All the entrypoints are payable and share the same handling of native tokens: when msg.value is non-zero, the first transfer of the call is funded by wrapping msg.value instead of pulling its token, which must then be the wrapped-native token and whose amount must equal msg.value.
-/// @dev Order matters: msg.value can only fund the call's first transfer; all later transfers are pulled.
-/// @dev The entrypoints don't strand native tokens: balance is compared before and after transfers and the function reverts unless msg.value was consumed, and the buy functions always transfer the buyer assets.
-// forge-lint: disable-start(reentrancy-balance) balance checks only guard against misuse of msg.value.
-// forge-lint: disable-start(msg-value-loop) msg.value is used only once, even when there is a loop.
+/// @dev All entrypoints share the same native-token handling: when msg.value is non-zero, it is wrapped using wrappedNative and transferred to msg.sender before the regular ERC20 pulls.
+/// @dev Native tokens may be combined with an existing wrappedNative balance and are not required to match any individual transfer amount.
+/// @dev wrappedNative must behave like WETH9.
+/// @dev msg.sender must approve this contract to pull wrappedNative before using native tokens.
+/// @dev The users must authorize this contract on Midnight beforehand.
 contract MidnightBundlesV2 is IMidnightBundlesV2 {
     using UtilsLib for uint256;
 
@@ -54,49 +55,48 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         LOG = _log;
     }
 
-    /// @dev Receives the native tokens unwrapped from the wrapped-native token when reimbursing a native buy.
-    receive() external payable {}
-
     /// MAKE-SIDE EXTERNAL FUNCTIONS ///
 
     /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback.
     /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
     /// @dev Optionally supplies collateral to msg.sender on Midnight.
     /// @dev First checks consumption limits and cancels the groups in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
-    /// @dev After a group is cancelled, later occurrences of its ID in groupsToCancel revert unless their maxConsumed is type(uint128).max.
+    /// @dev Use consumption limits to avoid reposting oversized offers if additional fills occur before cancellation.
     /// @dev Each group's maxConsumed is the maximum acceptable Midnight consumption before cancellation, in the group's units or assets.
     /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
-    /// @dev SECURITY: If newRoot is non-zero, this call grants ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
-    /// @dev A wrong ratifier address may authorize a malicious contract that can move funds, modify positions, and authorize other accounts on behalf of msg.sender, potentially causing loss of funds. Interface compatibility and the expected success value do not establish trustworthiness.
+    /// @dev If newRoot is non-zero, this call grants the ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
     /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports PriceRatifierV1 and RateRatifierV1; the selected root setter must return SET_IS_ROOT_RATIFIED_SUCCESS.
-    /// - Pass an empty rootSignature to call setIsRootRatified. Otherwise, pass abi.encode(uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) to call setIsRootRatifiedWithSig.
-    /// - The EIP-712 signature must authorize (msg.sender, newRoot, true, nonce, signatureDeadline) under the selected ratifier's offer-tree typehash for height, for the current chain, signed by msg.sender or an address authorized by msg.sender on Midnight. Its deadline is independent of the bundle's deadline. Invalid signed ratifications revert.
-    /// @dev If newRoot is zero, ratifier, rootSignature, and payload are ignored and ratifier authorizations are unchanged.
+    /// @dev Pass v = r = s = 0 to call setIsRootRatified. Otherwise, the signature parameters are passed to setIsRootRatifiedWithSig. The signature deadline is independent of the bundle's deadline.
+    /// @dev If newRoot is zero, ratifier, signature parameters, and payload are ignored and ratifier authorizations are unchanged.
     /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
-    /// @dev This function is meant to be used for buying (collateralSupplies.length == 0) or selling (assetsToPark == 0).
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
     /// @dev The new root may contain offers for multiple markets.
     /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected against supply-share-price inflation attacks.
-    /// @dev This bundle does not check that:
+    /// @dev This bundle notably does not check that:
     /// - Offers in newRoot or payload match the selected ratifier, the intended use case (lend limit or borrow limit), and the supplied funding or collateral inputs.
     /// - newRoot corresponds to the offers described by payload. The payload posted to LOG is not validated against any on-chain state or bundle inputs.
-    /// @dev Cancel prior offers before reposting to avoid leaving both old and new offers takeable. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers.
-    /// @dev The maker must authorize this contract on Midnight beforehand.
+    /// - Prior offers are cancelled when reposting. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers, otherwise both old and new offers remain takeable.
     function midnightBundlesV2CancelAndMake(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
         bytes32 callbackSalt,
         Market memory market,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         address ratifier,
         bytes32 newRoot,
-        bytes memory rootSignature,
+        uint256 signatureHeight,
+        uint128 signatureNonce,
+        uint256 signatureDeadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s,
         GroupCancellation[] memory groupsToCancel,
         bytes memory payload,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
-        require(collateralSupplies.length == 0 || assetsToPark == 0, InconsistentInputs());
+        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
 
         for (uint256 i; i < groupsToCancel.length; i++) {
             GroupCancellation memory cancellation = groupsToCancel[i];
@@ -107,59 +107,58 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
             IMidnight(MIDNIGHT).setConsumed(cancellation.group, type(uint128).max, msg.sender);
         }
 
-        uint256 nativeBefore = address(this).balance;
-        supplyCollaterals(market, collateralSupplies, msg.sender);
+        for (uint256 i; i < collateralSupplies.length; i++) {
+            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            SafeTransferLib.safeTransferFrom(collateralToken, msg.sender, address(this), collateralSupplies[i].assets);
+            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(
+                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
+                );
+        }
 
         if (assetsToPark > 0) {
             address blueBuyCallback =
                 IBlueBuyCallbackFactory(BLUE_BUY_CALLBACK_FACTORY).createBlueBuyCallback(msg.sender, callbackSalt);
-            TokenLib.transferFromOrWrapNative(blueMarket.loanToken, msg.sender, assetsToPark, msg.value > 0);
+            SafeTransferLib.safeTransferFrom(blueMarket.loanToken, msg.sender, address(this), assetsToPark);
             TokenLib.forceApproveMax(blueMarket.loanToken, BLUE);
             IMorpho(BLUE).supply(blueMarket, assetsToPark, 0, blueBuyCallback, "");
         }
-        // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
-        require(address(this).balance == nativeBefore - msg.value, UnusedNative());
 
         if (newRoot != bytes32(0)) {
             IMidnight(MIDNIGHT).setIsAuthorized(ratifier, true, msg.sender);
-            bytes32 ratificationResult;
-            if (rootSignature.length == 0) {
-                ratificationResult = IRatifiersV1Common(ratifier).setIsRootRatified(msg.sender, newRoot, true);
+            if (v == 0 && r == 0 && s == 0) {
+                bytes32 res = IRatifiersV1Common(ratifier).setIsRootRatified(msg.sender, newRoot, true);
+                require(res == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
             } else {
-                (uint256 height, uint128 nonce, uint256 signatureDeadline, uint8 v, bytes32 r, bytes32 s) =
-                    abi.decode(rootSignature, (uint256, uint128, uint256, uint8, bytes32, bytes32));
-                ratificationResult = IRatifiersV1Common(ratifier)
-                    .setIsRootRatifiedWithSig(msg.sender, newRoot, height, true, nonce, signatureDeadline, v, r, s);
+                bytes32 res = IRatifiersV1Common(ratifier)
+                    .setIsRootRatifiedWithSig(
+                        msg.sender, newRoot, signatureHeight, true, signatureNonce, signatureDeadline, v, r, s
+                    );
+                require(res == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
             }
-            require(ratificationResult == SET_IS_ROOT_RATIFIED_SUCCESS, InvalidRatifierResponse());
 
-            (bool success, bytes memory returndata) = LOG.call(payload);
-            if (!success) {
-                assembly ("memory-safe") {
-                    revert(add(returndata, 0x20), mload(returndata))
-                }
-            }
+            log(payload);
         }
     }
 
     /// TAKE-SIDE EXTERNAL FUNCTIONS ///
 
-    // For each offer, the buy/sell functions below will take min("units needed to fill target units / assets", offerFills[i].units, "units still consumable in offerFills[i].offer") units.
     // Only touched offers are checked to point to the given market.
     // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
-    // msg.sender is the taker and must authorize this bundler on Midnight for the buy/sell functions below.
     // msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
     // The bundler contract must have an allowance to pull enough tokens from msg.sender for the buy/sell functions below.
     // Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing to buy, decreasing to sell).
     // offerFills[i].units should prevent taking more than what is takeable w.r.t. the callback / the balances / the health.
-    // For the buy/sell functions below, the current market continuous fee must be at most maxContinuousFee when taking offers. Pass type(uint256).max to disable.
+    // For the buy functions below, the current market continuous fee must be at most maxContinuousFee when taking offers.
 
     /// @dev This function pulls maxBuyerAssets from the msg.sender and transfers back the remaining tokens at the end.
-    /// @dev When native tokens are sent, the remaining tokens are unwrapped back to native, which requires msg.sender to be able to receive native tokens, or else it will revert.
     /// @dev msg.sender will pay at most maxBuyerAssets.
     /// @dev If repayEnabled and msg.sender has debt, the remaining amount not covered by the take loop is repaid.
+    /// @dev targetUnits = type(uint256).max targets msg.sender's debt before taking offers; with repayEnabled = true and empty offerFills, it repays all debt directly.
     /// @dev Total loan assets transferred from msg.sender is filledBuyerAssets + filledBuyerAssets * referralFeePct / (WAD - referralFeePct).
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
+    /// @dev Set collateralWithdrawals[i].assets to type(uint256).max to withdraw msg.sender's full balance of that collateral at the time of withdrawal.
     function midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
         Market memory market,
         uint256 targetUnits,
@@ -167,38 +166,42 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
-        CollateralWithdrawal[] memory collateralWithdrawals,
+        CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
         address loanToken = market.loanToken;
-        TokenLib.transferFromOrWrapNative(loanToken, msg.sender, maxBuyerAssets, msg.value > 0);
+        SafeTransferLib.safeTransferFrom(loanToken, msg.sender, address(this), maxBuyerAssets);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
+
+        if (targetUnits == type(uint256).max) targetUnits = IMidnight(MIDNIGHT).debt(id, msg.sender);
 
         uint256 filledUnits;
         uint256 filledBuyerAssets;
         for (uint256 i; i < offerFills.length && filledUnits < targetUnits; i++) {
-            require(!offerFills[i].offer.buy, InconsistentSide());
-            require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
+            OfferFill memory fill = offerFills[i];
+            require(!fill.offer.buy, InconsistentSide());
+            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
-                offerFills[i].units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, offerFills[i].offer)
+                fill.units,
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                fill.offer.reduceOnly ? credit(market, id, fill.offer.maker) : type(uint256).max
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
-                .take(
-                    offerFills[i].offer, offerFills[i].ratifierData, unitsToTake, msg.sender, address(0), address(0), ""
-                ) returns (
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
             ) {
                 filledUnits += unitsToTake;
@@ -207,7 +210,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         }
         if (repayEnabled) {
             uint256 repayUnits = UtilsLib.min(targetUnits - filledUnits, IMidnight(MIDNIGHT).debt(id, msg.sender));
-            IMidnight(MIDNIGHT).repay(market, repayUnits, msg.sender, address(0), "");
+            if (repayUnits > 0) IMidnight(MIDNIGHT).repay(market, repayUnits, msg.sender, address(0), "");
             filledUnits += repayUnits;
             filledBuyerAssets += repayUnits;
         }
@@ -215,33 +218,22 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         require(filledUnits == targetUnits, OutOfOffers());
 
         for (uint256 i; i < collateralWithdrawals.length; i++) {
-            IMidnight(MIDNIGHT)
-                .withdrawCollateral(
-                    market,
-                    collateralWithdrawals[i].collateralIndex,
-                    collateralWithdrawals[i].assets,
-                    msg.sender,
-                    collateralReceiver
-                );
+            uint256 collateralIndex = collateralWithdrawals[i].collateralIndex;
+            uint256 assets = collateralWithdrawals[i].assets;
+            if (assets == type(uint256).max) assets = IMidnight(MIDNIGHT).collateral(id, msg.sender, collateralIndex);
+            IMidnight(MIDNIGHT).withdrawCollateral(market, collateralIndex, assets, msg.sender, collateralReceiver);
         }
 
         uint256 referralFeeAssets = filledBuyerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
 
         uint256 remainder = maxBuyerAssets - filledBuyerAssets - referralFeeAssets;
-        if (remainder > 0) {
-            if (msg.value > 0) {
-                IWNative(loanToken).withdraw(remainder);
-                (bool success,) = msg.sender.call{value: remainder}("");
-                require(success, NativeTransferFailed());
-            } else {
-                SafeTransferLib.safeTransfer(loanToken, msg.sender, remainder);
-            }
-        }
+        if (remainder > 0) SafeTransferLib.safeTransfer(loanToken, msg.sender, remainder);
     }
 
     /// @dev The receiver will receive at least minSellerAssets.
     /// @dev If msg.sender has credit, as much credit as possible is withdrawn before the take loop.
+    /// @dev targetUnits = type(uint256).max targets msg.sender's credit before withdrawing and taking offers.
     /// @dev Total loan assets received by the receiver is filledSellerAssets - filledSellerAssets * referralFeePct / WAD.
     /// @dev msg.sender will pay collateralSupplies[0].assets of the first token of collateralSupplies, etc.
     function midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
@@ -250,51 +242,50 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 minSellerAssets,
         bool reduceOnly,
         address receiver,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
-        uint256 nativeBefore = address(this).balance;
-        supplyCollaterals(market, collateralSupplies, msg.sender);
-        // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
-        require(address(this).balance == nativeBefore - msg.value, UnusedNative());
+        for (uint256 i; i < collateralSupplies.length; i++) {
+            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            SafeTransferLib.safeTransferFrom(collateralToken, msg.sender, address(this), collateralSupplies[i].assets);
+            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(
+                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
+                );
+        }
 
-        (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
-        uint256 withdrawUnits = min(targetUnits, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
-        IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
+        uint256 currentCredit = credit(market, id, msg.sender);
+        if (targetUnits == type(uint256).max) targetUnits = currentCredit;
+
+        uint256 withdrawUnits = min(targetUnits, currentCredit, IMidnight(MIDNIGHT).withdrawable(id));
+        if (withdrawUnits > 0) IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;
         for (uint256 i; i < offerFills.length && filledUnits < targetUnits; i++) {
-            require(offerFills[i].offer.buy, InconsistentSide());
-            require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
-            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
+            OfferFill memory fill = offerFills[i];
+            require(fill.offer.buy, InconsistentSide());
+            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             uint256 unitsToTake = min(
                 targetUnits - filledUnits,
-                offerFills[i].units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, offerFills[i].offer)
+                fill.units,
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                fill.offer.reduceOnly ? debt(id, fill.offer.maker) : type(uint256).max,
+                TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
-            if (reduceOnly) {
-                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
-                require(unitsToTake <= takerCredit, NotReduceOnly());
-            }
+            require(!reduceOnly || unitsToTake <= credit(market, id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
-                .take(
-                    offerFills[i].offer,
-                    offerFills[i].ratifierData,
-                    unitsToTake,
-                    msg.sender,
-                    address(this),
-                    address(0),
-                    ""
-                ) returns (
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "") returns (
                 uint256, uint256 resSellerAssets
             ) {
                 filledUnits += unitsToTake;
@@ -316,6 +307,8 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev msg.sender will gain at least minUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
     /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
+    /// @dev Set collateralWithdrawals[i].assets to type(uint256).max to withdraw msg.sender's full balance of that collateral at the time of withdrawal.
+    /// @dev For full repayment, use midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral with targetUnits = type(uint256).max instead.
     function midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
         Market memory market,
         uint256 targetBuyerAssets,
@@ -323,20 +316,22 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
-        CollateralWithdrawal[] memory collateralWithdrawals,
+        CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
         address loanToken = market.loanToken;
-        TokenLib.transferFromOrWrapNative(loanToken, msg.sender, targetBuyerAssets, msg.value > 0);
+        SafeTransferLib.safeTransferFrom(loanToken, msg.sender, address(this), targetBuyerAssets);
         TokenLib.forceApproveMax(loanToken, MIDNIGHT);
 
         uint256 referralFeeAssets = targetBuyerAssets.mulDivDown(referralFeePct, WAD);
@@ -345,21 +340,21 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 filledUnits;
         uint256 filledBuyerAssets;
         for (uint256 i; i < offerFills.length && filledBuyerAssets < targetFilledBuyerAssets; i++) {
-            require(!offerFills[i].offer.buy, InconsistentSide());
-            require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
+            OfferFill memory fill = offerFills[i];
+            require(!fill.offer.buy, InconsistentSide());
+            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
             uint256 unitsToTake = min(
                 TakeAmountsLib.buyerAssetsToUnits(
-                    MIDNIGHT, id, offerFills[i].offer, targetFilledBuyerAssets - filledBuyerAssets
+                    MIDNIGHT, id, fill.offer, targetFilledBuyerAssets - filledBuyerAssets
                 ),
-                offerFills[i].units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, offerFills[i].offer)
+                fill.units,
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                fill.offer.reduceOnly ? credit(market, id, fill.offer.maker) : type(uint256).max
             );
             require(!reduceOnly || unitsToTake <= IMidnight(MIDNIGHT).debt(id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
-                .take(
-                    offerFills[i].offer, offerFills[i].ratifierData, unitsToTake, msg.sender, address(0), address(0), ""
-                ) returns (
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(0), address(0), "") returns (
                 uint256 resBuyerAssets, uint256
             ) {
                 filledUnits += unitsToTake;
@@ -369,7 +364,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         if (repayEnabled) {
             uint256 repayAssets =
                 UtilsLib.min(targetFilledBuyerAssets - filledBuyerAssets, IMidnight(MIDNIGHT).debt(id, msg.sender));
-            IMidnight(MIDNIGHT).repay(market, repayAssets, msg.sender, address(0), "");
+            if (repayAssets > 0) IMidnight(MIDNIGHT).repay(market, repayAssets, msg.sender, address(0), "");
             filledUnits += repayAssets;
             filledBuyerAssets += repayAssets;
         }
@@ -378,14 +373,10 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         require(filledUnits >= minUnits, UnitsTooLow());
 
         for (uint256 i; i < collateralWithdrawals.length; i++) {
-            IMidnight(MIDNIGHT)
-                .withdrawCollateral(
-                    market,
-                    collateralWithdrawals[i].collateralIndex,
-                    collateralWithdrawals[i].assets,
-                    msg.sender,
-                    collateralReceiver
-                );
+            uint256 collateralIndex = collateralWithdrawals[i].collateralIndex;
+            uint256 assets = collateralWithdrawals[i].assets;
+            if (assets == type(uint256).max) assets = IMidnight(MIDNIGHT).collateral(id, msg.sender, collateralIndex);
+            IMidnight(MIDNIGHT).withdrawCollateral(market, collateralIndex, assets, msg.sender, collateralReceiver);
         }
 
         if (referralFeeAssets > 0) SafeTransferLib.safeTransfer(loanToken, referralFeeRecipient, referralFeeAssets);
@@ -402,56 +393,53 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
         uint256 maxUnits,
         bool reduceOnly,
         address receiver,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable {
         require(block.timestamp <= deadline, DeadlinePassed());
+        if (msg.value > 0) wrapNativeToMsgSender(wrappedNative);
         require(referralFeePct < WAD, PctExceeded());
         // touchMarket to have the correct settlement fees.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
-        uint256 nativeBefore = address(this).balance;
-        supplyCollaterals(market, collateralSupplies, msg.sender);
-        // forge-lint: disable-next-item(incorrect-strict-equality) exact equality: msg.value must be fully consumed.
-        require(address(this).balance == nativeBefore - msg.value, UnusedNative());
+        for (uint256 i; i < collateralSupplies.length; i++) {
+            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
+            SafeTransferLib.safeTransferFrom(collateralToken, msg.sender, address(this), collateralSupplies[i].assets);
+            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
+            IMidnight(MIDNIGHT)
+                .supplyCollateral(
+                    market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, msg.sender
+                );
+        }
 
         uint256 referralFeeAssets = targetSellerAssets.mulDivDown(referralFeePct, WAD - referralFeePct);
         uint256 targetFilledSellerAssets = targetSellerAssets + referralFeeAssets;
 
-        (uint128 takerCreditBefore,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
-        uint256 withdrawUnits = min(targetFilledSellerAssets, takerCreditBefore, IMidnight(MIDNIGHT).withdrawable(id));
-        IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
+        uint256 withdrawUnits =
+            min(targetFilledSellerAssets, credit(market, id, msg.sender), IMidnight(MIDNIGHT).withdrawable(id));
+        if (withdrawUnits > 0) IMidnight(MIDNIGHT).withdraw(market, withdrawUnits, msg.sender, address(this));
         uint256 filledUnits = withdrawUnits;
         uint256 filledSellerAssets = withdrawUnits;
         for (uint256 i; i < offerFills.length && filledSellerAssets < targetFilledSellerAssets; i++) {
-            require(offerFills[i].offer.buy, InconsistentSide());
-            require(IdLib.toId(offerFills[i].offer.market) == id, InconsistentMarket());
-            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
+            OfferFill memory fill = offerFills[i];
+            require(fill.offer.buy, InconsistentSide());
+            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
             uint256 unitsToTake = min(
                 TakeAmountsLib.sellerAssetsToUnits(
-                    MIDNIGHT, id, offerFills[i].offer, targetFilledSellerAssets - filledSellerAssets
+                    MIDNIGHT, id, fill.offer, targetFilledSellerAssets - filledSellerAssets
                 ),
-                offerFills[i].units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, offerFills[i].offer)
+                fill.units,
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                fill.offer.reduceOnly ? debt(id, fill.offer.maker) : type(uint256).max,
+                TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
-            if (reduceOnly) {
-                (uint128 takerCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, msg.sender);
-                require(unitsToTake <= takerCredit, NotReduceOnly());
-            }
+            require(!reduceOnly || unitsToTake <= credit(market, id, msg.sender), NotReduceOnly());
             try IMidnight(MIDNIGHT)
-                .take(
-                    offerFills[i].offer,
-                    offerFills[i].ratifierData,
-                    unitsToTake,
-                    msg.sender,
-                    address(this),
-                    address(0),
-                    ""
-                ) returns (
+                .take(fill.offer, fill.ratifierData, unitsToTake, msg.sender, address(this), address(0), "") returns (
                 uint256, uint256 resSellerAssets
             ) {
                 filledUnits += unitsToTake;
@@ -469,24 +457,60 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
 
     /// INTERNAL FUNCTIONS ///
 
-    /// @dev Supplies each collateralSupplies entry to onBehalf on Midnight, pulling the assets from msg.sender.
-    /// @dev The first supply is funded by wrapping msg.value when it is non-zero.
-    function supplyCollaterals(Market memory market, CollateralSupply[] memory collateralSupplies, address onBehalf)
-        internal
-    {
-        for (uint256 i; i < collateralSupplies.length; i++) {
-            address collateralToken = market.collateralParams[collateralSupplies[i].collateralIndex].token;
-            TokenLib.transferFromOrWrapNative(
-                collateralToken, msg.sender, collateralSupplies[i].assets, msg.value > 0 && i == 0
-            );
-            TokenLib.forceApproveMax(collateralToken, MIDNIGHT);
-            IMidnight(MIDNIGHT)
-                .supplyCollateral(market, collateralSupplies[i].collateralIndex, collateralSupplies[i].assets, onBehalf);
+    /// @dev Returns user's credit on market, after fee accrual and slashing.
+    function credit(Market memory market, bytes32 id, address user) internal view returns (uint256) {
+        (uint128 userCredit,,) = IMidnight(MIDNIGHT).updatePositionView(market, id, user);
+        return userCredit;
+    }
+
+    /// @dev Returns user's debt on market.
+    function debt(bytes32 id, address user) internal view returns (uint256) {
+        return IMidnight(MIDNIGHT).debt(id, user);
+    }
+
+    /// @dev Returns the maker's callback funding cap in buyer assets for a buy offer.
+    /// @dev Buy offers already limit buyer assets to uint128.max through maxAssets or maxUnits and buyerPrice <= WAD.
+    function buyerAssetsBound(bytes32 id, Offer memory offer) internal view returns (uint256) {
+        if (offer.callback == address(0)) return type(uint128).max;
+        try IBuyerAssetsBound(offer.callback)
+            .buyerAssetsBound(id, offer.market, offer.maker, offer.callbackData) returns (
+            uint256 bound
+        ) {
+            return UtilsLib.min(bound, type(uint128).max);
+        } catch {
+            return type(uint128).max;
+        }
+    }
+
+    /// @dev Wraps msg.value into wrappedNative and transfers it to msg.sender.
+    // forge-lint: disable-next-item(arbitrary-send-eth) wrappedNative is chosen by msg.sender, who also receives the wrapped tokens.
+    function wrapNativeToMsgSender(address wrappedNative) internal {
+        IWNative(wrappedNative).deposit{value: msg.value}();
+        SafeTransferLib.safeTransfer(wrappedNative, msg.sender, msg.value);
+    }
+
+    /// @dev Calls the log contract and bubbles up any revert data.
+    function log(bytes memory payload) internal {
+        (bool success, bytes memory returndata) = LOG.call(payload);
+        if (!success) {
+            assembly ("memory-safe") {
+                revert(add(returndata, 0x20), mload(returndata))
+            }
         }
     }
 
     /// @dev Returns min(x, y, z).
     function min(uint256 x, uint256 y, uint256 z) internal pure returns (uint256) {
         return UtilsLib.min(UtilsLib.min(x, y), z);
+    }
+
+    /// @dev Returns min(x, y, z, w).
+    function min(uint256 x, uint256 y, uint256 z, uint256 w) internal pure returns (uint256) {
+        return UtilsLib.min(UtilsLib.min(x, y), UtilsLib.min(z, w));
+    }
+
+    /// @dev Returns min(x, y, z, w, v).
+    function min(uint256 x, uint256 y, uint256 z, uint256 w, uint256 v) internal pure returns (uint256) {
+        return UtilsLib.min(min(x, y, z), UtilsLib.min(w, v));
     }
 }

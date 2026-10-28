@@ -1,8 +1,7 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {Test} from "../lib/forge-std/src/Test.sol";
 import {IMorpho, MarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {MorphoLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
@@ -10,7 +9,7 @@ import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/Morp
 import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {ErrorsLib as BlueErrorsLib} from "../lib/morpho-blue/src/libraries/ErrorsLib.sol";
-import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
+import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
@@ -28,7 +27,7 @@ import {WETHMock} from "./BlueBundlesTest.sol";
 
 /// @dev Covers the public-allocator paths of the three Blue entrypoints that consume market liquidity: borrowing
 /// against fresh collateral, exiting a supply position, and migrating a borrow position.
-contract BluePublicAllocatorTest is Test {
+contract BluePublicAllocatorTest is TokenTest {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;
@@ -46,7 +45,7 @@ contract BluePublicAllocatorTest is Test {
     IBluePublicAllocatorConfig internal publicAllocator;
     BlueBundlesV1 internal blueBundles;
 
-    ERC20Mock internal loanToken;
+    ITestToken internal loanToken;
     WETHMock internal weth; // ERC20 collateral of every market.
     OracleMock internal oracle;
 
@@ -67,7 +66,7 @@ contract BluePublicAllocatorTest is Test {
 
     function setUp() public {
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
-        loanToken = new ERC20Mock(18);
+        loanToken = deployToken("loan");
         weth = new WETHMock();
         oracle = new OracleMock();
         oracle.setPrice(ORACLE_PRICE_SCALE);
@@ -195,7 +194,7 @@ contract BluePublicAllocatorTest is Test {
     function _fundVault(uint256 toAllocate) internal {
         deal(address(loanToken), depositor, VAULT_ASSETS);
         vm.startPrank(depositor);
-        loanToken.approve(address(vault), type(uint256).max);
+        safeApprove(loanToken, address(vault), type(uint256).max);
         vault.deposit(VAULT_ASSETS, depositor);
         vm.stopPrank();
 
@@ -227,7 +226,7 @@ contract BluePublicAllocatorTest is Test {
     function _supplyThenDrain(MarketParams memory mp, uint256 assets) internal {
         deal(address(loanToken), user, assets);
         vm.startPrank(user);
-        loanToken.approve(address(morpho), type(uint256).max);
+        safeApprove(loanToken, address(morpho), type(uint256).max);
         morpho.supply(mp, assets, 0, user, "");
         vm.stopPrank();
 
@@ -352,7 +351,7 @@ contract BluePublicAllocatorTest is Test {
         uint256 penaltyAssets = _penaltyAssets(assets);
         deal(address(loanToken), depositor, penaltyAssets);
         vm.startPrank(depositor);
-        loanToken.approve(address(morpho), penaltyAssets);
+        safeApprove(loanToken, address(morpho), penaltyAssets);
         morpho.supply(destMarketParams, penaltyAssets, 0, depositor, "");
         vm.stopPrank();
 
@@ -573,7 +572,7 @@ contract BluePublicAllocatorTest is Test {
         // The source market is liquid so the user could borrow from it; the destination is empty.
         deal(address(loanToken), depositor, borrowAssets);
         vm.startPrank(depositor);
-        loanToken.approve(address(morpho), type(uint256).max);
+        safeApprove(loanToken, address(morpho), type(uint256).max);
         morpho.supply(marketParams, borrowAssets, 0, depositor, "");
         vm.stopPrank();
 
@@ -751,7 +750,7 @@ contract BluePublicAllocatorTest is Test {
         // The bundle's market is already liquid, so neither reallocation needs to target it.
         deal(address(loanToken), depositor, borrowAssets);
         vm.startPrank(depositor);
-        loanToken.approve(address(morpho), type(uint256).max);
+        safeApprove(loanToken, address(morpho), type(uint256).max);
         morpho.supply(marketParams, borrowAssets, 0, depositor, "");
         vm.stopPrank();
 

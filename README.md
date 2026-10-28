@@ -14,9 +14,8 @@ Users should expect tokens left to the bundles as lost.
 
 Maker-side:
 
-- `midnightBundlesV2CancelAndMake` — cancel offer groups, optionally park loan assets on Blue or supply collateral on Midnight, and publish new maker offers.
+- `midnightBundlesV2CancelAndMake` — cancel offer groups, optionally park loan assets on Blue and/or supply collateral on Midnight, and publish new maker offers.
 
-Parking loan assets (to fund buy offers) and supplying collateral (to back sell offers) are mutually exclusive.
 Supports `PriceRatifierV1` and `RateRatifierV1`, with optional signed root activation.
 The maker must authorize the bundle on Midnight and approve it to pull any supplied loan or collateral assets.
 See the entrypoint's NatSpec for parameters, validation limits, and ratifier authorization requirements.
@@ -55,10 +54,21 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 - `vaultExitBundlesV1InKindRedemptionVaultV2` — withdraw idle assets and redeem the remainder in kind from an illiquid Vault V2.
 - `vaultExitBundlesV1ForceWithdrawVaultV2` — force withdraw from a liquid Vault V2.
 
+## Changelog
+
+Changes between versions and source code of all versions are listed in the [CHANGELOG](./CHANGELOG.md).
+
+## Developers
+
+Compilation, testing and formatting are done with [forge](https://book.getfoundry.sh/getting-started/installation).
+
+Formal verification of the bundles is done with the [Certora Prover](https://www.certora.com/prover).
+See the [Certora README](./certora/README.md) for the full list of verified properties and the modeling assumptions they rely on.
+
 ## Audits
 
 Audits can be found in the [audits](./audits/) folder.
 
 ## License
 
-Files in this repository are publicly available under license `GPL-2.0-or-later`, see [`LICENSE`](./LICENSE).
+Files in this repository are publicly available under `MIT`, see [LICENSE](./LICENSE).

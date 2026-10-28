@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Morpho Association
 pragma solidity >=0.8.0;
 
@@ -10,12 +10,7 @@ struct GroupCancellation {
     uint128 maxConsumed;
 }
 
-struct CollateralSupply {
-    uint256 collateralIndex;
-    uint256 assets;
-}
-
-struct CollateralWithdrawal {
+struct CollateralTransfer {
     uint256 collateralIndex;
     uint256 assets;
 }
@@ -35,16 +30,13 @@ interface IMidnightBundlesV2 {
     error InconsistentMarket();
     error InconsistentMidnight();
     error InconsistentSide();
-    error InconsistentInputs();
     error InvalidRatifierResponse();
-    error NativeTransferFailed();
     error NotReduceOnly();
     error OutOfOffers();
     error PctExceeded();
     error SellerAssetsTooLow();
     error UnitsTooHigh();
     error UnitsTooLow();
-    error UnusedNative();
 
     /// STORAGE GETTERS ///
     function MIDNIGHT() external view returns (address);
@@ -58,13 +50,19 @@ interface IMidnightBundlesV2 {
         uint256 assetsToPark,
         bytes32 callbackSalt,
         Market memory market,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         address ratifier,
         bytes32 newRoot,
-        bytes memory rootSignature,
+        uint256 signatureHeight,
+        uint128 signatureNonce,
+        uint256 signatureDeadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s,
         GroupCancellation[] memory groupsToCancel,
         bytes memory payload,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable;
 
     function midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
@@ -74,12 +72,13 @@ interface IMidnightBundlesV2 {
         bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
-        CollateralWithdrawal[] memory collateralWithdrawals,
+        CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable;
 
     function midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
@@ -88,12 +87,12 @@ interface IMidnightBundlesV2 {
         uint256 minSellerAssets,
         bool reduceOnly,
         address receiver,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable;
 
     function midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
@@ -103,12 +102,13 @@ interface IMidnightBundlesV2 {
         bool reduceOnly,
         bool repayEnabled,
         OfferFill[] memory offerFills,
-        CollateralWithdrawal[] memory collateralWithdrawals,
+        CollateralTransfer[] memory collateralWithdrawals,
         address collateralReceiver,
         uint256 referralFeePct,
         address referralFeeRecipient,
         uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable;
 
     function midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
@@ -117,11 +117,11 @@ interface IMidnightBundlesV2 {
         uint256 maxUnits,
         bool reduceOnly,
         address receiver,
-        CollateralSupply[] memory collateralSupplies,
+        CollateralTransfer[] memory collateralSupplies,
         OfferFill[] memory offerFills,
         uint256 referralFeePct,
         address referralFeeRecipient,
-        uint256 maxContinuousFee,
-        uint256 deadline
+        uint256 deadline,
+        address wrappedNative
     ) external payable;
 }
