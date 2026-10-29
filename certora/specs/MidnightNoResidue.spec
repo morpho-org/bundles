@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 // No token residue: every entry point preserves the bundler's balance of every token, and sends out exactly msg.value of native tokens (wrapped and forwarded to the caller).
-// Scope: all entry points.
+// Scope: all entry points, with loops unrolled once (loop_iter 1): bundles with at most one offer fill and one collateral transfer.
 // Assumptions shared with the BlueBundles suite:
 //   - no bundler donations: the caller, the referral fee recipient and the token receivers are different from the bundler.
 //   - well-behaved ERC20 (no fee-on-transfer/rebasing).
