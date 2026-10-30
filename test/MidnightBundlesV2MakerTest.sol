@@ -29,6 +29,7 @@ import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
 import {Oracle} from "../lib/midnight/test/helpers/Oracle.sol";
 import {IMorpho, MarketParams} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
+import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {MidnightBundlesV2} from "../src/midnight/MidnightBundlesV2.sol";
 import {
@@ -49,6 +50,7 @@ struct RootSignatureParams {
 
 contract MidnightBundlesV2MakerTest is TokenTest {
     using MorphoBalancesLib for IMorpho;
+    using MarketParamsLib for MarketParams;
 
     uint256 internal constant LLTV = 0.8e18;
     uint128 internal constant PARKED_ASSETS = 1_000e18;
@@ -868,6 +870,84 @@ contract MidnightBundlesV2MakerTest is TokenTest {
         assertTrue(midnight.isAuthorized(lender, address(priceRatifier)), "ratifier authorization");
         assertTrue(priceRatifier.isRootRatified(lender, root), "root ratification");
         assertEq(loanToken.balanceOf(address(midnightBundles)), 0, "bundle balance");
+    }
+
+    function seedIdleMarket(uint256 shares) internal returns (uint256 assets) {
+        vm.prank(owner);
+        morpho.enableLltv(0);
+        blueMarket = MarketParams(address(loanToken), address(0), address(0), address(0), 0);
+        morpho.createMarket(blueMarket);
+
+        deal(address(loanToken), address(this), 1);
+        safeApprove(loanToken, address(morpho), type(uint256).max);
+        (assets,) = morpho.supply(blueMarket, 0, shares, address(this), "");
+        assertEq(assets, 1, "attacker cost in smallest token units");
+    }
+
+    function testIdleMarketTokenDonationDoesNotInflatePrice() public {
+        seedIdleMarket(1e6);
+        deal(address(loanToken), address(this), PARKED_ASSETS);
+        loanToken.transfer(address(morpho), PARKED_ASSETS);
+
+        assertEq(morpho.market(blueMarket.id()).totalSupplyAssets, 1, "donation not accounted");
+        Offer memory offer = makeOffer(keccak256("idle"), PARKED_ASSETS, MAX_TICK);
+        makeLendLimit(offer, PARKED_ASSETS);
+        assertEq(morpho.position(blueMarket.id(), callbackOf(lender)).supplyShares, uint256(PARKED_ASSETS) * 1e6);
+        assertEq(morpho.expectedSupplyAssets(blueMarket, callbackOf(lender)), PARKED_ASSETS);
+    }
+
+    function testIdleMarketRoundingSingleParkingCycle(
+        uint128 victimAssets,
+        uint32 attackerShares,
+        bool attackerWithdrawsFirst
+    ) public {
+        victimAssets = uint128(bound(victimAssets, 1, PARKED_ASSETS));
+        attackerShares = uint32(bound(attackerShares, 1, 1e6));
+        uint256 attackerPaid = seedIdleMarket(attackerShares);
+
+        Offer memory offer = makeOffer(keccak256("idle"), victimAssets, MAX_TICK);
+        makeLendLimit(offer, victimAssets);
+        uint256 victimShares = morpho.position(blueMarket.id(), callbackOf(lender)).supplyShares;
+        assertEq(victimShares, uint256(victimAssets) * (uint256(attackerShares) + 1e6) / 2);
+
+        uint256 attackerReceived;
+        if (attackerWithdrawsFirst) {
+            (attackerReceived,) = morpho.withdraw(blueMarket, 0, attackerShares, address(this), address(this));
+        }
+        vm.prank(lender);
+        (uint256 victimReceived,) = morpho.withdraw(blueMarket, 0, victimShares, callbackOf(lender), lender);
+        if (!attackerWithdrawsFirst) {
+            (attackerReceived,) = morpho.withdraw(blueMarket, 0, attackerShares, address(this), address(this));
+        }
+
+        assertLe(attackerReceived, attackerPaid, "attacker cannot profit from this single cycle");
+        assertLe(victimReceived, victimAssets, "victim cannot profit");
+        assertGe(victimReceived, uint256(victimAssets) - 1, "victim loses at most one smallest token unit");
+        assertEq(loanToken.balanceOf(address(this)), attackerReceived, "realized attacker balance");
+        assertEq(loanToken.balanceOf(lender), 2 * PARKED_ASSETS - victimAssets + victimReceived);
+    }
+
+    function testIdleMarketRepeatedDustParkingCanProfitOneTokenUnit() public {
+        uint256 attackerPaid = seedIdleMarket(999_999);
+        uint256 victimBalanceBefore = loanToken.balanceOf(lender);
+        Offer memory offer = makeOffer(keccak256("idle"), 1, MAX_TICK);
+
+        for (uint256 i; i < 3; ++i) {
+            makeLendLimit(offer, 1);
+            uint256 shares = morpho.position(blueMarket.id(), callbackOf(lender)).supplyShares;
+            assertGt(shares, 0, "parking mints nonzero shares");
+            vm.prank(lender);
+            (uint256 received,) = morpho.withdraw(blueMarket, 0, shares, callbackOf(lender), lender);
+            assertEq(received, 0, "dust position rounds to zero on withdrawal");
+        }
+
+        (uint256 attackerReceived,) = morpho.withdraw(blueMarket, 0, 999_999, address(this), address(this));
+        assertEq(attackerReceived, 2);
+        assertEq(attackerReceived - attackerPaid, 1, "profit before gas in smallest token units");
+        assertEq(loanToken.balanceOf(address(this)), 2, "realized attacker balance");
+        assertEq(victimBalanceBefore - loanToken.balanceOf(lender), 3, "victim loses three smallest token units");
+        assertEq(morpho.market(blueMarket.id()).totalSupplyAssets, 2, "remaining assets back virtual shares");
+        assertEq(morpho.market(blueMarket.id()).totalSupplyShares, 0, "all real shares redeemed");
     }
 
     function testMakeWithoutParkingDoesNotCreateCallback() public {
