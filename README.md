@@ -42,6 +42,20 @@ The taker is msg.sender and must authorize the bundle on Midnight and approve it
 
 The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollateralAndBorrow`, `blueBundlesV1Withdraw`, and `blueBundlesV1MigrateBorrowPosition`) support VaultV2's BluePublicAllocator.
 
+## Leverage bundles (PoC)
+
+Callers must authorize `VeloraLeverageBundlesV1` on Morpho Blue; opening also requires approval to pull collateral.
+
+### [VeloraLeverageBundlesV1](src/leverage/VeloraLeverageBundlesV1.sol)
+
+- `veloraLeverageBundlesV1Open` — supply caller collateral and borrow the remainder for an exact-output swap into collateral.
+- `veloraLeverageBundlesV1Delever` — repay part of the debt by swapping withdrawn collateral for loan tokens.
+- `veloraLeverageBundlesV1Close` — repay all borrow shares and return the remaining collateral.
+
+`leverage` is WAD-scaled (`1e18` is 1x). Swaps run inside Morpho Blue's supply-collateral and repay callbacks; the bundle does not use a flash loan. The position must remain healthy at the `maxBorrowAssets` or `maxCollateralIn` limit.
+
+Supply Augustus v6.2 calldata with `beneficiary` set to the bundle and an exact-output target at least as large as the amount the operation needs. Augustus pays out its available balance minus 1 wei, so request one extra wei. Positive slippage is retained unless a partner is configured. A full close needs enough collateral to cover accrued interest; excess loan tokens are returned to the user.
+
 ### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 
 - `vaultBundlesV1Deposit` — deposit assets into a vault.
