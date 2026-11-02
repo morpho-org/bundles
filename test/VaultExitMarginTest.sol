@@ -3,7 +3,7 @@
 pragma solidity ^0.8.0;
 
 import {StdStorage, stdStorage} from "../lib/forge-std/src/Test.sol";
-import {ITestToken, TestToken} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TokenTest.sol";
 
 import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
 import {Permit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";
@@ -25,7 +25,7 @@ import {
 } from "../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2Factory.sol";
 
 /// @dev Harness verifying the theoretical safety margin `shares` for which exitAssets = previewRedeem(balanceOf(sender) - shares) does not revert, for the three exit functions and a varying number of markets.
-contract VaultExitMarginTest is TestToken {
+contract VaultExitMarginTest is TokenTest {
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
     using stdStorage for StdStorage;
