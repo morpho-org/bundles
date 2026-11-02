@@ -3,7 +3,7 @@
 pragma solidity 0.8.34;
 
 import {IAugustusRegistry} from "./interfaces/IAugustusRegistry.sol";
-import {IVeloraLeverageBundlesV1} from "./interfaces/IVeloraLeverageBundlesV1.sol";
+import {IVeloraLeverageBundlesV1, Offsets} from "./interfaces/IVeloraLeverageBundlesV1.sol";
 import {IMorpho, MarketParams, Position} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {
     IMorphoRepayCallback,
@@ -12,11 +12,14 @@ import {
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
+import {Math} from "../../lib/vault-v2/lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
+import {BytesLib} from "../libraries/BytesLib.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 
 /// @notice Executes exact-output swaps using an Augustus v6.2 contract listed in Paraswap's Augustus registry.
 contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyCollateralCallback, IMorphoRepayCallback {
     using MarketParamsLib for MarketParams;
+    using BytesLib for bytes;
 
     address public immutable override BLUE;
     address public immutable override AUGUSTUS_REGISTRY;
@@ -85,13 +88,18 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     }
 
     /// @notice Repays all borrow shares and returns the remaining collateral.
+    /// @param maxCollateralIn Absolute collateral spending cap, including after resizing the swap.
     /// @param augustus Address of the Augustus contract. Must be in Paraswap's Augustus registry.
-    /// @param swapData Augustus v6.2 calldata with `beneficiary` set to this bundle and an exact-output target at least the debt computed by Morpho.
+    /// @param swapData Augustus v6.2 exact-output calldata with `beneficiary` set to this bundle and a nonzero output amount.
+    /// @param offsets Locations of the exact output, maximum input and optional quoted input amounts in `swapData`.
+    /// @dev Resizes output to Morpho's callback debt plus one base unit for Augustus's payout rounding.
+    /// Maximum and quoted input amounts are scaled proportionally, rounding down; maximum input is capped at `maxCollateralIn`.
     function veloraLeverageBundlesV1Close(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,
         address augustus,
         bytes calldata swapData,
+        Offsets calldata offsets,
         uint256 deadline
     ) external override {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -112,7 +120,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
                 abi.encode(
                     this.veloraLeverageBundlesV1Close.selector,
                     msg.sender,
-                    abi.encode(marketParams, position.collateral, maxCollateralIn, augustus, swapData)
+                    abi.encode(marketParams, position.collateral, maxCollateralIn, augustus, swapData, offsets)
                 )
             );
     }
@@ -180,8 +188,11 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
             uint256 collateral,
             uint256 maxCollateralIn,
             address augustus,
-            bytes memory swapData
-        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
+            bytes memory swapData,
+            Offsets memory offsets
+        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes, Offsets));
+
+        _resizeSwapData(swapData, offsets, assets + 1, maxCollateralIn);
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
         (uint256 spent, uint256 received) = _swapExactOut(
@@ -194,6 +205,23 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         if (received > assets) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, user, received - assets);
         }
+    }
+
+    /// @dev Updates only the caller-selected amount words; route data must support resizing these amounts.
+    function _resizeSwapData(bytes memory data, Offsets memory offsets, uint256 amountOut, uint256 maxIn)
+        internal
+        pure
+    {
+        uint256 oldAmountOut = data.get(offsets.exactAmount);
+        require(oldAmountOut != 0, ZeroSwapAmount());
+
+        uint256 limitAmount = Math.min(Math.mulDiv(data.get(offsets.limitAmount), amountOut, oldAmountOut), maxIn);
+        if (offsets.quotedAmount != 0) {
+            uint256 quotedAmount = Math.mulDiv(data.get(offsets.quotedAmount), amountOut, oldAmountOut);
+            data.set(offsets.quotedAmount, quotedAmount);
+        }
+        data.set(offsets.limitAmount, limitAmount);
+        data.set(offsets.exactAmount, amountOut);
     }
 
     function _swapExactOut(

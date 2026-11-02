@@ -50,7 +50,7 @@ Callers must authorize `VeloraLeverageBundlesV1` on Morpho Blue; opening also re
 
 - `veloraLeverageBundlesV1Open` — supply `collateralAssets` from the caller and borrow up to `maxBorrowAssets` to buy and supply `collateralToBuy` additional collateral.
 - `veloraLeverageBundlesV1Delever` — repay part of the debt by swapping withdrawn collateral for loan tokens.
-- `veloraLeverageBundlesV1Close` — repay all borrow shares and return the remaining collateral.
+- `veloraLeverageBundlesV1Close` — resize the quoted swap to the current debt, repay all borrow shares and return the remaining collateral.
 
 Opening takes concrete token amounts in base units. `collateralToBuy` must be nonzero, and the collateral added to the caller's position is exactly `collateralAssets + collateralToBuy`. Unspent loan tokens are repaid, and excess collateral received from the swap is returned to the caller.
 
@@ -58,7 +58,32 @@ Frontends compute these amounts from the user's contribution and desired exposur
 
 Swaps run inside Morpho Blue's supply-collateral and repay callbacks; the bundle does not use a flash loan. The position must remain healthy at the `maxBorrowAssets` or `maxCollateralIn` limit. Opening also requires market liquidity for the full `maxBorrowAssets` cap.
 
-Supply swap calldata for an Augustus v6.2 contract listed in Paraswap's Augustus registry, with `beneficiary` set to the bundle and an exact-output target at least as large as the amount the operation needs. Augustus pays out its available balance minus 1 wei, so request one extra wei. Positive slippage is retained unless a partner is configured. A full close needs enough collateral to cover accrued interest; excess loan tokens are returned to the user.
+Supply the address and calldata of an Augustus v6.2 contract listed in Paraswap's Augustus registry, with `beneficiary` set to the bundle. For open and delever, the calldata is forwarded unchanged: its exact-output target must cover the amount the operation needs, plus one token base unit for Augustus's payout rounding. Positive slippage is retained unless a partner is configured. Excess loan tokens are returned to the user.
+
+Close takes the following arguments:
+
+```solidity
+veloraLeverageBundlesV1Close(
+    MarketParams marketParams,
+    uint256 maxCollateralIn,
+    address augustus,
+    bytes swapData,
+    Offsets offsets,
+    uint256 deadline
+)
+```
+
+The frontend quotes an estimated debt amount and provides `Offsets({exactAmount, limitAmount, quotedAmount})`, identifying the 32-byte exact-output, maximum-input and quoted-input words in `swapData`. Offsets count bytes from the start of calldata, including the four-byte selector. Set `quotedAmount` to zero only if that field does not need updating. For canonical Augustus v6.2 calldata:
+
+| Method | `exactAmount` | `limitAmount` | `quotedAmount` |
+| --- | ---: | ---: | ---: |
+| `swapExactAmountOut` | 132 | 100 | 164 |
+| `swapExactAmountOutOnUniswapV2` / `swapExactAmountOutOnUniswapV3` | 196 | 164 | 228 |
+| `swapExactAmountOutOnBalancerV2` | 36 | 4 | 68 |
+
+Morpho accrues interest and supplies the actual repayment amount to the close callback. The bundle sets the swap's exact output to `debtAssets + 1`, scales its maximum and quoted input amounts by `newOutput / originalOutput` (rounding down), and clamps the maximum input to `maxCollateralIn`. The original exact-output amount must be nonzero. The extra base unit covers Augustus's payout rounding; any excess received is refunded.
+
+The caller must provide the correct offsets for the selected method and route data that supports changing these amounts; the bundle does not rewrite nested route data or reprice the route. All offset reads and writes are bounds-checked. The absolute spending cap and the post-swap token-balance checks still apply, so a stale route that cannot deliver the current debt within the cap reverts the entire close. A position without debt simply returns its collateral without using the swap data or offsets.
 
 ### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 
