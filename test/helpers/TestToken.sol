@@ -68,7 +68,7 @@ contract TestERC20NoReturn is ERC20NoReturn {
     }
 }
 
-abstract contract TokenTest is Test {
+abstract contract TestToken is Test {
     /// @dev Resets to 0 before re-approving when the approval fails, to support USDT-like tokens.
     function safeApprove(ITestToken token, address spender, uint256 amount) internal {
         try token.approve(spender, amount) {}

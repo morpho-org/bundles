@@ -9,7 +9,7 @@ import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/Morp
 import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {ErrorsLib as BlueErrorsLib} from "../lib/morpho-blue/src/libraries/ErrorsLib.sol";
-import {ITestToken, TokenTest} from "./helpers/TokenTest.sol";
+import {ITestToken, TestToken} from "./helpers/TestToken.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
@@ -27,7 +27,7 @@ import {WETHMock} from "./BlueBundlesTest.sol";
 
 /// @dev Covers the public-allocator paths of the three Blue entrypoints that consume market liquidity: borrowing
 /// against fresh collateral, exiting a supply position, and migrating a borrow position.
-contract BluePublicAllocatorTest is TokenTest {
+contract BluePublicAllocatorTest is TestToken {
     using MarketParamsLib for MarketParams;
     using MorphoLib for IMorpho;
     using MorphoBalancesLib for IMorpho;
