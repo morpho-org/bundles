@@ -48,11 +48,15 @@ Callers must authorize `VeloraLeverageBundlesV1` on Morpho Blue; opening also re
 
 ### [VeloraLeverageBundlesV1](src/leverage/VeloraLeverageBundlesV1.sol)
 
-- `veloraLeverageBundlesV1Open` — supply caller collateral and borrow the remainder for an exact-output swap into collateral.
+- `veloraLeverageBundlesV1Open` — supply `collateralAssets` from the caller and borrow up to `maxBorrowAssets` to buy and supply `collateralToBuy` additional collateral.
 - `veloraLeverageBundlesV1Delever` — repay part of the debt by swapping withdrawn collateral for loan tokens.
 - `veloraLeverageBundlesV1Close` — repay all borrow shares and return the remaining collateral.
 
-`leverage` is WAD-scaled (`1e18` is 1x). Swaps run inside Morpho Blue's supply-collateral and repay callbacks; the bundle does not use a flash loan. The position must remain healthy at the `maxBorrowAssets` or `maxCollateralIn` limit.
+Opening takes concrete token amounts in base units. `collateralToBuy` must be nonzero, and the collateral added to the caller's position is exactly `collateralAssets + collateralToBuy`. Unspent loan tokens are repaid, and excess collateral received from the swap is returned to the caller.
+
+Frontends compute these amounts from the user's contribution and desired exposure. For a WAD-scaled collateral multiplier `L`, use `collateralToBuy = floor(collateralAssets * (L - 1e18) / 1e18)`, then obtain an exact-output quote and set `maxBorrowAssets` from its cost and the user's slippage tolerance. A target financial leverage instead requires accounting for quoted swap costs and any existing collateral and debt; the contract does not target a leverage ratio.
+
+Swaps run inside Morpho Blue's supply-collateral and repay callbacks; the bundle does not use a flash loan. The position must remain healthy at the `maxBorrowAssets` or `maxCollateralIn` limit. Opening also requires market liquidity for the full `maxBorrowAssets` cap.
 
 Supply Augustus v6.2 calldata with `beneficiary` set to the bundle and an exact-output target at least as large as the amount the operation needs. Augustus pays out its available balance minus 1 wei, so request one extra wei. Positive slippage is retained unless a partner is configured. A full close needs enough collateral to cover accrued interest; excess loan tokens are returned to the user.
 

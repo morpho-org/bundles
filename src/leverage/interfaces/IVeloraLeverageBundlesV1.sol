@@ -7,8 +7,8 @@ import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol"
 interface IVeloraLeverageBundlesV1 {
     error DeadlinePassed();
     error IncompleteFill();
-    error InvalidLeverage();
     error UnauthorizedCallback();
+    error ZeroCollateralToBuy();
 
     function BLUE() external view returns (address);
     function AUGUSTUS() external view returns (address);
@@ -16,7 +16,7 @@ interface IVeloraLeverageBundlesV1 {
     function veloraLeverageBundlesV1Open(
         MarketParams memory marketParams,
         uint256 collateralAssets,
-        uint256 leverage,
+        uint256 collateralToBuy,
         uint256 maxBorrowAssets,
         bytes calldata swapData,
         uint256 deadline

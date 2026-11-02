@@ -10,14 +10,12 @@ import {
 } from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
-import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 
 /// @notice Executes exact-output swaps using Augustus v6.2 calldata whose beneficiary is this bundle.
 contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyCollateralCallback, IMorphoRepayCallback {
     using MarketParamsLib for MarketParams;
-    using UtilsLib for uint256;
 
     address public immutable override BLUE;
     address public immutable override AUGUSTUS;
@@ -27,20 +25,22 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         AUGUSTUS = augustus;
     }
 
-    /// @notice Opens a leveraged position by supplying caller collateral and swapping borrowed assets.
-    /// @param swapData Augustus v6.2 calldata with `beneficiary` set to this bundle and an exact-output target at least the collateral required by the operation.
+    /// @notice Adds caller collateral and purchased collateral to the caller's position using borrowed assets.
+    /// @param collateralAssets Collateral-token amount to pull from the caller, in token base units.
+    /// @param collateralToBuy Nonzero additional collateral-token amount to acquire and supply, in token base units.
+    /// @param maxBorrowAssets Maximum loan-token amount to borrow for the swap; unused assets are repaid.
+    /// @param swapData Augustus v6.2 calldata with `beneficiary` set to this bundle and an exact-output target at least `collateralToBuy`.
     function veloraLeverageBundlesV1Open(
         MarketParams memory marketParams,
         uint256 collateralAssets,
-        uint256 leverage,
+        uint256 collateralToBuy,
         uint256 maxBorrowAssets,
         bytes calldata swapData,
         uint256 deadline
     ) external override {
         require(block.timestamp <= deadline, DeadlinePassed());
-        require(leverage > 1e18, InvalidLeverage());
+        require(collateralToBuy != 0, ZeroCollateralToBuy());
 
-        uint256 collateralToBuy = collateralAssets.mulDivDown(leverage - 1e18, 1e18);
         SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
 
