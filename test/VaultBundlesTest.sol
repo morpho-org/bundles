@@ -3,7 +3,7 @@
 pragma solidity ^0.8.0;
 
 import {ERC20Mock} from "../lib/vault-v2/test/mocks/ERC20Mock.sol";
-import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TokenTest.sol";
 
 import {VaultBundlesV1} from "../src/vault/VaultBundlesV1.sol";
 import {IVaultBundlesV1, Permit} from "../src/vault/interfaces/IVaultBundlesV1.sol";
