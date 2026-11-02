@@ -11,6 +11,7 @@ import {IVeloraLeverageBundlesV1} from "../src/leverage/interfaces/IVeloraLevera
 import {IAugustusV6} from "../src/leverage/interfaces/IAugustusV6.sol";
 import {VeloraLeverageBundlesV1} from "../src/leverage/VeloraLeverageBundlesV1.sol";
 import {AugustusMock} from "./helpers/AugustusMock.sol";
+import {AugustusRegistryMock} from "./helpers/AugustusRegistryMock.sol";
 import {IERC20} from "../lib/vault-v2/src/interfaces/IERC20.sol";
 
 contract VeloraLeverageBundlesV1Test is LeverageTest {
@@ -20,11 +21,14 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
 
     VeloraLeverageBundlesV1 internal bundle;
     AugustusMock internal augustus;
+    AugustusRegistryMock internal augustusRegistry;
 
     function setUp() public {
         setUpLeverageMarketOnly(false);
         augustus = new AugustusMock();
-        bundle = new VeloraLeverageBundlesV1(address(morpho), address(augustus));
+        augustusRegistry = new AugustusRegistryMock();
+        augustusRegistry.setValid(address(augustus), true);
+        bundle = new VeloraLeverageBundlesV1(address(morpho), address(augustusRegistry));
     }
 
     function testFuzzOpen(uint256 equity, uint256 collateralToBuy, uint256 borrowBuffer) public {
@@ -39,7 +43,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
 
         vm.prank(user);
         bundle.veloraLeverageBundlesV1Open(
-            marketParams, equity, collateralToBuy, maxBorrowAssets, swapData, block.timestamp
+            marketParams, equity, collateralToBuy, maxBorrowAssets, address(augustus), swapData, block.timestamp
         );
 
         Position memory position = morpho.position(marketParams.id(), user);
@@ -53,7 +57,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
     function testOpenRejectsZeroCollateralToBuy() public {
         vm.expectRevert(IVeloraLeverageBundlesV1.ZeroCollateralToBuy.selector);
         vm.prank(user);
-        bundle.veloraLeverageBundlesV1Open(marketParams, 1e18, 0, 1e18, "", block.timestamp);
+        bundle.veloraLeverageBundlesV1Open(marketParams, 1e18, 0, 1e18, address(augustus), "", block.timestamp);
         assertNoResiduals();
     }
 
@@ -64,7 +68,9 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         bytes memory openSwapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, equity);
 
         vm.prank(user);
-        bundle.veloraLeverageBundlesV1Open(marketParams, equity, equity, maxBorrowAssets, openSwapData, block.timestamp);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams, equity, equity, maxBorrowAssets, address(augustus), openSwapData, block.timestamp
+        );
 
         Position memory beforePosition = morpho.position(marketParams.id(), user);
         Market memory market = morpho.market(marketParams.id());
@@ -77,7 +83,9 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
             buildSwapData(address(collateralToken), address(loanToken), maxCollateralIn, repayAssets);
 
         vm.prank(user);
-        bundle.veloraLeverageBundlesV1Delever(marketParams, repayAssets, maxCollateralIn, swapData, block.timestamp);
+        bundle.veloraLeverageBundlesV1Delever(
+            marketParams, repayAssets, maxCollateralIn, address(augustus), swapData, block.timestamp
+        );
 
         Position memory afterPosition = morpho.position(marketParams.id(), user);
         Market memory marketAfter = morpho.market(marketParams.id());
@@ -95,7 +103,9 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         bytes memory openSwapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, equity);
 
         vm.prank(user);
-        bundle.veloraLeverageBundlesV1Open(marketParams, equity, equity, maxBorrowAssets, openSwapData, timestamp);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams, equity, equity, maxBorrowAssets, address(augustus), openSwapData, timestamp
+        );
 
         vm.warp(timestamp + 365 days);
         morpho.accrueInterest(marketParams);
@@ -109,7 +119,9 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
             buildSwapData(address(collateralToken), address(loanToken), beforePosition.collateral, debtAssets);
 
         vm.prank(user);
-        bundle.veloraLeverageBundlesV1Close(marketParams, beforePosition.collateral, swapData, block.timestamp);
+        bundle.veloraLeverageBundlesV1Close(
+            marketParams, beforePosition.collateral, address(augustus), swapData, block.timestamp
+        );
 
         Position memory afterPosition = morpho.position(marketParams.id(), user);
         uint256 expectedSpent = debtAssets.mulDivUp(1003, 1000);
@@ -132,7 +144,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         vm.stopPrank();
 
         vm.prank(user);
-        bundle.veloraLeverageBundlesV1Close(marketParams, 0, "", block.timestamp);
+        bundle.veloraLeverageBundlesV1Close(marketParams, 0, address(augustus), "", block.timestamp);
 
         assertEq(collateralToken.balanceOf(user), collateral);
         assertEq(morpho.position(marketParams.id(), user).collateral, 0);
@@ -146,7 +158,9 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         bytes memory openSwapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, equity);
 
         vm.prank(user);
-        bundle.veloraLeverageBundlesV1Open(marketParams, equity, equity, maxBorrowAssets, openSwapData, block.timestamp);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams, equity, equity, maxBorrowAssets, address(augustus), openSwapData, block.timestamp
+        );
 
         Position memory position = morpho.position(marketParams.id(), user);
         deal(address(collateralToken), address(morpho), position.collateral);
@@ -158,7 +172,9 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
             buildSwapData(address(collateralToken), address(loanToken), position.collateral, debtAssets);
 
         vm.prank(user);
-        bundle.veloraLeverageBundlesV1Close(marketParams, position.collateral, swapData, block.timestamp);
+        bundle.veloraLeverageBundlesV1Close(
+            marketParams, position.collateral, address(augustus), swapData, block.timestamp
+        );
 
         Position memory afterPosition = morpho.position(marketParams.id(), user);
         assertEq(afterPosition.collateral, 0);
@@ -166,15 +182,61 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testRejectsUnregisteredAugustus() public {
+        AugustusMock unregisteredAugustus = new AugustusMock();
+        uint256 equity = 10e18;
+        uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);
+        fundUser(address(bundle), equity);
+        bytes memory openSwapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, equity);
+
+        vm.expectRevert(IVeloraLeverageBundlesV1.InvalidAugustus.selector);
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams, equity, equity, maxBorrowAssets, address(unregisteredAugustus), openSwapData, block.timestamp
+        );
+        assertNoResiduals();
+
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams, equity, equity, maxBorrowAssets, address(augustus), openSwapData, block.timestamp
+        );
+        assertNoResiduals();
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        Market memory market = morpho.market(marketParams.id());
+        uint256 debtAssets =
+            uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+        uint256 repayAssets = debtAssets / 2;
+        uint256 maxCollateralIn = repayAssets.mulDivUp(1003, 1000) + 1e18;
+        bytes memory deleverSwapData =
+            buildSwapData(address(collateralToken), address(loanToken), maxCollateralIn, repayAssets);
+
+        vm.expectRevert(IVeloraLeverageBundlesV1.InvalidAugustus.selector);
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Delever(
+            marketParams, repayAssets, maxCollateralIn, address(unregisteredAugustus), deleverSwapData, block.timestamp
+        );
+        assertNoResiduals();
+
+        bytes memory closeSwapData =
+            buildSwapData(address(collateralToken), address(loanToken), position.collateral, debtAssets);
+        vm.expectRevert(IVeloraLeverageBundlesV1.InvalidAugustus.selector);
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Close(
+            marketParams, position.collateral, address(unregisteredAugustus), closeSwapData, block.timestamp
+        );
+        assertNoResiduals();
+    }
+
     function testRejectsExpiredDeadlineOnEachEntrypoint() public {
         vm.expectRevert(IVeloraLeverageBundlesV1.DeadlinePassed.selector);
-        bundle.veloraLeverageBundlesV1Open(marketParams, 1e18, 1e18, 2e18, "", 0);
+        bundle.veloraLeverageBundlesV1Open(marketParams, 1e18, 1e18, 2e18, address(augustus), "", 0);
 
         vm.expectRevert(IVeloraLeverageBundlesV1.DeadlinePassed.selector);
-        bundle.veloraLeverageBundlesV1Delever(marketParams, 1e18, 1e18, "", 0);
+        bundle.veloraLeverageBundlesV1Delever(marketParams, 1e18, 1e18, address(augustus), "", 0);
 
         vm.expectRevert(IVeloraLeverageBundlesV1.DeadlinePassed.selector);
-        bundle.veloraLeverageBundlesV1Close(marketParams, 1e18, "", 0);
+        bundle.veloraLeverageBundlesV1Close(marketParams, 1e18, address(augustus), "", 0);
         assertNoResiduals();
     }
 
@@ -198,7 +260,9 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert(IVeloraLeverageBundlesV1.IncompleteFill.selector);
         vm.prank(user);
-        bundle.veloraLeverageBundlesV1Open(marketParams, equity, equity, maxBorrowAssets, swapData, block.timestamp);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams, equity, equity, maxBorrowAssets, address(augustus), swapData, block.timestamp
+        );
         assertNoResiduals();
     }
 
@@ -211,7 +275,9 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert();
         vm.prank(user);
-        bundle.veloraLeverageBundlesV1Open(marketParams, equity, amountOut, maxBorrowAssets, swapData, block.timestamp);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams, equity, amountOut, maxBorrowAssets, address(augustus), swapData, block.timestamp
+        );
         assertNoResiduals();
     }
 

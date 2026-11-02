@@ -58,7 +58,7 @@ Frontends compute these amounts from the user's contribution and desired exposur
 
 Swaps run inside Morpho Blue's supply-collateral and repay callbacks; the bundle does not use a flash loan. The position must remain healthy at the `maxBorrowAssets` or `maxCollateralIn` limit. Opening also requires market liquidity for the full `maxBorrowAssets` cap.
 
-Supply Augustus v6.2 calldata with `beneficiary` set to the bundle and an exact-output target at least as large as the amount the operation needs. Augustus pays out its available balance minus 1 wei, so request one extra wei. Positive slippage is retained unless a partner is configured. A full close needs enough collateral to cover accrued interest; excess loan tokens are returned to the user.
+Supply swap calldata for an Augustus v6.2 contract listed in Paraswap's Augustus registry, with `beneficiary` set to the bundle and an exact-output target at least as large as the amount the operation needs. Augustus pays out its available balance minus 1 wei, so request one extra wei. Positive slippage is retained unless a partner is configured. A full close needs enough collateral to cover accrued interest; excess loan tokens are returned to the user.
 
 ### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 
