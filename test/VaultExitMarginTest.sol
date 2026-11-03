@@ -3,7 +3,7 @@
 pragma solidity ^0.8.0;
 
 import {StdStorage, stdStorage} from "../lib/forge-std/src/Test.sol";
-import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TokenTest.sol";
 
 import {VaultExitBundlesV1} from "../src/vault-exit/VaultExitBundlesV1.sol";
 import {Permit} from "../src/vault-exit/interfaces/IVaultExitBundlesV1.sol";

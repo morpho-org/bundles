@@ -11,7 +11,7 @@ import {ORACLE_PRICE_SCALE, AUTHORIZATION_TYPEHASH} from "../lib/morpho-blue/src
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 import {ERC20} from "../lib/midnight/test/erc20s/ERC20.sol";
-import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TokenTest.sol";
 import {IPermit2} from "../lib/permit2/src/interfaces/IPermit2.sol";
 import {BlueBundlesV1} from "../src/blue/BlueBundlesV1.sol";
 import {IBlueBundlesV1, SignedAuthorization, PublicAllocations} from "../src/blue/interfaces/IBlueBundlesV1.sol";
