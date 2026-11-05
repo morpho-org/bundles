@@ -467,7 +467,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), debt, equity);
         vm.prank(user);
         bundle.veloraLeverageBundlesV1Open(
-            marketParams, equity, equity, debt, address(augustus), swapData, block.timestamp
+            marketParams, equity, equity, debt, address(augustus), swapData, vm.getBlockTimestamp()
         );
 
         // Use 50% utilization so the IRM accrues meaningful interest between quoting and closing.
