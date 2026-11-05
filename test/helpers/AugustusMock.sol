@@ -13,9 +13,16 @@ contract AugustusMock is IAugustusV6 {
     uint256 public lastToAmount;
     uint256 public lastQuotedAmount;
     uint256 public outputReduction;
+    address internal reentryTarget;
+    bytes internal reentryData;
 
     function setOutputReduction(uint256 amount) external {
         outputReduction = amount;
+    }
+
+    function setReentry(address target, bytes calldata data) external {
+        reentryTarget = target;
+        reentryData = data;
     }
 
     function swapExactAmountOut(address, GenericData calldata swapData, uint256, bytes calldata, bytes calldata)
@@ -83,6 +90,14 @@ contract AugustusMock is IAugustusV6 {
         lastQuotedAmount = quotedAmount;
         spentAmount = toAmount.mulDivUp(1003, 1000);
         require(spentAmount <= fromAmount, "maximum input exceeded");
+        if (reentryTarget != address(0)) {
+            (bool success, bytes memory returnData) = reentryTarget.call(reentryData);
+            if (!success) {
+                assembly ("memory-safe") {
+                    revert(add(returnData, 0x20), mload(returnData))
+                }
+            }
+        }
         receivedAmount = toAmount - outputReduction;
         SafeTransferLib.safeTransferFrom(srcToken, msg.sender, address(this), spentAmount);
         SafeTransferLib.safeTransfer(destToken, beneficiary, receivedAmount);

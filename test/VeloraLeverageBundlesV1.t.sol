@@ -163,6 +163,41 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testRejectsReentrantOpenFromAugustus() public {
+        uint256 equity = 10e18;
+        uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);
+        fundUser(address(bundle), equity);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, equity);
+        bytes memory reentryData = abi.encodeCall(
+            IVeloraLeverageBundlesV1.veloraLeverageBundlesV1Open,
+            (
+                marketParams,
+                equity,
+                equity,
+                maxBorrowAssets,
+                address(augustus),
+                bytes(""),
+                type(uint256).max,
+                vm.getBlockTimestamp()
+            )
+        );
+        augustus.setReentry(address(bundle), reentryData);
+
+        vm.expectRevert(IVeloraLeverageBundlesV1.Reentrancy.selector);
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams,
+            equity,
+            equity,
+            maxBorrowAssets,
+            address(augustus),
+            swapData,
+            type(uint256).max,
+            vm.getBlockTimestamp()
+        );
+        assertNoResiduals();
+    }
+
     function testDelever() public {
         uint256 equity = 10e18;
         uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);

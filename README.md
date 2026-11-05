@@ -46,6 +46,8 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 
 Callers must authorize `VeloraLeverageBundlesV1` on Morpho Blue; opening also requires approval to pull collateral.
 
+All three entrypoints are non-reentrant; attempts by Augustus to call them again during a swap are rejected.
+
 ### [VeloraLeverageBundlesV1](src/leverage/VeloraLeverageBundlesV1.sol)
 
 - `veloraLeverageBundlesV1Open` — supply `collateralAssets` from the caller and borrow up to `maxBorrowAssets` to buy and supply `collateralToBuy` additional collateral.

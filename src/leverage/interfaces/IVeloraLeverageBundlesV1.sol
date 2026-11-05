@@ -10,6 +10,7 @@ interface IVeloraLeverageBundlesV1 {
     error InvalidAugustus();
     error InvalidSelector();
     error LtvExceeded();
+    error Reentrancy();
     error UnauthorizedCallback();
     error ZeroCollateralToBuy();
     error ZeroSwapAmount();

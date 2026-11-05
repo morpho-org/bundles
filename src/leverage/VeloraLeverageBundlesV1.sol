@@ -32,9 +32,27 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     address public immutable override BLUE;
     address public immutable override AUGUSTUS_REGISTRY;
 
+    /// @dev Blocks re-entry from the swap executor into the entrypoints.
+    bool internal transient locked;
+
     constructor(address blue, address augustusRegistry) {
         BLUE = blue;
         AUGUSTUS_REGISTRY = augustusRegistry;
+    }
+
+    modifier nonReentrant() {
+        _lock();
+        _;
+        _unlock();
+    }
+
+    function _lock() internal {
+        require(!locked, Reentrancy());
+        locked = true;
+    }
+
+    function _unlock() internal {
+        locked = false;
     }
 
     /// @notice Adds caller collateral and purchased collateral to the caller's position using borrowed assets.
@@ -53,13 +71,14 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         bytes calldata swapData,
         uint256 maxLtv,
         uint256 deadline
-    ) external override {
+    ) external override nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(collateralToBuy != 0, ZeroCollateralToBuy());
 
         SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
 
+        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint guard is active throughout this callback.
         IMorpho(BLUE)
             .supplyCollateral(
                 marketParams,
@@ -82,10 +101,11 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         bytes calldata swapData,
         uint256 maxLtv,
         uint256 deadline
-    ) external override {
+    ) external override nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
+        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint guard is active throughout this callback.
         IMorpho(BLUE)
             .repay(
                 marketParams,
@@ -113,7 +133,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         address augustus,
         bytes calldata swapData,
         uint256 deadline
-    ) external override {
+    ) external override nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
 
         Position memory position = IMorpho(BLUE).position(marketParams.id(), msg.sender);
@@ -123,6 +143,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         }
 
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint guard is active throughout this callback.
         IMorpho(BLUE)
             .repay(
                 marketParams,
@@ -262,6 +283,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
             if (position.borrowShares != 0) {
                 Market memory market = IMorpho(BLUE).market(marketParams.id());
                 if (market.lastUpdate != block.timestamp) {
+                    // forge-lint: disable-next-line(reentrancy-no-eth) The helper is only called from locked entrypoints.
                     IMorpho(BLUE).accrueInterest(marketParams);
                     market = IMorpho(BLUE).market(marketParams.id());
                 }
