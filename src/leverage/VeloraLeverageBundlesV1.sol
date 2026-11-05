@@ -172,7 +172,8 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
             IMorpho(BLUE).repay(marketParams, maxBorrowAssets - spent, 0, user, "");
         }
         if (received > collateralToBuy) {
-            SafeTransferLib.safeTransfer(marketParams.collateralToken, user, received - collateralToBuy);
+            TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
+            IMorpho(BLUE).supplyCollateral(marketParams, received - collateralToBuy, user, "");
         }
     }
 

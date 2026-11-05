@@ -54,7 +54,7 @@ All three entrypoints are non-reentrant; attempts by Augustus to call them again
 - `veloraLeverageBundlesV1Delever` — repay part of the debt by swapping withdrawn collateral for loan tokens.
 - `veloraLeverageBundlesV1Close` — resize the quoted swap to the current debt, repay all borrow shares and return the remaining collateral.
 
-Opening takes concrete token amounts in base units. `collateralToBuy` must be nonzero, and the collateral added to the caller's position is exactly `collateralAssets + collateralToBuy`. Unspent loan tokens are repaid, and excess collateral received from the swap is returned to the caller.
+Opening takes concrete token amounts in base units. `collateralToBuy` must be nonzero, and the collateral added to the caller's position is at least `collateralAssets + collateralToBuy`; excess collateral received from the swap is also supplied to the caller's position. Unspent loan tokens are repaid.
 
 Frontends compute these amounts from the user's contribution and desired exposure. For a WAD-scaled collateral multiplier `L`, use `collateralToBuy = floor(collateralAssets * (L - 1e18) / 1e18)`, then obtain an exact-output quote and set `maxBorrowAssets` from its cost and the user's slippage tolerance. A target financial leverage instead requires accounting for quoted swap costs and any existing collateral and debt; the contract does not target a leverage ratio.
 

@@ -58,6 +58,34 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testOpenSuppliesExcessCollateralToPosition() public {
+        uint256 collateralAssets = 10e18;
+        uint256 collateralToBuy = 10e18;
+        uint256 surplus = 1e18;
+        uint256 maxBorrowAssets = collateralToBuy.mulDivUp(1003, 1000);
+        fundUser(address(bundle), collateralAssets);
+        uint256 userCollateralAfterContribution = collateralToken.balanceOf(user) - collateralAssets;
+        augustus.setOutputBonus(surplus);
+        bytes memory swapData =
+            buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, collateralToBuy);
+
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams,
+            collateralAssets,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            block.timestamp
+        );
+
+        uint256 received = collateralToBuy + surplus;
+        assertEq(morpho.position(marketParams.id(), user).collateral, collateralAssets + received);
+        assertEq(collateralToken.balanceOf(user), userCollateralAfterContribution);
+        assertNoResiduals();
+    }
+
     function testOpenEnforcesMaxLtv() public {
         uint256 equity = 10e18;
         uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);
@@ -438,7 +466,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         internal
         returns (bytes memory)
     {
-        deal(tokenOut, address(augustus), amountOut);
+        deal(tokenOut, address(augustus), amountOut + augustus.outputBonus());
         return abi.encodeCall(
             IAugustusV6.swapExactAmountOut,
             (

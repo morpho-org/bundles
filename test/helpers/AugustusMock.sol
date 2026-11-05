@@ -13,11 +13,16 @@ contract AugustusMock is IAugustusV6 {
     uint256 public lastToAmount;
     uint256 public lastQuotedAmount;
     uint256 public outputReduction;
+    uint256 public outputBonus;
     address internal reentryTarget;
     bytes internal reentryData;
 
     function setOutputReduction(uint256 amount) external {
         outputReduction = amount;
+    }
+
+    function setOutputBonus(uint256 amount) external {
+        outputBonus = amount;
     }
 
     function setReentry(address target, bytes calldata data) external {
@@ -98,7 +103,7 @@ contract AugustusMock is IAugustusV6 {
                 }
             }
         }
-        receivedAmount = toAmount - outputReduction;
+        receivedAmount = toAmount - outputReduction + outputBonus;
         SafeTransferLib.safeTransferFrom(srcToken, msg.sender, address(this), spentAmount);
         SafeTransferLib.safeTransfer(destToken, beneficiary, receivedAmount);
     }
