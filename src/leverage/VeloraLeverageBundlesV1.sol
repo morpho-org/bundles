@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IAugustusRegistry} from "./interfaces/IAugustusRegistry.sol";
 import {IAugustusV6} from "./interfaces/IAugustusV6.sol";
 import {IVeloraLeverageBundlesV1} from "./interfaces/IVeloraLeverageBundlesV1.sol";
 import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -22,7 +21,7 @@ import {Math} from "../../lib/vault-v2/lib/openzeppelin-contracts/contracts/util
 import {BytesLib} from "../libraries/BytesLib.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 
-/// @notice Executes exact-output swaps using an Augustus v6.2 contract listed in Paraswap's Augustus registry.
+/// @notice Executes exact-output swaps using the Augustus v6.2 contract fixed at deployment.
 contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyCollateralCallback, IMorphoRepayCallback {
     using MarketParamsLib for MarketParams;
     using BytesLib for bytes;
@@ -30,14 +29,14 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     using SharesMathLib for uint256;
 
     address public immutable override BLUE;
-    address public immutable override AUGUSTUS_REGISTRY;
+    address public immutable override AUGUSTUS;
 
     /// @dev Blocks re-entry from the swap executor into the entrypoints.
     bool internal transient locked;
 
-    constructor(address blue, address augustusRegistry) {
+    constructor(address blue, address augustus) {
         BLUE = blue;
-        AUGUSTUS_REGISTRY = augustusRegistry;
+        AUGUSTUS = augustus;
     }
 
     modifier nonReentrant() {
@@ -59,15 +58,13 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     /// @param collateralAssets Collateral-token amount to pull from the caller, in token base units.
     /// @param collateralToBuy Nonzero additional collateral-token amount to acquire and supply, in token base units.
     /// @param maxBorrowAssets Maximum loan-token amount to borrow for the swap; unused assets are repaid.
-    /// @param augustus Address of the Augustus contract. Must be in Paraswap's Augustus registry.
-    /// @param swapData Calldata for the Augustus v6.2 contract selected by `augustus`, with `beneficiary` set to this bundle and an exact-output target at least `collateralToBuy`.
+    /// @param swapData Calldata for the deployed Augustus v6.2 contract, with `beneficiary` set to this bundle and an exact-output target at least `collateralToBuy`.
     /// @param maxLtv Maximum resulting LTV of the caller's position, in WAD; type(uint256).max disables the check.
     function veloraLeverageBundlesV1Open(
         MarketParams memory marketParams,
         uint256 collateralAssets,
         uint256 collateralToBuy,
         uint256 maxBorrowAssets,
-        address augustus,
         bytes calldata swapData,
         uint256 maxLtv,
         uint256 deadline
@@ -84,20 +81,18 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
                 marketParams,
                 collateralAssets + collateralToBuy,
                 msg.sender,
-                abi.encode(msg.sender, marketParams, collateralToBuy, maxBorrowAssets, augustus, swapData)
+                abi.encode(msg.sender, marketParams, collateralToBuy, maxBorrowAssets, swapData)
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
     /// @notice Repays part of the caller's debt by withdrawing and swapping collateral.
-    /// @param augustus Address of the Augustus contract. Must be in Paraswap's Augustus registry.
     /// @param swapData Augustus v6.2 calldata with `beneficiary` set to this bundle and an exact-output target at least `repayAssets`.
     /// @param maxLtv Maximum resulting LTV of the caller's position, in WAD; type(uint256).max disables the check.
     function veloraLeverageBundlesV1Delever(
         MarketParams memory marketParams,
         uint256 repayAssets,
         uint256 maxCollateralIn,
-        address augustus,
         bytes calldata swapData,
         uint256 maxLtv,
         uint256 deadline
@@ -115,7 +110,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
                 abi.encode(
                     this.veloraLeverageBundlesV1Delever.selector,
                     msg.sender,
-                    abi.encode(marketParams, maxCollateralIn, augustus, swapData)
+                    abi.encode(marketParams, maxCollateralIn, swapData)
                 )
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
@@ -123,14 +118,12 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
 
     /// @notice Repays all borrow shares and returns the remaining collateral.
     /// @param maxCollateralIn Absolute collateral spending cap, including after resizing the swap.
-    /// @param augustus Address of the Augustus contract. Must be in Paraswap's Augustus registry.
     /// @param swapData Augustus v6.2 exact-output calldata with `beneficiary` set to this bundle; amount offsets are derived from its selector.
     /// @dev Resizes output to Morpho's callback debt plus one base unit for Augustus's payout rounding.
     /// Maximum and quoted input amounts are scaled proportionally, rounding down; maximum input is capped at `maxCollateralIn`.
     function veloraLeverageBundlesV1Close(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,
-        address augustus,
         bytes calldata swapData,
         uint256 deadline
     ) external override nonReentrant {
@@ -153,7 +146,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
                 abi.encode(
                     this.veloraLeverageBundlesV1Close.selector,
                     msg.sender,
-                    abi.encode(marketParams, position.collateral, maxCollateralIn, augustus, swapData)
+                    abi.encode(marketParams, position.collateral, maxCollateralIn, swapData)
                 )
             );
     }
@@ -166,13 +159,12 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
             MarketParams memory marketParams,
             uint256 collateralToBuy,
             uint256 maxBorrowAssets,
-            address augustus,
             bytes memory swapData
-        ) = abi.decode(data, (address, MarketParams, uint256, uint256, address, bytes));
+        ) = abi.decode(data, (address, MarketParams, uint256, uint256, bytes));
 
         IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, user, address(this));
         (uint256 spent, uint256 received) = _swapExactOut(
-            marketParams.loanToken, marketParams.collateralToken, maxBorrowAssets, collateralToBuy, augustus, swapData
+            marketParams.loanToken, marketParams.collateralToken, maxBorrowAssets, collateralToBuy, swapData
         );
 
         if (maxBorrowAssets > spent) {
@@ -198,13 +190,12 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     }
 
     function _deleverCallback(uint256 assets, address user, bytes memory operationData) internal {
-        (MarketParams memory marketParams, uint256 maxCollateralIn, address augustus, bytes memory swapData) =
-            abi.decode(operationData, (MarketParams, uint256, address, bytes));
+        (MarketParams memory marketParams, uint256 maxCollateralIn, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, bytes));
 
         IMorpho(BLUE).withdrawCollateral(marketParams, maxCollateralIn, user, address(this));
-        (uint256 spent, uint256 received) = _swapExactOut(
-            marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, augustus, swapData
-        );
+        (uint256 spent, uint256 received) =
+            _swapExactOut(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
 
         if (maxCollateralIn > spent) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
@@ -216,20 +207,14 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     }
 
     function _closeCallback(uint256 assets, address user, bytes memory operationData) internal {
-        (
-            MarketParams memory marketParams,
-            uint256 collateral,
-            uint256 maxCollateralIn,
-            address augustus,
-            bytes memory swapData
-        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
+        (MarketParams memory marketParams, uint256 collateral, uint256 maxCollateralIn, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
         _resizeSwapData(swapData, assets + 1, maxCollateralIn);
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
-        (uint256 spent, uint256 received) = _swapExactOut(
-            marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, augustus, swapData
-        );
+        (uint256 spent, uint256 received) =
+            _swapExactOut(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
 
         if (collateral > spent) {
             SafeTransferLib.safeTransfer(marketParams.collateralToken, user, collateral - spent);
@@ -298,28 +283,23 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     }
 
     /// @dev Only generic, Uniswap V2 and Uniswap V3 exact-output methods are accepted.
-    function _swapExactOut(
-        address tokenIn,
-        address tokenOut,
-        uint256 maxIn,
-        uint256 amountOut,
-        address augustus,
-        bytes memory data
-    ) internal returns (uint256 spent, uint256 received) {
-        require(IAugustusRegistry(AUGUSTUS_REGISTRY).isValidAugustus(augustus), InvalidAugustus());
+    function _swapExactOut(address tokenIn, address tokenOut, uint256 maxIn, uint256 amountOut, bytes memory data)
+        internal
+        returns (uint256 spent, uint256 received)
+    {
         _amountOffsets(data);
 
         uint256 inBefore = IERC20(tokenIn).balanceOf(address(this));
         uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));
 
-        TokenLib.safeApprove(tokenIn, augustus, maxIn);
-        (bool success, bytes memory returnData) = augustus.call(data);
+        TokenLib.safeApprove(tokenIn, AUGUSTUS, maxIn);
+        (bool success, bytes memory returnData) = AUGUSTUS.call(data);
         if (!success) {
             assembly ("memory-safe") {
                 revert(add(returnData, 0x20), mload(returnData))
             }
         }
-        TokenLib.safeApprove(tokenIn, augustus, 0);
+        TokenLib.safeApprove(tokenIn, AUGUSTUS, 0);
 
         uint256 inAfter = IERC20(tokenIn).balanceOf(address(this));
         require(inAfter <= inBefore, IncompleteFill());

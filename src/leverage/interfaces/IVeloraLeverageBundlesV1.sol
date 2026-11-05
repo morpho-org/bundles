@@ -7,7 +7,6 @@ import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol"
 interface IVeloraLeverageBundlesV1 {
     error DeadlinePassed();
     error IncompleteFill();
-    error InvalidAugustus();
     error InvalidSelector();
     error LtvExceeded();
     error Reentrancy();
@@ -16,14 +15,13 @@ interface IVeloraLeverageBundlesV1 {
     error ZeroSwapAmount();
 
     function BLUE() external view returns (address);
-    function AUGUSTUS_REGISTRY() external view returns (address);
+    function AUGUSTUS() external view returns (address);
 
     function veloraLeverageBundlesV1Open(
         MarketParams memory marketParams,
         uint256 collateralAssets,
         uint256 collateralToBuy,
         uint256 maxBorrowAssets,
-        address augustus,
         bytes calldata swapData,
         uint256 maxLtv,
         uint256 deadline
@@ -33,7 +31,6 @@ interface IVeloraLeverageBundlesV1 {
         MarketParams memory marketParams,
         uint256 repayAssets,
         uint256 maxCollateralIn,
-        address augustus,
         bytes calldata swapData,
         uint256 maxLtv,
         uint256 deadline
@@ -42,7 +39,6 @@ interface IVeloraLeverageBundlesV1 {
     function veloraLeverageBundlesV1Close(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,
-        address augustus,
         bytes calldata swapData,
         uint256 deadline
     ) external;

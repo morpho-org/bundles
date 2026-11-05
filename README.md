@@ -62,7 +62,7 @@ Open and delever take `maxLtv`, which caps the caller's resulting LTV using the 
 
 Swaps run inside Morpho Blue's supply-collateral and repay callbacks; the bundle does not use a flash loan. The position must remain healthy at the `maxBorrowAssets` or `maxCollateralIn` limit. Opening also requires market liquidity for the full `maxBorrowAssets` cap.
 
-Supply the address and calldata of an Augustus v6.2 contract listed in Paraswap's Augustus registry, with `beneficiary` set to the bundle. For open and delever, the calldata is forwarded unchanged: its exact-output target must cover the amount the operation needs, plus one token base unit for Augustus's payout rounding. Positive slippage is retained unless a partner is configured. Excess loan tokens are returned to the user.
+The bundle calls the Augustus v6.2 address fixed at deployment: `0x6A000F20005980200259B80c5102003040001068`, shared by Ethereum, Base, Arbitrum and Robinhood. Set `beneficiary` to the bundle. For open and delever, calldata is forwarded unchanged: its exact-output target must cover the amount the operation needs, plus one token base unit for Augustus's payout rounding. Positive slippage is retained unless a partner is configured. Excess loan tokens are returned to the user.
 
 Only `swapExactAmountOut`, `swapExactAmountOutOnUniswapV2` and `swapExactAmountOutOnUniswapV3` are accepted; other selectors revert with `InvalidSelector`. Request quotes with `excludeRFQ=true` and `includeContractMethods=swapExactAmountOut,swapExactAmountOutOnUniswapV2,swapExactAmountOutOnUniswapV3`, then check `priceRoute.contractMethod` in the response because Velora silently ignores unknown method names.
 
@@ -72,7 +72,6 @@ Close takes the following arguments:
 veloraLeverageBundlesV1Close(
     MarketParams marketParams,
     uint256 maxCollateralIn,
-    address augustus,
     bytes swapData,
     uint256 deadline
 )
