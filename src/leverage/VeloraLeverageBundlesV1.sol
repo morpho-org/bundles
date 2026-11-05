@@ -3,6 +3,7 @@
 pragma solidity 0.8.34;
 
 import {IAugustusRegistry} from "./interfaces/IAugustusRegistry.sol";
+import {IAugustusV6} from "./interfaces/IAugustusV6.sol";
 import {IVeloraLeverageBundlesV1, Offsets} from "./interfaces/IVeloraLeverageBundlesV1.sol";
 import {IMorpho, MarketParams, Position} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {
@@ -224,6 +225,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         data.set(offsets.exactAmount, amountOut);
     }
 
+    /// @dev Only generic, Uniswap V2 and Uniswap V3 exact-output methods are accepted.
     function _swapExactOut(
         address tokenIn,
         address tokenOut,
@@ -233,6 +235,18 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         bytes memory data
     ) internal returns (uint256 spent, uint256 received) {
         require(IAugustusRegistry(AUGUSTUS_REGISTRY).isValidAugustus(augustus), InvalidAugustus());
+        require(data.length >= 4, InvalidSelector());
+
+        bytes4 selector;
+        assembly ("memory-safe") {
+            selector := mload(add(data, 0x20))
+        }
+        require(
+            selector == IAugustusV6.swapExactAmountOut.selector
+                || selector == IAugustusV6.swapExactAmountOutOnUniswapV2.selector
+                || selector == IAugustusV6.swapExactAmountOutOnUniswapV3.selector,
+            InvalidSelector()
+        );
 
         uint256 inBefore = IERC20(tokenIn).balanceOf(address(this));
         uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));

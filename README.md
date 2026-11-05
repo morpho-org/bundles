@@ -60,6 +60,8 @@ Swaps run inside Morpho Blue's supply-collateral and repay callbacks; the bundle
 
 Supply the address and calldata of an Augustus v6.2 contract listed in Paraswap's Augustus registry, with `beneficiary` set to the bundle. For open and delever, the calldata is forwarded unchanged: its exact-output target must cover the amount the operation needs, plus one token base unit for Augustus's payout rounding. Positive slippage is retained unless a partner is configured. Excess loan tokens are returned to the user.
 
+Only `swapExactAmountOut`, `swapExactAmountOutOnUniswapV2` and `swapExactAmountOutOnUniswapV3` are accepted; other selectors revert with `InvalidSelector`. Request quotes with `excludeRFQ=true` and `includeContractMethods=swapExactAmountOut,swapExactAmountOutOnUniswapV2,swapExactAmountOutOnUniswapV3`, then check `priceRoute.contractMethod` in the response because Velora silently ignores unknown method names.
+
 Close takes the following arguments:
 
 ```solidity
@@ -79,7 +81,6 @@ The frontend quotes an estimated debt amount and provides `Offsets({exactAmount,
 | --- | ---: | ---: | ---: |
 | `swapExactAmountOut` | 132 | 100 | 164 |
 | `swapExactAmountOutOnUniswapV2` / `swapExactAmountOutOnUniswapV3` | 196 | 164 | 228 |
-| `swapExactAmountOutOnBalancerV2` | 36 | 4 | 68 |
 
 Morpho accrues interest and supplies the actual repayment amount to the close callback. The bundle sets the swap's exact output to `debtAssets + 1`, scales its maximum and quoted input amounts by `newOutput / originalOutput` (rounding down), and clamps the maximum input to `maxCollateralIn`. The original exact-output amount must be nonzero. The extra base unit covers Augustus's payout rounding; any excess received is refunded.
 

@@ -9,26 +9,6 @@ import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 contract AugustusMock is IAugustusV6 {
     using UtilsLib for uint256;
 
-    // Same tuple layouts as Augustus v6.2's direct Uniswap and Balancer methods.
-    struct UniswapData {
-        address srcToken;
-        address destToken;
-        uint256 fromAmount;
-        uint256 toAmount;
-        uint256 quotedAmount;
-        bytes32 metadata;
-        address payable beneficiary;
-        bytes pools;
-    }
-
-    struct BalancerData {
-        uint256 fromAmount;
-        uint256 toAmount;
-        uint256 quotedAmount;
-        bytes32 metadata;
-        uint256 beneficiaryAndApproveFlag;
-    }
-
     uint256 public lastFromAmount;
     uint256 public lastToAmount;
     uint256 public lastQuotedAmount;
@@ -54,22 +34,40 @@ contract AugustusMock is IAugustusV6 {
         partnerShare = 0;
     }
 
-    function swapExactAmountOutOnUniswapV2(UniswapData calldata data, uint256, bytes calldata) external {
-        _swap(data.srcToken, data.destToken, data.fromAmount, data.toAmount, data.quotedAmount, data.beneficiary);
-    }
-
-    function swapExactAmountOutOnUniswapV3(UniswapData calldata data, uint256, bytes calldata) external {
-        _swap(data.srcToken, data.destToken, data.fromAmount, data.toAmount, data.quotedAmount, data.beneficiary);
-    }
-
-    function swapExactAmountOutOnBalancerV2(BalancerData calldata data, uint256, bytes calldata, bytes calldata route)
+    function swapExactAmountOutOnUniswapV2(IAugustusV6.UniswapData calldata data, uint256, bytes calldata)
         external
+        payable
+        override
+        returns (uint256 spentAmount, uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare)
     {
-        (address srcToken, address destToken) = abi.decode(route, (address, address));
-        // The low 160 bits hold the beneficiary; approval flags are unused in this mock.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        address beneficiary = address(uint160(data.beneficiaryAndApproveFlag));
-        _swap(srcToken, destToken, data.fromAmount, data.toAmount, data.quotedAmount, beneficiary);
+        (spentAmount, receivedAmount) = _swap(
+            address(data.srcToken),
+            address(data.destToken),
+            data.fromAmount,
+            data.toAmount,
+            data.quotedAmount,
+            data.beneficiary
+        );
+        paraswapShare = 0;
+        partnerShare = 0;
+    }
+
+    function swapExactAmountOutOnUniswapV3(IAugustusV6.UniswapData calldata data, uint256, bytes calldata)
+        external
+        payable
+        override
+        returns (uint256 spentAmount, uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare)
+    {
+        (spentAmount, receivedAmount) = _swap(
+            address(data.srcToken),
+            address(data.destToken),
+            data.fromAmount,
+            data.toAmount,
+            data.quotedAmount,
+            data.beneficiary
+        );
+        paraswapShare = 0;
+        partnerShare = 0;
     }
 
     function _swap(

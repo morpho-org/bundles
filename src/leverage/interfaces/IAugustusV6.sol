@@ -15,6 +15,17 @@ interface IAugustusV6 {
         address payable beneficiary;
     }
 
+    struct UniswapData {
+        IERC20 srcToken;
+        IERC20 destToken;
+        uint256 fromAmount;
+        uint256 toAmount;
+        uint256 quotedAmount;
+        bytes32 metadata;
+        address payable beneficiary;
+        bytes pools;
+    }
+
     function swapExactAmountOut(
         address executor,
         GenericData calldata swapData,
@@ -22,4 +33,14 @@ interface IAugustusV6 {
         bytes calldata permit,
         bytes calldata executorData
     ) external returns (uint256 spentAmount, uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare);
+
+    function swapExactAmountOutOnUniswapV2(UniswapData calldata uniData, uint256 partnerAndFee, bytes calldata permit)
+        external
+        payable
+        returns (uint256 spentAmount, uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare);
+
+    function swapExactAmountOutOnUniswapV3(UniswapData calldata uniData, uint256 partnerAndFee, bytes calldata permit)
+        external
+        payable
+        returns (uint256 spentAmount, uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare);
 }

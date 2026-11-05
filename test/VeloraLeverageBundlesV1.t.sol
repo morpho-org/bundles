@@ -33,6 +33,12 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         bundle = new VeloraLeverageBundlesV1(address(morpho), address(augustusRegistry));
     }
 
+    function testAugustusExactOutputSelectors() public pure {
+        assertTrue(IAugustusV6.swapExactAmountOut.selector == bytes4(0x7f457675));
+        assertTrue(IAugustusV6.swapExactAmountOutOnUniswapV2.selector == bytes4(0xa76f4eb6));
+        assertTrue(IAugustusV6.swapExactAmountOutOnUniswapV3.selector == bytes4(0x5e94e28d));
+    }
+
     function testFuzzOpen(uint256 equity, uint256 collateralToBuy, uint256 borrowBuffer) public {
         equity = bound(equity, 1e6, 1e24);
         collateralToBuy = bound(collateralToBuy, 1, 3 * equity);
@@ -60,6 +66,57 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         vm.expectRevert(IVeloraLeverageBundlesV1.ZeroCollateralToBuy.selector);
         vm.prank(user);
         bundle.veloraLeverageBundlesV1Open(marketParams, 1e18, 0, 1e18, address(augustus), "", block.timestamp);
+        assertNoResiduals();
+    }
+
+    function testRejectsDisallowedSelectorOnOpen() public {
+        uint256 equity = 10e18;
+        uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);
+        fundUser(address(bundle), equity);
+
+        vm.expectRevert(IVeloraLeverageBundlesV1.InvalidSelector.selector);
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams, equity, equity, maxBorrowAssets, address(augustus), hex"e3ead59e", block.timestamp
+        );
+        assertNoResiduals();
+    }
+
+    function testRejectsDisallowedSelectorOnDeleverAndClose() public {
+        uint256 debt = openPosition();
+        Position memory position = morpho.position(marketParams.id(), user);
+        uint256 repayAssets = debt / 2;
+        bytes memory invalidSwapData = hex"e3ead59e";
+
+        vm.expectRevert(IVeloraLeverageBundlesV1.InvalidSelector.selector);
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Delever(
+            marketParams, repayAssets, position.collateral / 2, address(augustus), invalidSwapData, block.timestamp
+        );
+        assertNoResiduals();
+
+        (bytes memory closeSwapData, Offsets memory offsets) = buildCloseSwapData(0, position.collateral, debt, debt);
+        assembly ("memory-safe") {
+            mstore(add(closeSwapData, 0x20), 0xe3ead59e00000000000000000000000000000000000000000000000000000000)
+        }
+        vm.expectRevert(IVeloraLeverageBundlesV1.InvalidSelector.selector);
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Close(
+            marketParams, position.collateral, address(augustus), closeSwapData, offsets, block.timestamp
+        );
+        assertNoResiduals();
+    }
+
+    function testRejectsShortSwapData() public {
+        uint256 equity = 10e18;
+        uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);
+        fundUser(address(bundle), equity);
+
+        vm.expectRevert(IVeloraLeverageBundlesV1.InvalidSelector.selector);
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams, equity, equity, maxBorrowAssets, address(augustus), "", block.timestamp
+        );
         assertNoResiduals();
     }
 
@@ -155,7 +212,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         uint256 initialDebt = openPosition();
         quotedOutput = bound(quotedOutput, initialDebt / 2, initialDebt * 2);
         elapsed = bound(elapsed, 0, 365 days);
-        layout = uint8(bound(layout, 0, 3));
+        layout = uint8(bound(layout, 0, 2));
         uint256 quotedInput = quotedOutput.mulDivUp(1003, 1000);
         uint256 quotedLimit = quotedInput + quotedInput / 10;
         (bytes memory swapData, Offsets memory offsets) =
@@ -479,10 +536,10 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
                 )
             );
             offsets = Offsets(132, 100, 164);
-        } else if (layout == 1 || layout == 2) {
-            AugustusMock.UniswapData memory uniData = AugustusMock.UniswapData({
-                srcToken: address(collateralToken),
-                destToken: address(loanToken),
+        } else {
+            IAugustusV6.UniswapData memory uniData = IAugustusV6.UniswapData({
+                srcToken: IERC20(address(collateralToken)),
+                destToken: IERC20(address(loanToken)),
                 fromAmount: maxIn,
                 toAmount: amountOut,
                 quotedAmount: quotedAmount,
@@ -496,23 +553,6 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
                 data = abi.encodeCall(AugustusMock.swapExactAmountOutOnUniswapV3, (uniData, 789, hex"aabbcc"));
             }
             offsets = Offsets(196, 164, 228);
-        } else {
-            data = abi.encodeCall(
-                AugustusMock.swapExactAmountOutOnBalancerV2,
-                (
-                    AugustusMock.BalancerData({
-                        fromAmount: maxIn,
-                        toAmount: amountOut,
-                        quotedAmount: quotedAmount,
-                        metadata: bytes32(uint256(456)),
-                        beneficiaryAndApproveFlag: uint256(uint160(address(bundle)))
-                    }),
-                    789,
-                    hex"aabbcc",
-                    abi.encode(address(collateralToken), address(loanToken))
-                )
-            );
-            offsets = Offsets(36, 4, 68);
         }
     }
 

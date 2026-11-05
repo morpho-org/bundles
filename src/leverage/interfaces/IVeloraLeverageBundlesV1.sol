@@ -16,6 +16,7 @@ interface IVeloraLeverageBundlesV1 {
     error DeadlinePassed();
     error IncompleteFill();
     error InvalidAugustus();
+    error InvalidSelector();
     error UnauthorizedCallback();
     error ZeroCollateralToBuy();
     error ZeroSwapAmount();
