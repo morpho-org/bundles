@@ -9,6 +9,7 @@ interface IVeloraLeverageBundlesV1 {
     error IncompleteFill();
     error InvalidAugustus();
     error InvalidSelector();
+    error LtvExceeded();
     error UnauthorizedCallback();
     error ZeroCollateralToBuy();
     error ZeroSwapAmount();
@@ -23,6 +24,7 @@ interface IVeloraLeverageBundlesV1 {
         uint256 maxBorrowAssets,
         address augustus,
         bytes calldata swapData,
+        uint256 maxLtv,
         uint256 deadline
     ) external;
 
@@ -32,6 +34,7 @@ interface IVeloraLeverageBundlesV1 {
         uint256 maxCollateralIn,
         address augustus,
         bytes calldata swapData,
+        uint256 maxLtv,
         uint256 deadline
     ) external;
 

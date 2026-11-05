@@ -5,13 +5,18 @@ pragma solidity 0.8.34;
 import {IAugustusRegistry} from "./interfaces/IAugustusRegistry.sol";
 import {IAugustusV6} from "./interfaces/IAugustusV6.sol";
 import {IVeloraLeverageBundlesV1} from "./interfaces/IVeloraLeverageBundlesV1.sol";
-import {IMorpho, MarketParams, Position} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {
     IMorphoRepayCallback,
     IMorphoSupplyCollateralCallback
 } from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
+import {IOracle} from "../../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
+import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
+import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
+import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
+import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {Math} from "../../lib/vault-v2/lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {BytesLib} from "../libraries/BytesLib.sol";
@@ -21,6 +26,8 @@ import {TokenLib} from "../libraries/TokenLib.sol";
 contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyCollateralCallback, IMorphoRepayCallback {
     using MarketParamsLib for MarketParams;
     using BytesLib for bytes;
+    using UtilsLib for uint256;
+    using SharesMathLib for uint256;
 
     address public immutable override BLUE;
     address public immutable override AUGUSTUS_REGISTRY;
@@ -36,6 +43,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     /// @param maxBorrowAssets Maximum loan-token amount to borrow for the swap; unused assets are repaid.
     /// @param augustus Address of the Augustus contract. Must be in Paraswap's Augustus registry.
     /// @param swapData Calldata for the Augustus v6.2 contract selected by `augustus`, with `beneficiary` set to this bundle and an exact-output target at least `collateralToBuy`.
+    /// @param maxLtv Maximum resulting LTV of the caller's position, in WAD; type(uint256).max disables the check.
     function veloraLeverageBundlesV1Open(
         MarketParams memory marketParams,
         uint256 collateralAssets,
@@ -43,6 +51,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         uint256 maxBorrowAssets,
         address augustus,
         bytes calldata swapData,
+        uint256 maxLtv,
         uint256 deadline
     ) external override {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -58,17 +67,20 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
                 msg.sender,
                 abi.encode(msg.sender, marketParams, collateralToBuy, maxBorrowAssets, augustus, swapData)
             );
+        requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
     /// @notice Repays part of the caller's debt by withdrawing and swapping collateral.
     /// @param augustus Address of the Augustus contract. Must be in Paraswap's Augustus registry.
     /// @param swapData Augustus v6.2 calldata with `beneficiary` set to this bundle and an exact-output target at least `repayAssets`.
+    /// @param maxLtv Maximum resulting LTV of the caller's position, in WAD; type(uint256).max disables the check.
     function veloraLeverageBundlesV1Delever(
         MarketParams memory marketParams,
         uint256 repayAssets,
         uint256 maxCollateralIn,
         address augustus,
         bytes calldata swapData,
+        uint256 maxLtv,
         uint256 deadline
     ) external override {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -86,6 +98,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
                     abi.encode(marketParams, maxCollateralIn, augustus, swapData)
                 )
             );
+        requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
     /// @notice Repays all borrow shares and returns the remaining collateral.
@@ -239,6 +252,27 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
                 || selector == IAugustusV6.swapExactAmountOutOnUniswapV3.selector
         ) return (196, 164, 228);
         revert InvalidSelector();
+    }
+
+    /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).
+    /// @dev Accrues market interest when needed, then mirrors Blue's own health check against maxLtv.
+    function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal {
+        if (maxLtv != type(uint256).max) {
+            Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
+            if (position.borrowShares != 0) {
+                Market memory market = IMorpho(BLUE).market(marketParams.id());
+                if (market.lastUpdate != block.timestamp) {
+                    IMorpho(BLUE).accrueInterest(marketParams);
+                    market = IMorpho(BLUE).market(marketParams.id());
+                }
+                uint256 borrowed =
+                    uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+                uint256 price = IOracle(marketParams.oracle).price();
+                uint256 maxBorrow =
+                    uint256(position.collateral).mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
+                require(borrowed <= maxBorrow, LtvExceeded());
+            }
+        }
     }
 
     /// @dev Only generic, Uniswap V2 and Uniswap V3 exact-output methods are accepted.

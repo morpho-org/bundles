@@ -56,6 +56,8 @@ Opening takes concrete token amounts in base units. `collateralToBuy` must be no
 
 Frontends compute these amounts from the user's contribution and desired exposure. For a WAD-scaled collateral multiplier `L`, use `collateralToBuy = floor(collateralAssets * (L - 1e18) / 1e18)`, then obtain an exact-output quote and set `maxBorrowAssets` from its cost and the user's slippage tolerance. A target financial leverage instead requires accounting for quoted swap costs and any existing collateral and debt; the contract does not target a leverage ratio.
 
+Open and delever take `maxLtv`, which caps the caller's resulting LTV using the market oracle price; `type(uint256).max` disables the check.
+
 Swaps run inside Morpho Blue's supply-collateral and repay callbacks; the bundle does not use a flash loan. The position must remain healthy at the `maxBorrowAssets` or `maxCollateralIn` limit. Opening also requires market liquidity for the full `maxBorrowAssets` cap.
 
 Supply the address and calldata of an Augustus v6.2 contract listed in Paraswap's Augustus registry, with `beneficiary` set to the bundle. For open and delever, the calldata is forwarded unchanged: its exact-output target must cover the amount the operation needs, plus one token base unit for Augustus's payout rounding. Positive slippage is retained unless a partner is configured. Excess loan tokens are returned to the user.
