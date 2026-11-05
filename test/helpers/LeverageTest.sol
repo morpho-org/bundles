@@ -6,7 +6,7 @@ import {IMorpho, MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorph
 import {OracleMock} from "../../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {IrmMock} from "../../lib/morpho-blue/src/mocks/IrmMock.sol";
 import {ORACLE_PRICE_SCALE} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
-import {TokenTest, ITestToken} from "./TestToken.sol";
+import {TokenTest, ITestToken} from "./TokenTest.sol";
 
 abstract contract LeverageTest is TokenTest {
     uint256 internal constant LLTV = 0.8e18;
