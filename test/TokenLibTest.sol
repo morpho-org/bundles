@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity ^0.8.0;
 
-import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TokenTest.sol";
 import {IEIP712} from "../lib/permit2/src/interfaces/IEIP712.sol";
 import {TokenLib, TokenPermit, PermitKind} from "../src/libraries/TokenLib.sol";
 
