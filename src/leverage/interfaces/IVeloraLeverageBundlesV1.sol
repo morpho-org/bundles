@@ -4,14 +4,6 @@ pragma solidity >=0.8.0;
 
 import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 
-/// @notice Byte offsets of 32-byte amounts from the start of Augustus calldata, including its selector.
-struct Offsets {
-    uint256 exactAmount;
-    uint256 limitAmount;
-    /// @dev Set to zero to skip updating a quoted amount.
-    uint256 quotedAmount;
-}
-
 interface IVeloraLeverageBundlesV1 {
     error DeadlinePassed();
     error IncompleteFill();
@@ -48,7 +40,6 @@ interface IVeloraLeverageBundlesV1 {
         uint256 maxCollateralIn,
         address augustus,
         bytes calldata swapData,
-        Offsets calldata offsets,
         uint256 deadline
     ) external;
 }

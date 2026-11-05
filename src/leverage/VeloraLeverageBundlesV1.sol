@@ -4,7 +4,7 @@ pragma solidity 0.8.34;
 
 import {IAugustusRegistry} from "./interfaces/IAugustusRegistry.sol";
 import {IAugustusV6} from "./interfaces/IAugustusV6.sol";
-import {IVeloraLeverageBundlesV1, Offsets} from "./interfaces/IVeloraLeverageBundlesV1.sol";
+import {IVeloraLeverageBundlesV1} from "./interfaces/IVeloraLeverageBundlesV1.sol";
 import {IMorpho, MarketParams, Position} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {
     IMorphoRepayCallback,
@@ -91,8 +91,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     /// @notice Repays all borrow shares and returns the remaining collateral.
     /// @param maxCollateralIn Absolute collateral spending cap, including after resizing the swap.
     /// @param augustus Address of the Augustus contract. Must be in Paraswap's Augustus registry.
-    /// @param swapData Augustus v6.2 exact-output calldata with `beneficiary` set to this bundle and a nonzero output amount.
-    /// @param offsets Locations of the exact output, maximum input and optional quoted input amounts in `swapData`.
+    /// @param swapData Augustus v6.2 exact-output calldata with `beneficiary` set to this bundle; amount offsets are derived from its selector.
     /// @dev Resizes output to Morpho's callback debt plus one base unit for Augustus's payout rounding.
     /// Maximum and quoted input amounts are scaled proportionally, rounding down; maximum input is capped at `maxCollateralIn`.
     function veloraLeverageBundlesV1Close(
@@ -100,7 +99,6 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         uint256 maxCollateralIn,
         address augustus,
         bytes calldata swapData,
-        Offsets calldata offsets,
         uint256 deadline
     ) external override {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -121,7 +119,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
                 abi.encode(
                     this.veloraLeverageBundlesV1Close.selector,
                     msg.sender,
-                    abi.encode(marketParams, position.collateral, maxCollateralIn, augustus, swapData, offsets)
+                    abi.encode(marketParams, position.collateral, maxCollateralIn, augustus, swapData)
                 )
             );
     }
@@ -189,11 +187,10 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
             uint256 collateral,
             uint256 maxCollateralIn,
             address augustus,
-            bytes memory swapData,
-            Offsets memory offsets
-        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes, Offsets));
+            bytes memory swapData
+        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
 
-        _resizeSwapData(swapData, offsets, assets + 1, maxCollateralIn);
+        _resizeSwapData(swapData, assets + 1, maxCollateralIn);
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
         (uint256 spent, uint256 received) = _swapExactOut(
@@ -208,21 +205,40 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         }
     }
 
-    /// @dev Updates only the caller-selected amount words; route data must support resizing these amounts.
-    function _resizeSwapData(bytes memory data, Offsets memory offsets, uint256 amountOut, uint256 maxIn)
-        internal
-        pure
-    {
-        uint256 oldAmountOut = data.get(offsets.exactAmount);
+    /// @dev Updates only the selector-defined amount words; route data must support resizing these amounts.
+    function _resizeSwapData(bytes memory data, uint256 amountOut, uint256 maxIn) internal pure {
+        (uint256 exactAmount, uint256 limitAmount, uint256 quotedAmount) = _amountOffsets(data);
+
+        uint256 oldAmountOut = data.get(exactAmount);
         require(oldAmountOut != 0, ZeroSwapAmount());
 
-        uint256 limitAmount = Math.min(Math.mulDiv(data.get(offsets.limitAmount), amountOut, oldAmountOut), maxIn);
-        if (offsets.quotedAmount != 0) {
-            uint256 quotedAmount = Math.mulDiv(data.get(offsets.quotedAmount), amountOut, oldAmountOut);
-            data.set(offsets.quotedAmount, quotedAmount);
+        uint256 newLimitAmount = Math.min(Math.mulDiv(data.get(limitAmount), amountOut, oldAmountOut), maxIn);
+        uint256 newQuotedAmount = Math.mulDiv(data.get(quotedAmount), amountOut, oldAmountOut);
+        data.set(quotedAmount, newQuotedAmount);
+        data.set(limitAmount, newLimitAmount);
+        data.set(exactAmount, amountOut);
+    }
+
+    function _selector(bytes memory data) internal pure returns (bytes4 selector) {
+        require(data.length >= 4, InvalidSelector());
+        assembly ("memory-safe") {
+            selector := mload(add(data, 0x20))
         }
-        data.set(offsets.limitAmount, limitAmount);
-        data.set(offsets.exactAmount, amountOut);
+    }
+
+    function _amountOffsets(bytes memory data)
+        internal
+        pure
+        returns (uint256 exactAmount, uint256 limitAmount, uint256 quotedAmount)
+    {
+        bytes4 selector = _selector(data);
+
+        if (selector == IAugustusV6.swapExactAmountOut.selector) return (132, 100, 164);
+        if (
+            selector == IAugustusV6.swapExactAmountOutOnUniswapV2.selector
+                || selector == IAugustusV6.swapExactAmountOutOnUniswapV3.selector
+        ) return (196, 164, 228);
+        revert InvalidSelector();
     }
 
     /// @dev Only generic, Uniswap V2 and Uniswap V3 exact-output methods are accepted.
@@ -235,18 +251,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         bytes memory data
     ) internal returns (uint256 spent, uint256 received) {
         require(IAugustusRegistry(AUGUSTUS_REGISTRY).isValidAugustus(augustus), InvalidAugustus());
-        require(data.length >= 4, InvalidSelector());
-
-        bytes4 selector;
-        assembly ("memory-safe") {
-            selector := mload(add(data, 0x20))
-        }
-        require(
-            selector == IAugustusV6.swapExactAmountOut.selector
-                || selector == IAugustusV6.swapExactAmountOutOnUniswapV2.selector
-                || selector == IAugustusV6.swapExactAmountOutOnUniswapV3.selector,
-            InvalidSelector()
-        );
+        _amountOffsets(data);
 
         uint256 inBefore = IERC20(tokenIn).balanceOf(address(this));
         uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));

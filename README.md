@@ -70,12 +70,11 @@ veloraLeverageBundlesV1Close(
     uint256 maxCollateralIn,
     address augustus,
     bytes swapData,
-    Offsets offsets,
     uint256 deadline
 )
 ```
 
-The frontend quotes an estimated debt amount and provides `Offsets({exactAmount, limitAmount, quotedAmount})`, identifying the 32-byte exact-output, maximum-input and quoted-input words in `swapData`. Offsets count bytes from the start of calldata, including the four-byte selector. Set `quotedAmount` to zero only if that field does not need updating. For canonical Augustus v6.2 calldata:
+The bundle derives the offsets for the 32-byte exact-output, maximum-input and quoted-input words from the selector in `swapData`. These offsets count bytes from the start of calldata, including the four-byte selector. For canonical Augustus v6.2 calldata:
 
 | Method | `exactAmount` | `limitAmount` | `quotedAmount` |
 | --- | ---: | ---: | ---: |
@@ -84,7 +83,7 @@ The frontend quotes an estimated debt amount and provides `Offsets({exactAmount,
 
 Morpho accrues interest and supplies the actual repayment amount to the close callback. The bundle sets the swap's exact output to `debtAssets + 1`, scales its maximum and quoted input amounts by `newOutput / originalOutput` (rounding down), and clamps the maximum input to `maxCollateralIn`. The original exact-output amount must be nonzero. The extra base unit covers Augustus's payout rounding; any excess received is refunded.
 
-The caller must provide the correct offsets for the selected method and route data that supports changing these amounts; the bundle does not rewrite nested route data or reprice the route. All offset reads and writes are bounds-checked. The absolute spending cap and the post-swap token-balance checks still apply, so a stale route that cannot deliver the current debt within the cap reverts the entire close. A position without debt simply returns its collateral without using the swap data or offsets.
+The route data must support changing these amounts; the bundle does not rewrite nested route data or reprice the route. All offset reads and writes are bounds-checked. The absolute spending cap and the post-swap token-balance checks still apply, so a stale route that cannot deliver the current debt within the cap reverts the entire close. A position without debt simply returns its collateral without using the swap data.
 
 ### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 
