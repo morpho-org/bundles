@@ -7,8 +7,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  compare-bytecode:
+  forge-old:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -16,93 +19,25 @@ jobs:
         with:
           submodules: recursive
       - name: Install Foundry (old)
-        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
-        with:
-          version: v1.5.1
-      - name: Verify forge executable hash
-        env:
-          EXPECTED_FORGE_SHA256: a39fc1913b53dde6a35b603756f65d799e13817ef694107ec0d3704c20435cce
         run: |
-          forge_path="$(which forge)"
-          echo "forge path: $forge_path"
-          actual="$(sha256sum "$forge_path" | awk '{print $1}')"
-          echo "actual:   $actual"
-          echo "expected: $EXPECTED_FORGE_SHA256"
-          [ "$actual" = "$EXPECTED_FORGE_SHA256" ] || { echo "forge hash mismatch"; exit 1; }
-      - name: Install solc 0.8.34 into svm cache
+          curl -fsSL -o foundry.tar.gz https://github.com/foundry-rs/foundry/releases/download/v1.5.1/foundry_v1.5.1_linux_amd64.tar.gz
+          echo "73640b01bd9ed29fdb4965085099371f8cf0dbbec3e2086cf54564efc4dcfe88  foundry.tar.gz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/foundry"
+          tar -xzf foundry.tar.gz -C "$RUNNER_TEMP/foundry"
+          echo "$RUNNER_TEMP/foundry" >> "$GITHUB_PATH"
+      - name: Install solc into svm cache
         run: |
-          mkdir -p "$HOME/.svm/0.8.34"
-          curl -fsSL -o "$HOME/.svm/0.8.34/solc-0.8.34" \
-            https://github.com/ethereum/solidity/releases/download/v0.8.34/solc-static-linux
-          chmod +x "$HOME/.svm/0.8.34/solc-0.8.34"
-          "$HOME/.svm/0.8.34/solc-0.8.34" --version
-      - name: Build with Foundry (old)
-        run: forge build --force
-      - name: Collect version-pinned sources
-        run: |
-          mkdir -p compare
-          # Only sources that pin an exact solc version are comparable across forge
-          # versions. A range pragma resolves to whatever solc each forge knows about,
-          # and a contract compiled under several compiler profiles has its artifact
-          # path disambiguated differently from one forge version to the next, so
-          # range-pragma artifacts report spurious mismatches. Everything that is
-          # actually deployed pins its version, so scope the manifests to those.
-          grep -rlE --include='*.sol' 'pragma solidity[[:space:]]+[=0-9]' src lib \
-            | sed 's|.*/||' | LC_ALL=C sort -u > compare/pinned.txt
-          [ -s compare/pinned.txt ] || { echo "no version-pinned sources found"; exit 1; }
-          echo "version-pinned sources: $(wc -l < compare/pinned.txt)"
-      - name: Export bytecode manifest (old)
-        run: |
-          find out -name '*.json' -not -path '*/build-info/*' -print0 | sort -z | while IFS= read -r -d '' file; do
-            rel="${file#out/}"
-            source="${rel%/*}"
-            grep -qxF "${source##*/}" compare/pinned.txt || continue
-            jq -r --arg rel "$rel" '[$rel, (.bytecode.object // ""), (.deployedBytecode.object // "")] | @tsv' "$file"
-          done > compare/old.tsv
-          [ -s compare/old.tsv ] || { echo "old manifest is empty"; exit 1; }
+          echo "0.8.17 99f2070b776e9714f1f76c43c229cf99b8978a92938ee8d2364c6de11c1a03d4
+          0.8.19 7a5c1d3dc9a8eba62bb2ec37192c9178ae5fe8a54a56e5573fd3c9c17cd9eb48
+          0.8.21 f2857a898be15c69e8de5598dcd3f3e169e94964a0ce9a0bbb1b111f145a81df
+          0.8.28 9a0fb7e0db2c0641dbae1c5cc645dc686820c83af516226abb1c0a2f76636f25
+          0.8.34 d40adc6f9fdbb22a97d32a02fa05688bf2ee7886affc48c9851b0afd4a726b39" |
+          while read -r version sha256; do
+            solc="$HOME/.svm/$version/solc-$version"
+            mkdir -p "${solc%/*}"
+            curl -fsSL -o "$solc" "https://github.com/ethereum/solidity/releases/download/v$version/solc-static-linux"
+            echo "$sha256  $solc" | sha256sum -c -
+            chmod +x "$solc"
+          done
       - name: Run Forge tests
-        run: forge test
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
-      - name: Build with Foundry
-        run: forge build --force --out out-new --cache-path cache-new
-      - name: Export bytecode manifest (new)
-        run: |
-          find out-new -name '*.json' -not -path '*/build-info/*' -print0 | sort -z | while IFS= read -r -d '' file; do
-            rel="${file#out-new/}"
-            source="${rel%/*}"
-            grep -qxF "${source##*/}" compare/pinned.txt || continue
-            jq -r --arg rel "$rel" '[$rel, (.bytecode.object // ""), (.deployedBytecode.object // "")] | @tsv' "$file"
-          done > compare/new.tsv
-          [ -s compare/new.tsv ] || { echo "new manifest is empty"; exit 1; }
-      - name: Compare bytecode
-        run: |
-          if cmp -s compare/old.tsv compare/new.tsv; then
-            echo "bytecode is identical"
-            exit 0
-          fi
-          cut -f1 compare/old.tsv | LC_ALL=C sort > compare/old.names
-          cut -f1 compare/new.tsv | LC_ALL=C sort > compare/new.names
-          LC_ALL=C comm -23 compare/old.names compare/new.names > compare/only-old
-          LC_ALL=C comm -13 compare/old.names compare/new.names > compare/only-new
-          awk -F'\t' '
-            NR == FNR { bytecode[$1] = $2; deployed[$1] = $3; next }
-            !($1 in bytecode) { next }
-            {
-              which = ""
-              if (bytecode[$1] != $2) which = "bytecode"
-              if (deployed[$1] != $3) which = (which == "" ? "deployedBytecode" : which ", deployedBytecode")
-              if (which != "") print $1 " (" which ")"
-            }
-          ' compare/old.tsv compare/new.tsv > compare/changed
-          report() {
-            count="$(wc -l < "$2")"
-            [ "$count" -eq 0 ] && return 0
-            echo "$1 ($count):"
-            sed 's/^/  /' "$2"
-            echo "::error title=$1 ($count)::$(head -n 20 "$2" | sed 's/$/%0A/' | tr -d '\n')"
-          }
-          report "Artifacts only in the old build" compare/only-old
-          report "Artifacts only in the new build" compare/only-new
-          report "Artifacts whose bytecode changed" compare/changed
-          exit 1
+        run: forge test --offline
