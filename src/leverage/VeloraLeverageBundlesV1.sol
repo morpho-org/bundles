@@ -58,8 +58,9 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     /// @param collateralAssets Collateral-token amount to pull from the caller, in token base units.
     /// @param collateralToBuy Nonzero additional collateral-token amount to acquire and supply, in token base units.
     /// @param maxBorrowAssets Maximum loan-token amount to borrow for the swap; unused assets are repaid.
-    /// @param swapData Calldata for the deployed Augustus v6.2 contract, with `beneficiary` set to this bundle and an exact-output target at least `collateralToBuy`.
+    /// @param swapData Augustus v6.2 exact-output calldata with `beneficiary` set to this bundle and a nonzero output amount.
     /// @param maxLtv Maximum resulting LTV of the caller's position, in WAD; type(uint256).max disables the check.
+    /// @dev Resizes output to `collateralToBuy + 1` for Augustus's payout rounding.
     function veloraLeverageBundlesV1Open(
         MarketParams memory marketParams,
         uint256 collateralAssets,
@@ -87,8 +88,9 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     }
 
     /// @notice Repays part of the caller's debt by withdrawing and swapping collateral.
-    /// @param swapData Augustus v6.2 calldata with `beneficiary` set to this bundle and an exact-output target at least `repayAssets`.
+    /// @param swapData Augustus v6.2 exact-output calldata with `beneficiary` set to this bundle and a nonzero output amount.
     /// @param maxLtv Maximum resulting LTV of the caller's position, in WAD; type(uint256).max disables the check.
+    /// @dev Resizes output to Morpho's callback repayment amount plus one wei and repays any excess against remaining debt.
     function veloraLeverageBundlesV1Delever(
         MarketParams memory marketParams,
         uint256 repayAssets,
@@ -163,6 +165,7 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         ) = abi.decode(data, (address, MarketParams, uint256, uint256, bytes));
 
         IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, user, address(this));
+        _resizeSwapData(swapData, collateralToBuy + 1, maxBorrowAssets);
         (uint256 spent, uint256 received) = _swapExactOut(
             marketParams.loanToken, marketParams.collateralToken, maxBorrowAssets, collateralToBuy, swapData
         );
@@ -194,6 +197,8 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         (MarketParams memory marketParams, uint256 maxCollateralIn, bytes memory swapData) =
             abi.decode(operationData, (MarketParams, uint256, bytes));
 
+        _resizeSwapData(swapData, assets + 1, maxCollateralIn);
+
         IMorpho(BLUE).withdrawCollateral(marketParams, maxCollateralIn, user, address(this));
         (uint256 spent, uint256 received) =
             _swapExactOut(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
@@ -203,7 +208,21 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
             IMorpho(BLUE).supplyCollateral(marketParams, maxCollateralIn - spent, user, "");
         }
         if (received > assets) {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, user, received - assets);
+            uint256 excess = received - assets;
+            uint256 borrowShares = IMorpho(BLUE).position(marketParams.id(), user).borrowShares;
+            Market memory market = IMorpho(BLUE).market(marketParams.id());
+            uint256 debt = borrowShares.toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+
+            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+            if (excess >= debt) {
+                if (borrowShares > 0) IMorpho(BLUE).repay(marketParams, 0, borrowShares, user, "");
+                excess -= debt;
+            } else {
+                IMorpho(BLUE).repay(marketParams, excess, 0, user, "");
+                excess = 0;
+            }
+
+            if (excess > 0) SafeTransferLib.safeTransfer(marketParams.loanToken, user, excess);
         }
     }
 

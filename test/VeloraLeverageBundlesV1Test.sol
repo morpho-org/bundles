@@ -39,7 +39,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         equity = bound(equity, 1e6, 1e24);
         collateralToBuy = bound(collateralToBuy, 1, 3 * equity);
         borrowBuffer = bound(borrowBuffer, 0, equity / 10);
-        uint256 spentAmount = collateralToBuy.mulDivUp(1003, 1000);
+        uint256 spentAmount = (collateralToBuy + 1).mulDivUp(1003, 1000);
         uint256 maxBorrowAssets = spentAmount + borrowBuffer;
         fundUser(address(bundle), equity);
         bytes memory swapData =
@@ -53,8 +53,25 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         Position memory position = morpho.position(marketParams.id(), user);
         Market memory market = morpho.market(marketParams.id());
         uint256 debt = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
-        assertEq(position.collateral, equity + collateralToBuy);
+        assertEq(position.collateral, equity + collateralToBuy + 1);
         assertEq(debt, spentAmount);
+        assertNoResiduals();
+    }
+
+    function testOpenResizesExactOutputForOneWeiPayoutRounding() public {
+        uint256 equity = 10e18;
+        uint256 maxBorrowAssets = (equity + 1).mulDivUp(1003, 1000);
+        fundUser(address(bundle), equity);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, equity);
+        augustus.setOutputReduction(1);
+
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams, equity, equity, maxBorrowAssets, swapData, type(uint256).max, block.timestamp
+        );
+
+        assertEq(augustus.lastToAmount(), equity + 1);
+        assertEq(morpho.position(marketParams.id(), user).collateral, 2 * equity);
         assertNoResiduals();
     }
 
@@ -62,7 +79,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         uint256 collateralAssets = 10e18;
         uint256 collateralToBuy = 10e18;
         uint256 surplus = 1e18;
-        uint256 maxBorrowAssets = collateralToBuy.mulDivUp(1003, 1000);
+        uint256 maxBorrowAssets = (collateralToBuy + 1).mulDivUp(1003, 1000);
         fundUser(address(bundle), collateralAssets);
         uint256 userCollateralAfterContribution = collateralToken.balanceOf(user) - collateralAssets;
         augustus.setOutputBonus(surplus);
@@ -80,7 +97,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
             block.timestamp
         );
 
-        uint256 received = collateralToBuy + surplus;
+        uint256 received = collateralToBuy + 1 + surplus;
         assertEq(morpho.position(marketParams.id(), user).collateral, collateralAssets + received);
         assertEq(collateralToken.balanceOf(user), userCollateralAfterContribution);
         assertNoResiduals();
@@ -88,7 +105,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
 
     function testOpenEnforcesMaxLtv() public {
         uint256 equity = 10e18;
-        uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);
+        uint256 maxBorrowAssets = (equity + 1).mulDivUp(1003, 1000);
         fundUser(address(bundle), equity);
         bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, equity);
 
@@ -103,7 +120,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         bundle.veloraLeverageBundlesV1Open(
             marketParams, equity, equity, maxBorrowAssets, swapData, 0.51e18, block.timestamp
         );
-        assertEq(morpho.position(marketParams.id(), user).collateral, 2 * equity);
+        assertEq(morpho.position(marketParams.id(), user).collateral, 2 * equity + 1);
         assertNoResiduals();
     }
 
@@ -165,7 +182,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
 
     function testRejectsReentrantOpenFromAugustus() public {
         uint256 equity = 10e18;
-        uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);
+        uint256 maxBorrowAssets = (equity + 1).mulDivUp(1003, 1000);
         fundUser(address(bundle), equity);
         bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, equity);
         bytes memory reentryData = abi.encodeCall(
@@ -184,7 +201,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
 
     function testDelever() public {
         uint256 equity = 10e18;
-        uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);
+        uint256 maxBorrowAssets = (equity + 1).mulDivUp(1003, 1000);
         fundUser(address(bundle), equity);
         bytes memory openSwapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, equity);
 
@@ -198,10 +215,12 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         uint256 debtBefore =
             uint256(beforePosition.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
         uint256 repayAssets = debtBefore / 2;
-        uint256 spentAmount = repayAssets.mulDivUp(1003, 1000);
+        uint256 spentAmount = (repayAssets + 1).mulDivUp(1003, 1000);
         uint256 maxCollateralIn = spentAmount + 1e18;
         bytes memory swapData =
             buildSwapData(address(collateralToken), address(loanToken), maxCollateralIn, repayAssets);
+        augustus.setOutputReduction(1);
+        uint256 loanBalanceBefore = loanToken.balanceOf(user);
 
         vm.prank(user);
         bundle.veloraLeverageBundlesV1Delever(
@@ -210,16 +229,76 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
 
         Position memory afterPosition = morpho.position(marketParams.id(), user);
         Market memory marketAfter = morpho.market(marketParams.id());
+        assertEq(augustus.lastToAmount(), repayAssets + 1);
+        assertEq(loanToken.balanceOf(user), loanBalanceBefore);
         assertEq(market.totalBorrowAssets - marketAfter.totalBorrowAssets, repayAssets);
         assertEq(beforePosition.collateral - afterPosition.collateral, spentAmount);
         assertLt(spentAmount, maxCollateralIn);
         assertNoResiduals();
     }
 
+    function testDeleverRepaysExcessAgainstRemainingDebt() public {
+        openPosition();
+        Position memory beforePosition = morpho.position(marketParams.id(), user);
+        Market memory marketBefore = morpho.market(marketParams.id());
+        uint256 debtBefore = uint256(beforePosition.borrowShares)
+            .toAssetsUp(marketBefore.totalBorrowAssets, marketBefore.totalBorrowShares);
+        uint256 repayAssets = debtBefore / 2;
+        uint256 remainingDebt = debtBefore - repayAssets;
+        uint256 bonus = 1e18;
+        assertLt(bonus, remainingDebt);
+        uint256 maxCollateralIn = (repayAssets + 1).mulDivUp(1003, 1000) + 1e18;
+        augustus.setOutputReduction(1);
+        augustus.setOutputBonus(bonus);
+        bytes memory swapData =
+            buildSwapData(address(collateralToken), address(loanToken), maxCollateralIn, repayAssets);
+        uint256 loanBalanceBefore = loanToken.balanceOf(user);
+
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Delever(
+            marketParams, repayAssets, maxCollateralIn, swapData, type(uint256).max, block.timestamp
+        );
+
+        Position memory afterPosition = morpho.position(marketParams.id(), user);
+        Market memory marketAfter = morpho.market(marketParams.id());
+        uint256 debtAfter = uint256(afterPosition.borrowShares)
+            .toAssetsUp(marketAfter.totalBorrowAssets, marketAfter.totalBorrowShares);
+        assertEq(debtBefore - debtAfter, repayAssets + bonus);
+        assertEq(loanToken.balanceOf(user), loanBalanceBefore);
+        assertEq(augustus.lastToAmount(), repayAssets + 1);
+        assertNoResiduals();
+    }
+
+    function testDeleverReturnsExcessAboveRemainingDebt() public {
+        openPosition();
+        Position memory beforePosition = morpho.position(marketParams.id(), user);
+        Market memory marketBefore = morpho.market(marketParams.id());
+        uint256 debtBefore = uint256(beforePosition.borrowShares)
+            .toAssetsUp(marketBefore.totalBorrowAssets, marketBefore.totalBorrowShares);
+        uint256 repayAssets = debtBefore / 2;
+        uint256 remainingDebt = debtBefore - repayAssets;
+        uint256 bonus = remainingDebt + 1e18;
+        uint256 maxCollateralIn = (repayAssets + 1).mulDivUp(1003, 1000) + 1e18;
+        augustus.setOutputReduction(1);
+        augustus.setOutputBonus(bonus);
+        bytes memory swapData =
+            buildSwapData(address(collateralToken), address(loanToken), maxCollateralIn, repayAssets);
+        uint256 loanBalanceBefore = loanToken.balanceOf(user);
+
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Delever(
+            marketParams, repayAssets, maxCollateralIn, swapData, type(uint256).max, block.timestamp
+        );
+
+        assertEq(morpho.position(marketParams.id(), user).borrowShares, 0);
+        assertEq(loanToken.balanceOf(user) - loanBalanceBefore, bonus - remainingDebt);
+        assertNoResiduals();
+    }
+
     function testDeleverEnforcesMaxLtv() public {
         uint256 debt = openPosition();
         uint256 repayAssets = debt / 2;
-        uint256 maxCollateralIn = repayAssets.mulDivUp(1003, 1000) + 1e18;
+        uint256 maxCollateralIn = (repayAssets + 1).mulDivUp(1003, 1000) + 1e18;
         bytes memory swapData =
             buildSwapData(address(collateralToken), address(loanToken), maxCollateralIn, repayAssets);
 
@@ -382,7 +461,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
 
     function testCloseNeedsOnlyMarketLiquidity() public {
         uint256 equity = 10e18;
-        uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);
+        uint256 maxBorrowAssets = (equity + 1).mulDivUp(1003, 1000);
         fundUser(address(bundle), equity);
         bytes memory openSwapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, equity);
 
@@ -435,9 +514,10 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
 
     function testOpenRejectsIncompleteFill() public {
         uint256 equity = 10e18;
-        uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);
+        uint256 maxBorrowAssets = (equity + 1).mulDivUp(1003, 1000);
         fundUser(address(bundle), equity);
-        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, 1);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, equity);
+        augustus.setOutputReduction(2);
 
         vm.expectRevert(IVeloraLeverageBundlesV1.IncompleteFill.selector);
         vm.prank(user);
@@ -466,7 +546,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         internal
         returns (bytes memory)
     {
-        deal(tokenOut, address(augustus), amountOut + augustus.outputBonus());
+        deal(tokenOut, address(augustus), amountOut + 1 + augustus.outputBonus());
         return abi.encodeCall(
             IAugustusV6.swapExactAmountOut,
             (
@@ -489,7 +569,7 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
 
     function openPosition() internal returns (uint256 debt) {
         uint256 equity = 10e18;
-        debt = equity.mulDivUp(1003, 1000);
+        debt = (equity + 1).mulDivUp(1003, 1000);
         fundUser(address(bundle), equity);
         bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), debt, equity);
         vm.prank(user);
