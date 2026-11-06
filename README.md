@@ -42,6 +42,52 @@ The taker is msg.sender and must authorize the bundle on Midnight and approve it
 
 The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollateralAndBorrow`, `blueBundlesV1Withdraw`, and `blueBundlesV1MigrateBorrowPosition`) support VaultV2's BluePublicAllocator.
 
+## Leverage bundles (PoC)
+
+Callers must authorize `VeloraLeverageBundlesV1` on Morpho Blue; opening also requires approval to pull collateral.
+
+All three entrypoints are non-reentrant; attempts by Augustus to call them again during a swap are rejected.
+
+### [VeloraLeverageBundlesV1](src/leverage/VeloraLeverageBundlesV1.sol)
+
+- `veloraLeverageBundlesV1Open` — supply `collateralAssets` from the caller and borrow up to `maxBorrowAssets` to buy and supply `collateralToBuy` additional collateral.
+- `veloraLeverageBundlesV1Delever` — repay part of the debt by swapping withdrawn collateral for loan tokens.
+- `veloraLeverageBundlesV1Close` — resize the quoted swap to the current debt, repay all borrow shares and return the remaining collateral.
+
+Opening takes concrete token amounts in base units. `collateralToBuy` must be nonzero, and the collateral added to the caller's position is at least `collateralAssets + collateralToBuy`; excess collateral received from the swap is also supplied to the caller's position. Unspent loan tokens are repaid.
+
+Frontends compute these amounts from the user's contribution and desired exposure. For a WAD-scaled collateral multiplier `L`, use `collateralToBuy = floor(collateralAssets * (L - 1e18) / 1e18)`, then obtain an exact-output quote and set `maxBorrowAssets` from its cost and the user's slippage tolerance. A target financial leverage instead requires accounting for quoted swap costs and any existing collateral and debt; the contract does not target a leverage ratio.
+
+Open and delever take `maxLtv`, which caps the caller's resulting LTV using the market oracle price; `type(uint256).max` disables the check.
+
+Swaps run inside Morpho Blue's supply-collateral and repay callbacks; the bundle does not use a flash loan. The position must remain healthy at the `maxBorrowAssets` or `maxCollateralIn` limit. Opening also requires market liquidity for the full `maxBorrowAssets` cap.
+
+The bundle calls the Augustus v6.2 address fixed at deployment: `0x6A000F20005980200259B80c5102003040001068`, shared by Ethereum, Base, Arbitrum and Robinhood. Set `beneficiary` to the bundle. All three entrypoints resize the exact-output target to the operation's target plus one wei for Augustus's payout rounding, scaling the maximum and quoted input amounts proportionally and enforcing the operation's spending cap. Delever uses loan tokens received above the callback repayment amount to repay remaining debt, up to the debt balance, and returns any rest to the caller. Close returns any excess loan tokens to the caller.
+
+Only `swapExactAmountOut`, `swapExactAmountOutOnUniswapV2` and `swapExactAmountOutOnUniswapV3` are accepted; other selectors revert with `InvalidSelector`. Request quotes with `excludeRFQ=true` and `includeContractMethods=swapExactAmountOut,swapExactAmountOutOnUniswapV2,swapExactAmountOutOnUniswapV3`, then check `priceRoute.contractMethod` in the response because Velora silently ignores unknown method names.
+
+Close takes the following arguments:
+
+```solidity
+veloraLeverageBundlesV1Close(
+    MarketParams marketParams,
+    uint256 maxCollateralIn,
+    bytes swapData,
+    uint256 deadline
+)
+```
+
+The bundle derives the offsets for the 32-byte exact-output, maximum-input and quoted-input words from the selector in `swapData`. These offsets count bytes from the start of calldata, including the four-byte selector. For canonical Augustus v6.2 calldata:
+
+| Method | `exactAmount` | `limitAmount` | `quotedAmount` |
+| --- | ---: | ---: | ---: |
+| `swapExactAmountOut` | 132 | 100 | 164 |
+| `swapExactAmountOutOnUniswapV2` / `swapExactAmountOutOnUniswapV3` | 196 | 164 | 228 |
+
+Morpho accrues interest and supplies the actual repayment amount to the close callback. The bundle sets the swap's exact output to `debtAssets + 1`, scales its maximum and quoted input amounts by `newOutput / originalOutput` (rounding down), and clamps the maximum input to `maxCollateralIn`. The original exact-output amount must be nonzero. The extra base unit covers Augustus's payout rounding; any excess received is refunded.
+
+The route data must support changing these amounts; the bundle does not rewrite nested route data or reprice the route. All offset reads and writes are bounds-checked. The absolute spending cap and the post-swap token-balance checks still apply, so a stale route that cannot deliver the current debt within the cap reverts the entire close. A position without debt simply returns its collateral without using the swap data.
+
 ### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 
 - `vaultBundlesV1Deposit` — deposit assets into a vault.
