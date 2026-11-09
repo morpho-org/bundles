@@ -35,6 +35,12 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         assertTrue(IAugustusV6.swapExactAmountOutOnUniswapV3.selector == bytes4(0x5e94e28d));
     }
 
+    function testAugustusExactInputSelectors() public pure {
+        assertTrue(IAugustusV6.swapExactAmountIn.selector == bytes4(0xe3ead59e));
+        assertTrue(IAugustusV6.swapExactAmountInOnUniswapV2.selector == bytes4(0xe8bb3b6c));
+        assertTrue(IAugustusV6.swapExactAmountInOnUniswapV3.selector == bytes4(0x876a02f6));
+    }
+
     function testFuzzOpen(uint256 equity, uint256 collateralToBuy, uint256 borrowBuffer) public {
         equity = bound(equity, 1e6, 1e24);
         collateralToBuy = bound(collateralToBuy, 1, 3 * equity);
@@ -103,6 +109,59 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testOpenExactInSuppliesSurplusAndAccountsForPayoutRetention() public {
+        uint256 collateralAssets = 10e18;
+        uint256 borrowAssets = 8e18;
+        uint256 minCollateralOut = 5e18;
+        uint256 bonus = 1e18;
+        fundUser(address(bundle), collateralAssets);
+        uint256 userCollateralAfterContribution = collateralToken.balanceOf(user) - collateralAssets;
+        augustus.setOutputBonus(bonus);
+        bytes memory swapData = buildExactInSwapData(
+            0, address(loanToken), address(collateralToken), 2 * borrowAssets, minCollateralOut, 2 * minCollateralOut
+        );
+
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1OpenExactIn(
+            marketParams, collateralAssets, borrowAssets, minCollateralOut, swapData, type(uint256).max, block.timestamp
+        );
+
+        assertEq(augustus.lastFromAmount(), borrowAssets);
+        assertEq(augustus.lastToAmount(), minCollateralOut + 1);
+        assertEq(augustus.lastQuotedAmount(), minCollateralOut);
+        assertEq(morpho.position(marketParams.id(), user).collateral, collateralAssets + minCollateralOut + bonus);
+        assertEq(collateralToken.balanceOf(user), userCollateralAfterContribution);
+        assertNoResiduals();
+    }
+
+    function testOpenExactInSupportsAllSelectors() public {
+        uint256 collateralAssets = 1e18;
+        uint256 borrowAssets = 1e18;
+        uint256 minCollateralOut = 1e18;
+        fundUser(address(bundle), 3 * collateralAssets);
+
+        for (uint8 layout; layout < 3; layout++) {
+            bytes memory swapData = buildExactInSwapData(
+                layout, address(loanToken), address(collateralToken), borrowAssets, minCollateralOut, minCollateralOut
+            );
+            vm.prank(user);
+            bundle.veloraLeverageBundlesV1OpenExactIn(
+                marketParams,
+                collateralAssets,
+                borrowAssets,
+                minCollateralOut,
+                swapData,
+                type(uint256).max,
+                block.timestamp
+            );
+            assertEq(augustus.lastFromAmount(), borrowAssets);
+            assertEq(augustus.lastToAmount(), minCollateralOut + 1);
+        }
+
+        assertEq(morpho.position(marketParams.id(), user).collateral, 6 * collateralAssets);
+        assertNoResiduals();
+    }
+
     function testOpenEnforcesMaxLtv() public {
         uint256 equity = 10e18;
         uint256 maxBorrowAssets = (equity + 1).mulDivUp(1003, 1000);
@@ -167,6 +226,44 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testRejectsCrossSideSelectorsOnOpen() public {
+        uint256 collateralAssets = 10e18;
+        uint256 minCollateralOut = 10e18;
+        uint256 maxBorrowAssets = (minCollateralOut + 1).mulDivUp(1003, 1000);
+        fundUser(address(bundle), collateralAssets);
+        bytes memory exactInSwapData = buildExactInSwapData(
+            0, address(loanToken), address(collateralToken), maxBorrowAssets, minCollateralOut, minCollateralOut
+        );
+        bytes memory exactOutSwapData =
+            buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, minCollateralOut);
+
+        vm.expectRevert(IVeloraLeverageBundlesV1.InvalidSelector.selector);
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1Open(
+            marketParams,
+            collateralAssets,
+            minCollateralOut,
+            maxBorrowAssets,
+            exactInSwapData,
+            type(uint256).max,
+            block.timestamp
+        );
+        assertNoResiduals();
+
+        vm.expectRevert(IVeloraLeverageBundlesV1.InvalidSelector.selector);
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1OpenExactIn(
+            marketParams,
+            collateralAssets,
+            maxBorrowAssets,
+            minCollateralOut,
+            exactOutSwapData,
+            type(uint256).max,
+            block.timestamp
+        );
+        assertNoResiduals();
+    }
+
     function testRejectsShortSwapData() public {
         uint256 equity = 10e18;
         uint256 maxBorrowAssets = equity.mulDivUp(1003, 1000);
@@ -195,6 +292,36 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         vm.prank(user);
         bundle.veloraLeverageBundlesV1Open(
             marketParams, equity, equity, maxBorrowAssets, swapData, type(uint256).max, vm.getBlockTimestamp()
+        );
+        assertNoResiduals();
+    }
+
+    function testRejectsReentrantExactInOpenFromAugustus() public {
+        uint256 collateralAssets = 10e18;
+        uint256 borrowAssets = 10e18;
+        uint256 minCollateralOut = 10e18;
+        fundUser(address(bundle), collateralAssets);
+        bytes memory swapData = buildExactInSwapData(
+            0, address(loanToken), address(collateralToken), borrowAssets, minCollateralOut, minCollateralOut
+        );
+        bytes memory reentryData = abi.encodeCall(
+            IVeloraLeverageBundlesV1.veloraLeverageBundlesV1OpenExactIn,
+            (
+                marketParams,
+                collateralAssets,
+                borrowAssets,
+                minCollateralOut,
+                bytes(""),
+                type(uint256).max,
+                vm.getBlockTimestamp()
+            )
+        );
+        augustus.setReentry(address(bundle), reentryData);
+
+        vm.expectRevert(IVeloraLeverageBundlesV1.Reentrancy.selector);
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1OpenExactIn(
+            marketParams, collateralAssets, borrowAssets, minCollateralOut, swapData, type(uint256).max, block.timestamp
         );
         assertNoResiduals();
     }
@@ -295,6 +422,38 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testDeleverExactInRepaysSurplusAgainstRemainingDebt() public {
+        openPosition();
+        Position memory beforePosition = morpho.position(marketParams.id(), user);
+        Market memory marketBefore = morpho.market(marketParams.id());
+        uint256 debtBefore = uint256(beforePosition.borrowShares)
+            .toAssetsUp(marketBefore.totalBorrowAssets, marketBefore.totalBorrowShares);
+        uint256 minRepayAssets = debtBefore / 2;
+        uint256 collateralToSell = 5e18;
+        uint256 bonus = 1e18;
+        assertLt(bonus, debtBefore - minRepayAssets);
+        augustus.setOutputBonus(bonus);
+        bytes memory swapData = buildExactInSwapData(
+            0, address(collateralToken), address(loanToken), collateralToSell, minRepayAssets, minRepayAssets
+        );
+        uint256 loanBalanceBefore = loanToken.balanceOf(user);
+
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1DeleverExactIn(
+            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, block.timestamp
+        );
+
+        Position memory afterPosition = morpho.position(marketParams.id(), user);
+        Market memory marketAfter = morpho.market(marketParams.id());
+        uint256 debtAfter = uint256(afterPosition.borrowShares)
+            .toAssetsUp(marketAfter.totalBorrowAssets, marketAfter.totalBorrowShares);
+        assertEq(debtBefore - debtAfter, minRepayAssets + bonus);
+        assertEq(loanToken.balanceOf(user), loanBalanceBefore);
+        assertEq(augustus.lastFromAmount(), collateralToSell);
+        assertEq(augustus.lastToAmount(), minRepayAssets + 1);
+        assertNoResiduals();
+    }
+
     function testDeleverEnforcesMaxLtv() public {
         uint256 debt = openPosition();
         uint256 repayAssets = debt / 2;
@@ -335,6 +494,33 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
         assertEq(
             collateralToken.balanceOf(user) - collateralBalanceBeforeClose, beforePosition.collateral - expectedSpent
         );
+        assertNoResiduals();
+    }
+
+    function testCloseExactInReturnsEquityAsLoanToken() public {
+        openPosition();
+        Position memory beforePosition = morpho.position(marketParams.id(), user);
+        Market memory market = morpho.market(marketParams.id());
+        uint256 debt =
+            uint256(beforePosition.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+        uint256 equity = 10e18;
+        uint256 minLoanOut = debt + equity;
+        bytes memory swapData = buildExactInSwapData(
+            0, address(collateralToken), address(loanToken), beforePosition.collateral, minLoanOut, minLoanOut
+        );
+        uint256 loanBalanceBefore = loanToken.balanceOf(user);
+        uint256 collateralBalanceBefore = collateralToken.balanceOf(user);
+
+        vm.prank(user);
+        bundle.veloraLeverageBundlesV1CloseExactIn(marketParams, minLoanOut, swapData, block.timestamp);
+
+        Position memory afterPosition = morpho.position(marketParams.id(), user);
+        assertEq(afterPosition.borrowShares, 0);
+        assertEq(afterPosition.collateral, 0);
+        assertEq(loanToken.balanceOf(user) - loanBalanceBefore, equity);
+        assertEq(collateralToken.balanceOf(user), collateralBalanceBefore);
+        assertEq(augustus.lastFromAmount(), beforePosition.collateral);
+        assertEq(augustus.lastToAmount(), minLoanOut + 1);
         assertNoResiduals();
     }
 
@@ -565,6 +751,52 @@ contract VeloraLeverageBundlesV1Test is LeverageTest {
                 bytes("")
             )
         );
+    }
+
+    function buildExactInSwapData(
+        uint8 layout,
+        address tokenIn,
+        address tokenOut,
+        uint256 fromAmount,
+        uint256 minOut,
+        uint256 quotedAmount
+    ) internal returns (bytes memory data) {
+        deal(tokenOut, address(augustus), minOut + 1 + augustus.outputBonus());
+        if (layout == 0) {
+            return abi.encodeCall(
+                IAugustusV6.swapExactAmountIn,
+                (
+                    address(0),
+                    IAugustusV6.GenericData({
+                        srcToken: IERC20(tokenIn),
+                        destToken: IERC20(tokenOut),
+                        fromAmount: fromAmount,
+                        toAmount: minOut,
+                        quotedAmount: quotedAmount,
+                        metadata: bytes32(0),
+                        beneficiary: payable(address(bundle))
+                    }),
+                    0,
+                    bytes(""),
+                    bytes("")
+                )
+            );
+        }
+
+        IAugustusV6.UniswapData memory uniData = IAugustusV6.UniswapData({
+            srcToken: IERC20(tokenIn),
+            destToken: IERC20(tokenOut),
+            fromAmount: fromAmount,
+            toAmount: minOut,
+            quotedAmount: quotedAmount,
+            metadata: bytes32(uint256(456)),
+            beneficiary: payable(address(bundle)),
+            pools: hex"aabbccddeeff"
+        });
+        if (layout == 1) {
+            return abi.encodeCall(IAugustusV6.swapExactAmountInOnUniswapV2, (uniData, 789, hex"aabbcc"));
+        }
+        return abi.encodeCall(IAugustusV6.swapExactAmountInOnUniswapV3, (uniData, 789, hex"aabbcc"));
     }
 
     function openPosition() internal returns (uint256 debt) {

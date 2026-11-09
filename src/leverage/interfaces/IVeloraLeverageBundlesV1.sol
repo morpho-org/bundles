@@ -42,4 +42,47 @@ interface IVeloraLeverageBundlesV1 {
         bytes calldata swapData,
         uint256 deadline
     ) external;
+
+    /// @notice Opens a leveraged position with an exact-input SELL swap.
+    /// @param collateralAssets Collateral-token amount to pull from the caller.
+    /// @param borrowAssets Loan-token amount to borrow and sell.
+    /// @param minCollateralOut Minimum collateral-token amount the swap must return.
+    /// @param swapData Augustus v6.2 exact-input calldata with `beneficiary` set to this bundle.
+    /// @param maxLtv Maximum resulting LTV of the caller's position; type(uint256).max disables the check.
+    /// @dev Augustus's minimum output is set to `minCollateralOut + 1` for its payout retention.
+    function veloraLeverageBundlesV1OpenExactIn(
+        MarketParams memory marketParams,
+        uint256 collateralAssets,
+        uint256 borrowAssets,
+        uint256 minCollateralOut,
+        bytes calldata swapData,
+        uint256 maxLtv,
+        uint256 deadline
+    ) external;
+
+    /// @notice Repays part of the caller's debt by selling an exact amount of collateral.
+    /// @param collateralToSell Collateral-token amount to sell.
+    /// @param minRepayAssets Minimum loan-token amount the swap must return for repayment.
+    /// @param swapData Augustus v6.2 exact-input calldata with `beneficiary` set to this bundle.
+    /// @param maxLtv Maximum resulting LTV of the caller's position; type(uint256).max disables the check.
+    /// @dev Augustus's minimum output is set to `minRepayAssets + 1` for its payout retention.
+    function veloraLeverageBundlesV1DeleverExactIn(
+        MarketParams memory marketParams,
+        uint256 collateralToSell,
+        uint256 minRepayAssets,
+        bytes calldata swapData,
+        uint256 maxLtv,
+        uint256 deadline
+    ) external;
+
+    /// @notice Closes a position by selling all collateral and returning remaining loan tokens as equity.
+    /// @param minLoanOut Minimum total loan-token output, including the amount used to repay debt.
+    /// @param swapData Augustus v6.2 exact-input calldata with `beneficiary` set to this bundle.
+    /// @dev Augustus's minimum output is set to `max(minLoanOut, debt) + 1` for its payout retention.
+    function veloraLeverageBundlesV1CloseExactIn(
+        MarketParams memory marketParams,
+        uint256 minLoanOut,
+        bytes calldata swapData,
+        uint256 deadline
+    ) external;
 }

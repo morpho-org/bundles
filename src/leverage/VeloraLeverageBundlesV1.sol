@@ -21,7 +21,7 @@ import {Math} from "../../lib/vault-v2/lib/openzeppelin-contracts/contracts/util
 import {BytesLib} from "../libraries/BytesLib.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 
-/// @notice Executes exact-output swaps using the Augustus v6.2 contract fixed at deployment.
+/// @notice Executes exact-input and exact-output swaps using the Augustus v6.2 contract fixed at deployment.
 contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyCollateralCallback, IMorphoRepayCallback {
     using MarketParamsLib for MarketParams;
     using BytesLib for bytes;
@@ -82,7 +82,47 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
                 marketParams,
                 collateralAssets + collateralToBuy,
                 msg.sender,
-                abi.encode(msg.sender, marketParams, collateralToBuy, maxBorrowAssets, swapData)
+                abi.encode(
+                    this.veloraLeverageBundlesV1Open.selector,
+                    msg.sender,
+                    abi.encode(marketParams, collateralToBuy, maxBorrowAssets, swapData)
+                )
+            );
+        requireMaxLtv(marketParams, msg.sender, maxLtv);
+    }
+
+    /// @notice Opens a leveraged position by borrowing and selling an exact amount of loan tokens.
+    /// @param collateralAssets Collateral-token amount to pull from the caller.
+    /// @param borrowAssets Loan-token amount to borrow and sell.
+    /// @param minCollateralOut Minimum collateral-token amount the swap must return.
+    /// @param swapData Augustus v6.2 exact-input calldata with `beneficiary` set to this bundle.
+    /// @param maxLtv Maximum resulting LTV of the caller's position, in WAD; type(uint256).max disables the check.
+    /// @dev Sets Augustus's minimum output to `minCollateralOut + 1` for its one-wei payout retention.
+    function veloraLeverageBundlesV1OpenExactIn(
+        MarketParams memory marketParams,
+        uint256 collateralAssets,
+        uint256 borrowAssets,
+        uint256 minCollateralOut,
+        bytes calldata swapData,
+        uint256 maxLtv,
+        uint256 deadline
+    ) external override nonReentrant {
+        require(block.timestamp <= deadline, DeadlinePassed());
+
+        SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
+        TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
+
+        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint guard is active throughout this callback.
+        IMorpho(BLUE)
+            .supplyCollateral(
+                marketParams,
+                collateralAssets + minCollateralOut,
+                msg.sender,
+                abi.encode(
+                    this.veloraLeverageBundlesV1OpenExactIn.selector,
+                    msg.sender,
+                    abi.encode(marketParams, borrowAssets, minCollateralOut, swapData)
+                )
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
@@ -113,6 +153,40 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
                     this.veloraLeverageBundlesV1Delever.selector,
                     msg.sender,
                     abi.encode(marketParams, maxCollateralIn, swapData)
+                )
+            );
+        requireMaxLtv(marketParams, msg.sender, maxLtv);
+    }
+
+    /// @notice Repays part of the caller's debt by selling an exact amount of collateral.
+    /// @param collateralToSell Collateral-token amount to sell.
+    /// @param minRepayAssets Minimum loan-token amount the swap must return for repayment.
+    /// @param swapData Augustus v6.2 exact-input calldata with `beneficiary` set to this bundle.
+    /// @param maxLtv Maximum resulting LTV of the caller's position, in WAD; type(uint256).max disables the check.
+    /// @dev Excess loan tokens repay remaining debt up to its balance; any rest is returned to the caller.
+    /// Augustus's minimum output is set to `minRepayAssets + 1` for its payout retention.
+    function veloraLeverageBundlesV1DeleverExactIn(
+        MarketParams memory marketParams,
+        uint256 collateralToSell,
+        uint256 minRepayAssets,
+        bytes calldata swapData,
+        uint256 maxLtv,
+        uint256 deadline
+    ) external override nonReentrant {
+        require(block.timestamp <= deadline, DeadlinePassed());
+        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+
+        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint guard is active throughout this callback.
+        IMorpho(BLUE)
+            .repay(
+                marketParams,
+                minRepayAssets,
+                0,
+                msg.sender,
+                abi.encode(
+                    this.veloraLeverageBundlesV1DeleverExactIn.selector,
+                    msg.sender,
+                    abi.encode(marketParams, collateralToSell, minRepayAssets, swapData)
                 )
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
@@ -153,22 +227,61 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
             );
     }
 
+    /// @notice Closes a position by selling all collateral and returning remaining loan tokens as equity.
+    /// @param minLoanOut Minimum total loan-token output, including the amount used to repay debt.
+    /// @param swapData Augustus v6.2 exact-input calldata with `beneficiary` set to this bundle.
+    /// @dev Sets Augustus's minimum output to `max(minLoanOut, callback debt) + 1` and returns output above the debt to the caller.
+    function veloraLeverageBundlesV1CloseExactIn(
+        MarketParams memory marketParams,
+        uint256 minLoanOut,
+        bytes calldata swapData,
+        uint256 deadline
+    ) external override nonReentrant {
+        require(block.timestamp <= deadline, DeadlinePassed());
+
+        Position memory position = IMorpho(BLUE).position(marketParams.id(), msg.sender);
+        if (position.borrowShares == 0) {
+            IMorpho(BLUE).withdrawCollateral(marketParams, position.collateral, msg.sender, msg.sender);
+            return;
+        }
+
+        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint guard is active throughout this callback.
+        IMorpho(BLUE)
+            .repay(
+                marketParams,
+                0,
+                position.borrowShares,
+                msg.sender,
+                abi.encode(
+                    this.veloraLeverageBundlesV1CloseExactIn.selector,
+                    msg.sender,
+                    abi.encode(marketParams, position.collateral, minLoanOut, swapData)
+                )
+            );
+    }
+
     function onMorphoSupplyCollateral(uint256, bytes calldata data) external override {
         require(msg.sender == BLUE, UnauthorizedCallback());
 
-        (
-            address user,
-            MarketParams memory marketParams,
-            uint256 collateralToBuy,
-            uint256 maxBorrowAssets,
-            bytes memory swapData
-        ) = abi.decode(data, (address, MarketParams, uint256, uint256, bytes));
+        (bytes4 selector, address user, bytes memory operationData) = abi.decode(data, (bytes4, address, bytes));
+        if (selector == this.veloraLeverageBundlesV1Open.selector) {
+            _openCallback(user, operationData);
+        } else if (selector == this.veloraLeverageBundlesV1OpenExactIn.selector) {
+            _openExactInCallback(user, operationData);
+        } else {
+            revert UnauthorizedCallback();
+        }
+    }
+
+    function _openCallback(address user, bytes memory operationData) internal {
+        (MarketParams memory marketParams, uint256 collateralToBuy, uint256 maxBorrowAssets, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
         IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, user, address(this));
         _resizeSwapData(swapData, collateralToBuy + 1, maxBorrowAssets);
-        (uint256 spent, uint256 received) = _swapExactOut(
-            marketParams.loanToken, marketParams.collateralToken, maxBorrowAssets, collateralToBuy, swapData
-        );
+        (uint256 spent, uint256 received) =
+            _swap(marketParams.loanToken, marketParams.collateralToken, maxBorrowAssets, collateralToBuy, swapData);
 
         if (maxBorrowAssets > spent) {
             TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
@@ -180,14 +293,37 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         }
     }
 
+    function _openExactInCallback(address user, bytes memory operationData) internal {
+        (MarketParams memory marketParams, uint256 borrowAssets, uint256 minCollateralOut, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
+
+        IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, user, address(this));
+        _resizeSwapDataExactIn(swapData, borrowAssets, minCollateralOut);
+        (uint256 spent, uint256 received) =
+            _swap(marketParams.loanToken, marketParams.collateralToken, borrowAssets, minCollateralOut, swapData);
+
+        if (borrowAssets > spent) {
+            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+            IMorpho(BLUE).repay(marketParams, borrowAssets - spent, 0, user, "");
+        }
+        if (received > minCollateralOut) {
+            TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
+            IMorpho(BLUE).supplyCollateral(marketParams, received - minCollateralOut, user, "");
+        }
+    }
+
     function onMorphoRepay(uint256 assets, bytes calldata data) external override {
         require(msg.sender == BLUE, UnauthorizedCallback());
 
         (bytes4 selector, address user, bytes memory operationData) = abi.decode(data, (bytes4, address, bytes));
         if (selector == this.veloraLeverageBundlesV1Delever.selector) {
             _deleverCallback(assets, user, operationData);
+        } else if (selector == this.veloraLeverageBundlesV1DeleverExactIn.selector) {
+            _deleverExactInCallback(assets, user, operationData);
         } else if (selector == this.veloraLeverageBundlesV1Close.selector) {
             _closeCallback(assets, user, operationData);
+        } else if (selector == this.veloraLeverageBundlesV1CloseExactIn.selector) {
+            _closeExactInCallback(assets, user, operationData);
         } else {
             revert UnauthorizedCallback();
         }
@@ -201,12 +337,35 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
 
         IMorpho(BLUE).withdrawCollateral(marketParams, maxCollateralIn, user, address(this));
         (uint256 spent, uint256 received) =
-            _swapExactOut(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
+            _swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
 
         if (maxCollateralIn > spent) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, maxCollateralIn - spent, user, "");
         }
+        _repayDeleverSurplus(marketParams, user, assets, received);
+    }
+
+    function _deleverExactInCallback(uint256 assets, address user, bytes memory operationData) internal {
+        (MarketParams memory marketParams, uint256 collateralToSell, uint256 minRepayAssets, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
+
+        _resizeSwapDataExactIn(swapData, collateralToSell, minRepayAssets);
+
+        IMorpho(BLUE).withdrawCollateral(marketParams, collateralToSell, user, address(this));
+        (uint256 spent, uint256 received) =
+            _swap(marketParams.collateralToken, marketParams.loanToken, collateralToSell, minRepayAssets, swapData);
+
+        if (collateralToSell > spent) {
+            TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
+            IMorpho(BLUE).supplyCollateral(marketParams, collateralToSell - spent, user, "");
+        }
+        _repayDeleverSurplus(marketParams, user, assets, received);
+    }
+
+    function _repayDeleverSurplus(MarketParams memory marketParams, address user, uint256 assets, uint256 received)
+        internal
+    {
         if (received > assets) {
             uint256 excess = received - assets;
             uint256 borrowShares = IMorpho(BLUE).position(marketParams.id(), user).borrowShares;
@@ -234,7 +393,26 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
         (uint256 spent, uint256 received) =
-            _swapExactOut(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
+            _swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
+
+        if (collateral > spent) {
+            SafeTransferLib.safeTransfer(marketParams.collateralToken, user, collateral - spent);
+        }
+        if (received > assets) {
+            SafeTransferLib.safeTransfer(marketParams.loanToken, user, received - assets);
+        }
+    }
+
+    function _closeExactInCallback(uint256 assets, address user, bytes memory operationData) internal {
+        (MarketParams memory marketParams, uint256 collateral, uint256 minLoanOut, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
+
+        uint256 minOut = Math.max(minLoanOut, assets);
+        _resizeSwapDataExactIn(swapData, collateral, minOut);
+
+        IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
+        (uint256 spent, uint256 received) =
+            _swap(marketParams.collateralToken, marketParams.loanToken, collateral, minOut, swapData);
 
         if (collateral > spent) {
             SafeTransferLib.safeTransfer(marketParams.collateralToken, user, collateral - spent);
@@ -246,7 +424,8 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
 
     /// @dev Updates only the selector-defined amount words; route data must support resizing these amounts.
     function _resizeSwapData(bytes memory data, uint256 amountOut, uint256 maxIn) internal pure {
-        (uint256 exactAmount, uint256 limitAmount, uint256 quotedAmount) = _amountOffsets(data);
+        (uint256 exactAmount, uint256 limitAmount, uint256 quotedAmount, bool exactIn) = _amountOffsets(data);
+        require(!exactIn, InvalidSelector());
 
         uint256 oldAmountOut = data.get(exactAmount);
         require(oldAmountOut != 0, ZeroSwapAmount());
@@ -256,6 +435,20 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         data.set(quotedAmount, newQuotedAmount);
         data.set(limitAmount, newLimitAmount);
         data.set(exactAmount, amountOut);
+    }
+
+    /// @dev Sets exact input, scales quoted output proportionally and adds Augustus's one-wei payout retention to the minimum output.
+    function _resizeSwapDataExactIn(bytes memory data, uint256 amountIn, uint256 minOut) internal pure {
+        (uint256 exactAmount, uint256 minAmount, uint256 quotedAmount, bool exactIn) = _amountOffsets(data);
+        require(exactIn, InvalidSelector());
+
+        uint256 oldAmountIn = data.get(exactAmount);
+        require(oldAmountIn != 0, ZeroSwapAmount());
+
+        uint256 newQuotedAmount = Math.mulDiv(data.get(quotedAmount), amountIn, oldAmountIn);
+        data.set(quotedAmount, newQuotedAmount);
+        data.set(minAmount, minOut + 1);
+        data.set(exactAmount, amountIn);
     }
 
     function _selector(bytes memory data) internal pure returns (bytes4 selector) {
@@ -268,15 +461,20 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
     function _amountOffsets(bytes memory data)
         internal
         pure
-        returns (uint256 exactAmount, uint256 limitAmount, uint256 quotedAmount)
+        returns (uint256 exactAmount, uint256 limitAmount, uint256 quotedAmount, bool exactIn)
     {
         bytes4 selector = _selector(data);
 
-        if (selector == IAugustusV6.swapExactAmountOut.selector) return (132, 100, 164);
+        if (selector == IAugustusV6.swapExactAmountOut.selector) return (132, 100, 164, false);
+        if (selector == IAugustusV6.swapExactAmountIn.selector) return (100, 132, 164, true);
         if (
             selector == IAugustusV6.swapExactAmountOutOnUniswapV2.selector
                 || selector == IAugustusV6.swapExactAmountOutOnUniswapV3.selector
-        ) return (196, 164, 228);
+        ) return (196, 164, 228, false);
+        if (
+            selector == IAugustusV6.swapExactAmountInOnUniswapV2.selector
+                || selector == IAugustusV6.swapExactAmountInOnUniswapV3.selector
+        ) return (164, 196, 228, true);
         revert InvalidSelector();
     }
 
@@ -302,8 +500,8 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         }
     }
 
-    /// @dev Only generic, Uniswap V2 and Uniswap V3 exact-output methods are accepted.
-    function _swapExactOut(address tokenIn, address tokenOut, uint256 maxIn, uint256 amountOut, bytes memory data)
+    /// @dev Only generic, Uniswap V2 and Uniswap V3 exact-input or exact-output methods are accepted.
+    function _swap(address tokenIn, address tokenOut, uint256 maxIn, uint256 minOut, bytes memory data)
         internal
         returns (uint256 spent, uint256 received)
     {
@@ -328,6 +526,6 @@ contract VeloraLeverageBundlesV1 is IVeloraLeverageBundlesV1, IMorphoSupplyColla
         uint256 outAfter = IERC20(tokenOut).balanceOf(address(this));
         require(outAfter >= outBefore, IncompleteFill());
         received = outAfter - outBefore;
-        require(received >= amountOut, IncompleteFill());
+        require(received >= minOut, IncompleteFill());
     }
 }

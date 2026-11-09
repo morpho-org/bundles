@@ -43,4 +43,22 @@ interface IAugustusV6 {
         external
         payable
         returns (uint256 spentAmount, uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare);
+
+    function swapExactAmountIn(
+        address executor,
+        GenericData calldata swapData,
+        uint256 partnerAndFee,
+        bytes calldata permit,
+        bytes calldata executorData
+    ) external returns (uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare);
+
+    function swapExactAmountInOnUniswapV2(UniswapData calldata uniData, uint256 partnerAndFee, bytes calldata permit)
+        external
+        payable
+        returns (uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare);
+
+    function swapExactAmountInOnUniswapV3(UniswapData calldata uniData, uint256 partnerAndFee, bytes calldata permit)
+        external
+        payable
+        returns (uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare);
 }

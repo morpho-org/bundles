@@ -82,6 +82,59 @@ contract AugustusMock is IAugustusV6 {
         partnerShare = 0;
     }
 
+    function swapExactAmountIn(address, GenericData calldata swapData, uint256, bytes calldata, bytes calldata)
+        external
+        override
+        returns (uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare)
+    {
+        receivedAmount = _swapExactIn(
+            address(swapData.srcToken),
+            address(swapData.destToken),
+            swapData.fromAmount,
+            swapData.toAmount,
+            swapData.quotedAmount,
+            swapData.beneficiary
+        );
+        paraswapShare = 0;
+        partnerShare = 0;
+    }
+
+    function swapExactAmountInOnUniswapV2(IAugustusV6.UniswapData calldata data, uint256, bytes calldata)
+        external
+        payable
+        override
+        returns (uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare)
+    {
+        receivedAmount = _swapExactIn(
+            address(data.srcToken),
+            address(data.destToken),
+            data.fromAmount,
+            data.toAmount,
+            data.quotedAmount,
+            data.beneficiary
+        );
+        paraswapShare = 0;
+        partnerShare = 0;
+    }
+
+    function swapExactAmountInOnUniswapV3(IAugustusV6.UniswapData calldata data, uint256, bytes calldata)
+        external
+        payable
+        override
+        returns (uint256 receivedAmount, uint256 paraswapShare, uint256 partnerShare)
+    {
+        receivedAmount = _swapExactIn(
+            address(data.srcToken),
+            address(data.destToken),
+            data.fromAmount,
+            data.toAmount,
+            data.quotedAmount,
+            data.beneficiary
+        );
+        paraswapShare = 0;
+        partnerShare = 0;
+    }
+
     function _swap(
         address srcToken,
         address destToken,
@@ -106,5 +159,30 @@ contract AugustusMock is IAugustusV6 {
         receivedAmount = toAmount - outputReduction + outputBonus;
         SafeTransferLib.safeTransferFrom(srcToken, msg.sender, address(this), spentAmount);
         SafeTransferLib.safeTransfer(destToken, beneficiary, receivedAmount);
+    }
+
+    function _swapExactIn(
+        address srcToken,
+        address destToken,
+        uint256 fromAmount,
+        uint256 toAmount,
+        uint256 quotedAmount,
+        address beneficiary
+    ) internal returns (uint256 receivedAmount) {
+        lastFromAmount = fromAmount;
+        lastToAmount = toAmount;
+        lastQuotedAmount = quotedAmount;
+        receivedAmount = toAmount - outputReduction + outputBonus;
+        require(receivedAmount >= toAmount, "minimum output not met");
+        if (reentryTarget != address(0)) {
+            (bool success, bytes memory returnData) = reentryTarget.call(reentryData);
+            if (!success) {
+                assembly ("memory-safe") {
+                    revert(add(returnData, 0x20), mload(returnData))
+                }
+            }
+        }
+        SafeTransferLib.safeTransferFrom(srcToken, msg.sender, address(this), fromAmount);
+        SafeTransferLib.safeTransfer(destToken, beneficiary, receivedAmount - 1);
     }
 }
