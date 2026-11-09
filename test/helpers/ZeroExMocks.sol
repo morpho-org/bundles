@@ -40,6 +40,8 @@ contract SettlerMock is ISettlerTakerSubmitted {
     error OnlyAllowanceHolder();
     error InvalidAction();
 
+    bytes4 internal constant POSITIVE_SLIPPAGE_SELECTOR = 0x5f80abae;
+
     AllowanceHolderMock public immutable allowanceHolder;
     uint256 public rateNumerator = 1;
     uint256 public rateDenominator = 1;
@@ -98,6 +100,7 @@ contract SettlerMock is ISettlerTakerSubmitted {
             amountSpent = amountOut.mulDivUp(rateDenominator, rateNumerator);
             if (amountSpent > amountIn) revert MinimumOutputNotMet();
         }
+        uint256 refund = amountIn - amountSpent;
         lastTaker = taker;
         lastSellToken = sellToken;
         lastSellAmount = amountIn;
@@ -105,10 +108,47 @@ contract SettlerMock is ISettlerTakerSubmitted {
 
         _attemptReentry();
         allowanceHolder.transferFrom(sellToken, taker, address(this), amountIn);
-        if (amountSpent < amountIn) {
-            SafeTransferLib.safeTransfer(sellToken, taker, amountIn - amountSpent);
+
+        for (uint256 i = 1; i < actions.length; ++i) {
+            bytes calldata feeAction = actions[i];
+            if (feeAction.length < 4) revert InvalidAction();
+
+            bytes4 actionSelector;
+            assembly ("memory-safe") {
+                actionSelector := calldataload(feeAction.offset)
+            }
+            if (actionSelector != POSITIVE_SLIPPAGE_SELECTOR) continue;
+            if (feeAction.length < 0xa4) revert InvalidAction();
+
+            uint256 recipientWord;
+            uint256 actionTokenWord;
+            uint256 expectedAmount;
+            uint256 surplusPpm;
+            uint256 maxPpm;
+            assembly ("memory-safe") {
+                recipientWord := calldataload(add(feeAction.offset, 0x04))
+                actionTokenWord := calldataload(add(feeAction.offset, 0x24))
+                expectedAmount := calldataload(add(feeAction.offset, 0x44))
+                surplusPpm := calldataload(add(feeAction.offset, 0x64))
+                maxPpm := calldataload(add(feeAction.offset, 0x84))
+            }
+            if (actionTokenWord != uint256(uint160(exactOutput ? sellToken : slippage.buyToken))) {
+                revert InvalidAction();
+            }
+
+            uint256 deliverable = exactOutput ? refund : amountOut;
+            if (deliverable > expectedAmount) {
+                uint256 surplus = (deliverable - expectedAmount).mulDivDown(surplusPpm, 1e6);
+                uint256 maxFee = deliverable.mulDivDown(maxPpm, 1e6);
+                uint256 fee = surplus < maxFee ? surplus : maxFee;
+                if (exactOutput) refund -= fee;
+                else amountOut -= fee;
+                SafeTransferLib.safeTransfer(address(uint160(actionTokenWord)), address(uint160(recipientWord)), fee);
+            }
         }
+
         if (amountOut < slippage.minAmountOut) revert MinimumOutputNotMet();
+        if (refund != 0) SafeTransferLib.safeTransfer(sellToken, taker, refund);
         SafeTransferLib.safeTransfer(slippage.buyToken, slippage.recipient, amountOut);
     }
 

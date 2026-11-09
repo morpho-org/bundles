@@ -31,6 +31,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     using UtilsLib for uint256;
 
     uint128 internal constant SETTLER_FEATURE = 2;
+    bytes4 internal constant POSITIVE_SLIPPAGE_SELECTOR = 0x5f80abae;
 
     address public immutable override BLUE;
     address public immutable override ALLOWANCE_HOLDER;
@@ -310,7 +311,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             bytes memory settlerData
         ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
 
-        _setSettlerAmounts(settlerData, marketParams.loanToken, 0, collateralToBuy, false);
+        _setSettlerAmounts(settlerData, marketParams.loanToken, marketParams.collateralToken, 0, collateralToBuy, false);
         IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, user, address(this));
         (uint256 spent, uint256 received) = _swap(
             marketParams.loanToken, marketParams.collateralToken, maxBorrowAssets, collateralToBuy, settler, settlerData
@@ -335,7 +336,9 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             bytes memory settlerData
         ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
 
-        _setSettlerAmounts(settlerData, marketParams.loanToken, borrowAssets, minCollateralOut, true);
+        _setSettlerAmounts(
+            settlerData, marketParams.loanToken, marketParams.collateralToken, borrowAssets, minCollateralOut, true
+        );
         IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, user, address(this));
         (uint256 spent, uint256 received) = _swap(
             marketParams.loanToken, marketParams.collateralToken, borrowAssets, minCollateralOut, settler, settlerData
@@ -372,7 +375,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         (MarketParams memory marketParams, uint256 maxCollateralIn, address settler, bytes memory settlerData) =
             abi.decode(operationData, (MarketParams, uint256, address, bytes));
 
-        _setSettlerAmounts(settlerData, marketParams.collateralToken, 0, assets, false);
+        _setSettlerAmounts(settlerData, marketParams.collateralToken, marketParams.loanToken, 0, assets, false);
         IMorpho(BLUE).withdrawCollateral(marketParams, maxCollateralIn, user, address(this));
         (uint256 spent, uint256 received) =
             _swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, settler, settlerData);
@@ -393,7 +396,9 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             bytes memory settlerData
         ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
 
-        _setSettlerAmounts(settlerData, marketParams.collateralToken, collateralToSell, minRepayAssets, true);
+        _setSettlerAmounts(
+            settlerData, marketParams.collateralToken, marketParams.loanToken, collateralToSell, minRepayAssets, true
+        );
         IMorpho(BLUE).withdrawCollateral(marketParams, collateralToSell, user, address(this));
         (uint256 spent, uint256 received) = _swap(
             marketParams.collateralToken, marketParams.loanToken, collateralToSell, minRepayAssets, settler, settlerData
@@ -437,7 +442,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             bytes memory settlerData
         ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
 
-        _setSettlerAmounts(settlerData, marketParams.collateralToken, 0, assets, false);
+        _setSettlerAmounts(settlerData, marketParams.collateralToken, marketParams.loanToken, 0, assets, false);
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
         (uint256 spent, uint256 received) =
             _swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, settler, settlerData);
@@ -460,7 +465,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
 
         uint256 minOut = Math.max(minLoanOut, assets);
-        _setSettlerAmounts(settlerData, marketParams.collateralToken, collateral, minOut, true);
+        _setSettlerAmounts(settlerData, marketParams.collateralToken, marketParams.loanToken, collateral, minOut, true);
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
         (uint256 spent, uint256 received) =
             _swap(marketParams.collateralToken, marketParams.loanToken, collateral, minOut, settler, settlerData);
@@ -494,15 +499,58 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         }
     }
 
+    /// @dev Rescales positive-slippage expectations so amount changes are not treated as price improvement.
     function _setSettlerAmounts(
         bytes memory settlerData,
         address tokenIn,
+        address tokenOut,
         uint256 amountIn,
         uint256 minOut,
         bool exactIn
     ) internal pure {
+        uint256 firstAmountOffset = _firstActionAmountOffset(settlerData, tokenIn);
+        uint256 oldIn = settlerData.get(firstAmountOffset);
+        uint256 oldMinOut = settlerData.get(0x44);
+
         settlerData.set(0x44, minOut);
-        if (exactIn) settlerData.set(_firstActionAmountOffset(settlerData, tokenIn), amountIn);
+        if (exactIn) settlerData.set(firstAmountOffset, amountIn);
+
+        (uint256 actionsHead, uint256 actionsLength) = _actionsHead(settlerData);
+        for (uint256 i; i < actionsLength; ++i) {
+            (uint256 actionStart, uint256 actionLength) = _actionStart(settlerData, actionsHead, actionsLength, i);
+            require(actionLength >= 4, InvalidSwapData());
+
+            bytes4 actionSelector;
+            assembly ("memory-safe") {
+                actionSelector := mload(add(add(settlerData, 0x40), actionStart))
+            }
+            if (actionSelector != POSITIVE_SLIPPAGE_SELECTOR) continue;
+            require(actionLength >= 0xa4, InvalidSwapData());
+
+            uint256 token = settlerData.get(actionStart + 32 + 0x24);
+            uint256 expectedOffset = actionStart + 32 + 0x44;
+            uint256 expected = settlerData.get(expectedOffset);
+            uint256 newExpected;
+
+            if (exactIn) {
+                require(token == uint256(uint160(tokenOut)) && oldIn != 0, InvalidSwapData());
+                newExpected = Math.mulDiv(expected, amountIn, oldIn, Math.Rounding.Ceil);
+            } else {
+                require(oldMinOut != 0, InvalidSwapData());
+                if (token == uint256(uint160(tokenIn))) {
+                    require(expected <= oldIn, InvalidSwapData());
+                    uint256 spentQuoted = oldIn - expected;
+                    uint256 newSpent = Math.mulDiv(spentQuoted, minOut, oldMinOut);
+                    newExpected = newSpent >= oldIn ? 0 : oldIn - newSpent;
+                } else if (token == uint256(uint160(tokenOut))) {
+                    newExpected = Math.mulDiv(expected, minOut, oldMinOut, Math.Rounding.Ceil);
+                } else {
+                    revert InvalidSwapData();
+                }
+            }
+
+            settlerData.set(expectedOffset, newExpected);
+        }
     }
 
     function _firstActionAmountOffset(bytes memory settlerData, address tokenIn)
@@ -510,6 +558,16 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         pure
         returns (uint256 amountOffset)
     {
+        (uint256 actionsHead, uint256 actionsLength) = _actionsHead(settlerData);
+        (uint256 actionStart, uint256 actionLength) = _actionStart(settlerData, actionsHead, actionsLength, 0);
+        require(actionLength >= 0xa4, InvalidSwapData());
+
+        uint256 token = settlerData.get(actionStart + 32 + 0x24);
+        require(token == uint256(uint160(tokenIn)), InvalidSwapData());
+        amountOffset = actionStart + 32 + 0x44;
+    }
+
+    function _actionsHead(bytes memory settlerData) internal pure returns (uint256 actionsHead, uint256 actionsLength) {
         require(settlerData.length >= 4, InvalidSwapData());
         bytes4 selector;
         assembly ("memory-safe") {
@@ -522,24 +580,28 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         require(actionsOffset >= 0xa0 && actionsOffset <= settlerData.length - 4 - 32, InvalidSwapData());
         uint256 actionsStart = 4 + actionsOffset;
         require(actionsStart <= settlerData.length - 32, InvalidSwapData());
-        uint256 actionsLength = settlerData.get(actionsStart);
+        actionsLength = settlerData.get(actionsStart);
         require(actionsLength > 0, InvalidSwapData());
         require(actionsLength <= (settlerData.length - actionsStart - 32) / 32, InvalidSwapData());
 
-        uint256 actionsHead = actionsStart + 32;
-        uint256 actionOffset = settlerData.get(actionsHead);
+        actionsHead = actionsStart + 32;
+    }
+
+    function _actionStart(bytes memory settlerData, uint256 actionsHead, uint256 actionsLength, uint256 index)
+        internal
+        pure
+        returns (uint256 actionStart, uint256 actionLength)
+    {
+        require(index < actionsLength, InvalidSwapData());
+        uint256 actionOffset = settlerData.get(actionsHead + index * 32);
         require(
             actionOffset >= actionsLength * 32 && actionOffset <= settlerData.length - actionsHead - 32,
             InvalidSwapData()
         );
-        uint256 actionStart = actionsHead + actionOffset;
+        actionStart = actionsHead + actionOffset;
         require(actionStart <= settlerData.length - 32, InvalidSwapData());
-        uint256 actionLength = settlerData.get(actionStart);
-        require(actionLength >= 0xa4 && actionLength <= settlerData.length - actionStart - 32, InvalidSwapData());
-
-        uint256 token = settlerData.get(actionStart + 32 + 0x24);
-        require(token == uint256(uint160(tokenIn)), InvalidSwapData());
-        amountOffset = actionStart + 32 + 0x44;
+        actionLength = settlerData.get(actionStart);
+        require(actionLength <= settlerData.length - actionStart - 32, InvalidSwapData());
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check.
