@@ -42,6 +42,27 @@ The taker is msg.sender and must authorize the bundle on Midnight and approve it
 
 The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollateralAndBorrow`, `blueBundlesV1Withdraw`, and `blueBundlesV1MigrateBorrowPosition`) support VaultV2's BluePublicAllocator.
 
+## Leverage bundles (PoC)
+
+### [ZeroExLeverageBundlesV1](src/leverage/ZeroExLeverageBundlesV1.sol)
+
+The bundle provides exact-output BUY and exact-input SELL variants of open, delever and close. Callers must authorize the bundle on Morpho Blue and approve it to pull collateral for open operations.
+
+For the constructor, pass the chain's Morpho Blue address, the 0x AllowanceHolder (`0x0000000000001fF3684f28c67538d4D072C22734`) and the 0x registry/deployer (`0x00000000000004533Fe15556B1E086BB1A72cEae`); the latter two addresses are shared by Ethereum, Base, Arbitrum and Robinhood.
+
+Request each 0x Swap API quote with `taker` set to the deployed bundle, then pass `transaction.data` unchanged as `swapData`:
+
+- `zeroExLeverageBundlesV1Open`: BUY `collateralToBuy`; keep `maxSellAmount` within `maxBorrowAssets`.
+- `zeroExLeverageBundlesV1OpenExactIn`: SELL `borrowAssets` with `minBuyAmount=minCollateralOut`.
+- `zeroExLeverageBundlesV1Delever`: BUY `repayAssets`; keep `maxSellAmount` within `maxCollateralIn`.
+- `zeroExLeverageBundlesV1DeleverExactIn`: SELL `collateralToSell` with `minBuyAmount=minRepayAssets`.
+- `zeroExLeverageBundlesV1Close`: BUY current debt plus a small buffer for interest accrued before execution; the bundle only requires callback debt and returns any excess.
+- `zeroExLeverageBundlesV1CloseExactIn`: SELL with a `minBuyAmount` that covers both `minLoanOut` and debt. The bundle overwrites the first action's sell amount with the full collateral balance, so `sellEntireBalance` is optional.
+
+Exact-output open and delever overwrite Settler's `minAmountOut` with the operation target; exact-input operations overwrite both that floor and the first action's input amount. Exact-output close is left unchanged so its buffer can be returned to the caller. No one-wei adjustment is needed. Quote exact-input routes close to the execution amounts: the bundle cannot rescale per-hop minimums inside route actions. Leverage and debt reduction depend on the executed price, bounded by the minimum output and `maxLtv` where applicable; exact-input close returns equity as loan tokens.
+
+The bundle accepts only a registered Settler: `ownerOf(2)` or `prev(2)` must match the quote's Settler. A paused registry's `ownerOf` revert is bubbled up. The quoted AllowanceHolder `exec.amount` is ignored; each swap uses the operation's cap, checks balance deltas to ensure spent input does not exceed that cap and received output meets the required floor, then resets the allowance. Settler can make arbitrary calls, so the bundle locks its entrypoints through callbacks; Morpho Blue acts only on the caller's authorized position. Affiliate fees set via API params are reflected in the quote and covered by the bundle's checks.
+
 ### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 
 - `vaultBundlesV1Deposit` — deposit assets into a vault.
