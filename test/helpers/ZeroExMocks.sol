@@ -43,6 +43,7 @@ contract SettlerMock is ISettlerTakerSubmitted {
     AllowanceHolderMock public immutable allowanceHolder;
     uint256 public rateNumerator = 1;
     uint256 public rateDenominator = 1;
+    bool public exactOutput;
 
     address public lastTaker;
     address public lastSellToken;
@@ -63,6 +64,10 @@ contract SettlerMock is ISettlerTakerSubmitted {
         require(denominator != 0);
         rateNumerator = numerator;
         rateDenominator = denominator;
+    }
+
+    function setExactOutput(bool exactOutput_) external {
+        exactOutput = exactOutput_;
     }
 
     function setReentry(address target, bytes calldata data) external {
@@ -87,6 +92,12 @@ contract SettlerMock is ISettlerTakerSubmitted {
         }
         address sellToken = address(uint160(tokenWord));
         uint256 amountOut = amountIn.mulDivDown(rateNumerator, rateDenominator);
+        uint256 amountSpent = amountIn;
+        if (exactOutput) {
+            amountOut = slippage.minAmountOut;
+            amountSpent = amountOut.mulDivUp(rateDenominator, rateNumerator);
+            if (amountSpent > amountIn) revert MinimumOutputNotMet();
+        }
         lastTaker = taker;
         lastSellToken = sellToken;
         lastSellAmount = amountIn;
@@ -94,6 +105,9 @@ contract SettlerMock is ISettlerTakerSubmitted {
 
         _attemptReentry();
         allowanceHolder.transferFrom(sellToken, taker, address(this), amountIn);
+        if (amountSpent < amountIn) {
+            SafeTransferLib.safeTransfer(sellToken, taker, amountIn - amountSpent);
+        }
         if (amountOut < slippage.minAmountOut) revert MinimumOutputNotMet();
         SafeTransferLib.safeTransfer(slippage.buyToken, slippage.recipient, amountOut);
     }

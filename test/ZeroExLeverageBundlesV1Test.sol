@@ -216,7 +216,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
-    function testCloseExactOutputReturnsBufferAndUnspentCollateral() public {
+    function testCloseExactOutputReturnsBufferAsCollateral() public {
         openPosition();
         Position memory beforePosition = morpho.position(marketParams.id(), user);
         uint256 debt = _debt(beforePosition, morpho.market(marketParams.id()));
@@ -227,6 +227,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         );
         uint256 loanBalanceBefore = loanToken.balanceOf(user);
         uint256 collateralBalanceBefore = collateralToken.balanceOf(user);
+        settler.setExactOutput(true);
 
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Close(marketParams, beforePosition.collateral, swapData, block.timestamp);
@@ -234,10 +235,10 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         Position memory afterPosition = morpho.position(marketParams.id(), user);
         assertEq(afterPosition.borrowShares, 0);
         assertEq(afterPosition.collateral, 0);
-        assertEq(loanToken.balanceOf(user) - loanBalanceBefore, buffer);
+        assertEq(loanToken.balanceOf(user), loanBalanceBefore);
         assertEq(settler.lastSellAmount(), buyAmount);
-        assertEq(collateralToken.balanceOf(user) - collateralBalanceBefore, beforePosition.collateral - buyAmount);
-        assertEq(settler.lastMinAmountOut(), buyAmount);
+        assertEq(collateralToken.balanceOf(user) - collateralBalanceBefore, beforePosition.collateral - debt);
+        assertEq(settler.lastMinAmountOut(), debt);
         assertNoResiduals();
     }
 

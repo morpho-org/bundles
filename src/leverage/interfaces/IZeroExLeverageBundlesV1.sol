@@ -90,12 +90,12 @@ interface IZeroExLeverageBundlesV1 {
         uint256 deadline
     ) external;
 
-    /// @notice Repays all borrow shares and swaps collateral for the loan-token debt.
+    /// @notice Repays all borrow shares and swaps collateral for the loan-token debt, returning unspent collateral.
     /// @param marketParams Morpho Blue market parameters.
     /// @param maxCollateralIn Maximum collateral-token amount that may be spent.
-    /// @param swapData The 0x API BUY quote's AllowanceHolder `transaction.data`, with a small buyAmount buffer.
+    /// @param swapData The 0x API BUY quote's AllowanceHolder `transaction.data`, with `buyAmount` set to debt plus a small buffer.
     /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Leaves the quote unchanged so the caller receives the exact-output buffer.
+    /// @dev Sets Settler's minimum output to the callback debt so unused quote input is returned as collateral.
     function zeroExLeverageBundlesV1Close(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,

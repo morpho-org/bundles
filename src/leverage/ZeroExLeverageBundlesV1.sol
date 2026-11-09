@@ -214,12 +214,12 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
-    /// @notice Repays all borrow shares, swaps collateral for the debt and returns any excess collateral and loan tokens.
+    /// @notice Repays all borrow shares, swaps collateral for the debt and returns unspent collateral.
     /// @param marketParams Morpho Blue market parameters.
     /// @param maxCollateralIn Maximum collateral-token amount that may be spent.
-    /// @param swapData The 0x API BUY quote's `transaction.data`, with this bundle as taker and a small buyAmount buffer.
+    /// @param swapData The 0x API BUY quote's `transaction.data`, with this bundle as taker and `buyAmount` set to debt plus a small buffer.
     /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Leaves the quote unchanged so the caller receives the exact-output buffer.
+    /// @dev Sets Settler's minimum output to the callback debt so unused quote input is returned as collateral.
     function zeroExLeverageBundlesV1Close(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,
@@ -437,6 +437,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             bytes memory settlerData
         ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
 
+        _setSettlerAmounts(settlerData, marketParams.collateralToken, 0, assets, false);
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
         (uint256 spent, uint256 received) =
             _swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, settler, settlerData);
