@@ -9,7 +9,7 @@ import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/Morp
 import {ORACLE_PRICE_SCALE} from "../lib/morpho-blue/src/libraries/ConstantsLib.sol";
 import {OracleMock} from "../lib/morpho-blue/src/mocks/OracleMock.sol";
 import {ErrorsLib as BlueErrorsLib} from "../lib/morpho-blue/src/libraries/ErrorsLib.sol";
-import {ITestToken, TokenTest} from "./helpers/TestToken.sol";
+import {ITestToken, TokenTest} from "./helpers/TokenTest.sol";
 import {WAD} from "../lib/midnight/src/libraries/ConstantsLib.sol";
 
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
