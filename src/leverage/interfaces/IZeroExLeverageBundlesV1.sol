@@ -26,7 +26,7 @@ interface IZeroExLeverageBundlesV1 {
     /// @param swapData The 0x Swap API AllowanceHolder `transaction.data`, quoted with this bundle as taker.
     /// @param maxLtv Maximum resulting LTV; type(uint256).max disables the check.
     /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Sets Settler's minimum output to `collateralToBuy`.
+    /// @dev Quote with `buyAmount` equal to `collateralToBuy`.
     function zeroExLeverageBundlesV1Open(
         MarketParams memory marketParams,
         uint256 collateralAssets,
@@ -45,7 +45,7 @@ interface IZeroExLeverageBundlesV1 {
     /// @param swapData The 0x Swap API AllowanceHolder `transaction.data`, quoted with this bundle as taker.
     /// @param maxLtv Maximum resulting LTV; type(uint256).max disables the check.
     /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Sets the first action's input amount to `borrowAssets` and minimum output to `minCollateralOut`.
+    /// @dev Quote with `sellAmount` equal to `borrowAssets`.
     function zeroExLeverageBundlesV1OpenExactIn(
         MarketParams memory marketParams,
         uint256 collateralAssets,
@@ -63,7 +63,7 @@ interface IZeroExLeverageBundlesV1 {
     /// @param swapData The 0x Swap API AllowanceHolder `transaction.data`, quoted with this bundle as taker.
     /// @param maxLtv Maximum resulting LTV; type(uint256).max disables the check.
     /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Sets Settler's minimum output to the callback repayment amount.
+    /// @dev Quote with `buyAmount` equal to `repayAssets`.
     function zeroExLeverageBundlesV1Delever(
         MarketParams memory marketParams,
         uint256 repayAssets,
@@ -80,7 +80,7 @@ interface IZeroExLeverageBundlesV1 {
     /// @param swapData The 0x Swap API AllowanceHolder `transaction.data`, quoted with this bundle as taker.
     /// @param maxLtv Maximum resulting LTV; type(uint256).max disables the check.
     /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Sets the first action's input amount to `collateralToSell` and minimum output to `minRepayAssets`.
+    /// @dev Quote with `sellAmount` equal to `collateralToSell`.
     function zeroExLeverageBundlesV1DeleverExactIn(
         MarketParams memory marketParams,
         uint256 collateralToSell,
@@ -90,12 +90,12 @@ interface IZeroExLeverageBundlesV1 {
         uint256 deadline
     ) external;
 
-    /// @notice Repays all borrow shares and swaps collateral for the loan-token debt, returning unspent collateral.
+    /// @notice Repays all borrow shares and swaps collateral for the loan-token debt, returning unspent collateral and excess loan tokens.
     /// @param marketParams Morpho Blue market parameters.
     /// @param maxCollateralIn Maximum collateral-token amount that may be spent.
     /// @param swapData The 0x API BUY quote's AllowanceHolder `transaction.data`, with `buyAmount` set to debt plus a small buffer.
     /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Sets Settler's minimum output to the callback debt so unused quote input is returned as collateral.
+    /// @dev Quote with `buyAmount` equal to debt plus a small buffer; the buffer returns as loan tokens.
     function zeroExLeverageBundlesV1Close(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,
@@ -106,9 +106,9 @@ interface IZeroExLeverageBundlesV1 {
     /// @notice Sells the caller's entire collateral balance and returns remaining loan tokens as equity.
     /// @param marketParams Morpho Blue market parameters.
     /// @param minLoanOut Minimum total loan-token output, including the amount used to repay debt.
-    /// @param swapData The 0x API SELL quote's AllowanceHolder `transaction.data`, with this bundle as taker; its input amount is overwritten.
+    /// @param swapData The 0x API SELL quote's AllowanceHolder `transaction.data`, with `sellAmount` equal to the position's full collateral.
     /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Sets the first action's input amount to all collateral and minimum output to max(`minLoanOut`, debt).
+    /// @dev Quote with `sellAmount` equal to the position's full collateral.
     function zeroExLeverageBundlesV1CloseExactIn(
         MarketParams memory marketParams,
         uint256 minLoanOut,
