@@ -46,16 +46,14 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 
 ### [ZeroExLeverageBundlesV1](src/leverage/ZeroExLeverageBundlesV1.sol)
 
-The bundle provides exact-output BUY and exact-input SELL variants of open, delever and close. Callers must authorize the bundle on Morpho Blue and approve it to pull collateral for open operations.
+The bundle provides exact-output BUY variants of open, delever and close, plus an exact-input SELL close that sells all collateral and returns the remaining equity as loan tokens. Callers must authorize the bundle on Morpho Blue and approve it to pull collateral for open operations.
 
 For the constructor, pass the chain's Morpho Blue address, the 0x AllowanceHolder (`0x0000000000001fF3684f28c67538d4D072C22734`) and the 0x registry/deployer (`0x00000000000004533Fe15556B1E086BB1A72cEae`); the latter two addresses are shared by Ethereum, Base, Arbitrum and Robinhood.
 
 Request each 0x Swap API quote with `taker` set to the deployed bundle, then pass `transaction.data` unchanged as `swapData`:
 
 - `zeroExLeverageBundlesV1Open`: BUY `collateralToBuy`; keep `maxSellAmount` within `maxBorrowAssets`.
-- `zeroExLeverageBundlesV1OpenExactIn`: SELL `borrowAssets` with `minBuyAmount=minCollateralOut`.
 - `zeroExLeverageBundlesV1Delever`: BUY `repayAssets`; keep `maxSellAmount` within `maxCollateralIn`.
-- `zeroExLeverageBundlesV1DeleverExactIn`: SELL `collateralToSell` with `minBuyAmount=minRepayAssets`.
 - `zeroExLeverageBundlesV1Close`: BUY current debt plus a small buffer for interest accrued before execution, keeping `maxSellAmount` within `maxCollateralIn`; excess loan tokens return to the caller.
 - `zeroExLeverageBundlesV1CloseExactIn`: SELL the full position collateral with a `minBuyAmount` that covers both `minLoanOut` and debt.
 

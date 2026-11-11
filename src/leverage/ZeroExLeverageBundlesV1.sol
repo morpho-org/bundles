@@ -100,45 +100,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
-    /// @notice Opens a leveraged position by borrowing and selling loan tokens.
-    /// @param marketParams Morpho Blue market parameters.
-    /// @param collateralAssets Collateral-token amount to pull from the caller.
-    /// @param borrowAssets Loan-token amount to borrow and sell; unspent assets are repaid.
-    /// @param minCollateralOut Minimum collateral-token output required from the quote.
-    /// @param swapData The 0x AllowanceHolder quote's `transaction.data`, with this bundle as taker.
-    /// @param maxLtv Maximum resulting LTV; type(uint256).max disables the check.
-    /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Quote with `sellAmount` equal to `borrowAssets`.
-    function zeroExLeverageBundlesV1OpenExactIn(
-        MarketParams memory marketParams,
-        uint256 collateralAssets,
-        uint256 borrowAssets,
-        uint256 minCollateralOut,
-        bytes calldata swapData,
-        uint256 maxLtv,
-        uint256 deadline
-    ) external override nonReentrant {
-        require(block.timestamp <= deadline, DeadlinePassed());
-
-        (address settler, bytes memory settlerData) = _decodeSwapData(swapData, marketParams.loanToken);
-        SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
-        TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
-
-        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
-        IMorpho(BLUE)
-            .supplyCollateral(
-                marketParams,
-                collateralAssets + minCollateralOut,
-                msg.sender,
-                abi.encode(
-                    this.zeroExLeverageBundlesV1OpenExactIn.selector,
-                    msg.sender,
-                    abi.encode(marketParams, borrowAssets, minCollateralOut, settler, settlerData)
-                )
-            );
-        requireMaxLtv(marketParams, msg.sender, maxLtv);
-    }
-
     /// @notice Repays part of the caller's debt using a 0x API BUY quote for loan tokens.
     /// @param marketParams Morpho Blue market parameters.
     /// @param repayAssets Exact loan-token output requested from the quote.
@@ -170,42 +131,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
                     this.zeroExLeverageBundlesV1Delever.selector,
                     msg.sender,
                     abi.encode(marketParams, maxCollateralIn, settler, settlerData)
-                )
-            );
-        requireMaxLtv(marketParams, msg.sender, maxLtv);
-    }
-
-    /// @notice Repays part of the caller's debt by selling collateral using a 0x API SELL quote.
-    /// @param marketParams Morpho Blue market parameters.
-    /// @param collateralToSell Collateral-token amount to sell.
-    /// @param minRepayAssets Minimum loan-token output required from the quote.
-    /// @param swapData The 0x AllowanceHolder quote's `transaction.data`, with this bundle as taker.
-    /// @param maxLtv Maximum resulting LTV; type(uint256).max disables the check.
-    /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Quote with `sellAmount` equal to `collateralToSell`.
-    function zeroExLeverageBundlesV1DeleverExactIn(
-        MarketParams memory marketParams,
-        uint256 collateralToSell,
-        uint256 minRepayAssets,
-        bytes calldata swapData,
-        uint256 maxLtv,
-        uint256 deadline
-    ) external override nonReentrant {
-        require(block.timestamp <= deadline, DeadlinePassed());
-        (address settler, bytes memory settlerData) = _decodeSwapData(swapData, marketParams.collateralToken);
-        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
-
-        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
-        IMorpho(BLUE)
-            .repay(
-                marketParams,
-                minRepayAssets,
-                0,
-                msg.sender,
-                abi.encode(
-                    this.zeroExLeverageBundlesV1DeleverExactIn.selector,
-                    msg.sender,
-                    abi.encode(marketParams, collateralToSell, minRepayAssets, settler, settlerData)
                 )
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
@@ -291,8 +216,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         (bytes4 selector, address user, bytes memory operationData) = abi.decode(data, (bytes4, address, bytes));
         if (selector == this.zeroExLeverageBundlesV1Open.selector) {
             _openCallback(user, operationData);
-        } else if (selector == this.zeroExLeverageBundlesV1OpenExactIn.selector) {
-            _openExactInCallback(user, operationData);
         } else {
             revert UnauthorizedCallback();
         }
@@ -322,38 +245,12 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         }
     }
 
-    function _openExactInCallback(address user, bytes memory operationData) internal {
-        (
-            MarketParams memory marketParams,
-            uint256 borrowAssets,
-            uint256 minCollateralOut,
-            address settler,
-            bytes memory settlerData
-        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
-
-        IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, user, address(this));
-        (uint256 spent, uint256 received) = _swap(
-            marketParams.loanToken, marketParams.collateralToken, borrowAssets, minCollateralOut, settler, settlerData
-        );
-
-        if (borrowAssets > spent) {
-            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
-            IMorpho(BLUE).repay(marketParams, borrowAssets - spent, 0, user, "");
-        }
-        if (received > minCollateralOut) {
-            TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
-            IMorpho(BLUE).supplyCollateral(marketParams, received - minCollateralOut, user, "");
-        }
-    }
-
     function onMorphoRepay(uint256 assets, bytes calldata data) external override {
         require(msg.sender == BLUE, UnauthorizedCallback());
 
         (bytes4 selector, address user, bytes memory operationData) = abi.decode(data, (bytes4, address, bytes));
         if (selector == this.zeroExLeverageBundlesV1Delever.selector) {
             _deleverCallback(assets, user, operationData);
-        } else if (selector == this.zeroExLeverageBundlesV1DeleverExactIn.selector) {
-            _deleverExactInCallback(assets, user, operationData);
         } else if (selector == this.zeroExLeverageBundlesV1Close.selector) {
             _closeCallback(assets, user, operationData);
         } else if (selector == this.zeroExLeverageBundlesV1CloseExactIn.selector) {
@@ -374,27 +271,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         if (maxCollateralIn > spent) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, maxCollateralIn - spent, user, "");
-        }
-        _repayDeleverSurplus(marketParams, user, assets, received);
-    }
-
-    function _deleverExactInCallback(uint256 assets, address user, bytes memory operationData) internal {
-        (
-            MarketParams memory marketParams,
-            uint256 collateralToSell,
-            uint256 minRepayAssets,
-            address settler,
-            bytes memory settlerData
-        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
-
-        IMorpho(BLUE).withdrawCollateral(marketParams, collateralToSell, user, address(this));
-        (uint256 spent, uint256 received) = _swap(
-            marketParams.collateralToken, marketParams.loanToken, collateralToSell, minRepayAssets, settler, settlerData
-        );
-
-        if (collateralToSell > spent) {
-            TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
-            IMorpho(BLUE).supplyCollateral(marketParams, collateralToSell - spent, user, "");
         }
         _repayDeleverSurplus(marketParams, user, assets, received);
     }

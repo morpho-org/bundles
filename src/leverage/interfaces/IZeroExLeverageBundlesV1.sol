@@ -37,25 +37,6 @@ interface IZeroExLeverageBundlesV1 {
         uint256 deadline
     ) external;
 
-    /// @notice Opens a leveraged position by borrowing and selling an exact amount of loan tokens.
-    /// @param marketParams Morpho Blue market parameters.
-    /// @param collateralAssets Collateral-token amount to pull from the caller.
-    /// @param borrowAssets Loan-token amount to borrow and sell using a 0x API SELL quote.
-    /// @param minCollateralOut Minimum collateral-token amount required from the quote.
-    /// @param swapData The 0x Swap API AllowanceHolder `transaction.data`, quoted with this bundle as taker.
-    /// @param maxLtv Maximum resulting LTV; type(uint256).max disables the check.
-    /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Quote with `sellAmount` equal to `borrowAssets`.
-    function zeroExLeverageBundlesV1OpenExactIn(
-        MarketParams memory marketParams,
-        uint256 collateralAssets,
-        uint256 borrowAssets,
-        uint256 minCollateralOut,
-        bytes calldata swapData,
-        uint256 maxLtv,
-        uint256 deadline
-    ) external;
-
     /// @notice Repays part of the caller's debt using a 0x API BUY quote for loan tokens.
     /// @param marketParams Morpho Blue market parameters.
     /// @param repayAssets Exact loan-token output requested from the quote.
@@ -68,23 +49,6 @@ interface IZeroExLeverageBundlesV1 {
         MarketParams memory marketParams,
         uint256 repayAssets,
         uint256 maxCollateralIn,
-        bytes calldata swapData,
-        uint256 maxLtv,
-        uint256 deadline
-    ) external;
-
-    /// @notice Repays part of the caller's debt by selling a fixed amount of collateral.
-    /// @param marketParams Morpho Blue market parameters.
-    /// @param collateralToSell Collateral-token amount to sell using a 0x API SELL quote.
-    /// @param minRepayAssets Minimum loan-token output required from the quote.
-    /// @param swapData The 0x Swap API AllowanceHolder `transaction.data`, quoted with this bundle as taker.
-    /// @param maxLtv Maximum resulting LTV; type(uint256).max disables the check.
-    /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Quote with `sellAmount` equal to `collateralToSell`.
-    function zeroExLeverageBundlesV1DeleverExactIn(
-        MarketParams memory marketParams,
-        uint256 collateralToSell,
-        uint256 minRepayAssets,
         bytes calldata swapData,
         uint256 maxLtv,
         uint256 deadline

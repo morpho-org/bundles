@@ -84,29 +84,6 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
-    function testOpenExactIn() public {
-        uint256 collateralAssets = 10e18;
-        uint256 borrowAssets = 8e18;
-        uint256 minCollateralOut = 5e18;
-        fundUser(address(bundle), collateralAssets);
-        uint256 userBalanceAfterContribution = collateralToken.balanceOf(user) - collateralAssets;
-        bytes memory swapData =
-            buildExactInSwapData(address(loanToken), address(collateralToken), borrowAssets, minCollateralOut);
-
-        vm.prank(user);
-        bundle.zeroExLeverageBundlesV1OpenExactIn(
-            marketParams, collateralAssets, borrowAssets, minCollateralOut, swapData, type(uint256).max, block.timestamp
-        );
-
-        assertEq(settler.lastTaker(), address(bundle));
-        assertEq(settler.lastSellAmount(), borrowAssets);
-        assertEq(settler.lastMinAmountOut(), minCollateralOut);
-        assertEq(morpho.position(marketParams.id(), user).collateral, collateralAssets + borrowAssets);
-        assertEq(collateralToken.balanceOf(user), userBalanceAfterContribution);
-        assertEq(collateralToken.balanceOf(ZERO_EX_FEE_RECIPIENT), 0);
-        assertNoResiduals();
-    }
-
     function testOpenEnforcesMaxLtv() public {
         uint256 collateralAssets = 10e18;
         uint256 collateralToBuy = 10e18;
@@ -165,29 +142,6 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertEq(morpho.position(marketParams.id(), user).borrowShares, 0);
         assertApproxEqAbs(loanToken.balanceOf(user) - loanBalanceBefore, surplus - remainingDebt, 2);
         assertEq(settler.lastMinAmountOut(), swapOutput);
-        assertNoResiduals();
-    }
-
-    function testDeleverExactIn() public {
-        uint256 debtBefore = openPosition();
-        uint256 collateralToSell = 6e18;
-        uint256 minRepayAssets = debtBefore / 2;
-        uint256 surplus = 1e18;
-        bytes memory swapData =
-            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
-        uint256 loanBalanceBefore = loanToken.balanceOf(user);
-
-        vm.prank(user);
-        bundle.zeroExLeverageBundlesV1DeleverExactIn(
-            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, block.timestamp
-        );
-
-        Position memory afterPosition = morpho.position(marketParams.id(), user);
-        uint256 debtAfter = _debt(afterPosition, morpho.market(marketParams.id()));
-        assertApproxEqAbs(debtBefore - debtAfter, minRepayAssets + surplus, 2);
-        assertEq(settler.lastSellAmount(), collateralToSell);
-        assertEq(settler.lastMinAmountOut(), minRepayAssets);
-        assertEq(loanToken.balanceOf(user), loanBalanceBefore);
         assertNoResiduals();
     }
 
@@ -370,18 +324,16 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
     }
 
     function testMinimumOutputViolationReverts() public {
-        uint256 collateralAssets = 7e18;
-        uint256 minCollateralOut = 6e18;
-        fundUser(address(bundle), collateralAssets);
+        openPosition();
+        Position memory position = morpho.position(marketParams.id(), user);
+        uint256 minLoanOut = _debt(position, morpho.market(marketParams.id())) + 1e18;
         settler.setRate(1, 2);
         bytes memory swapData =
-            buildExactInSwapData(address(loanToken), address(collateralToken), 10e18, minCollateralOut);
+            buildExactInSwapData(address(collateralToken), address(loanToken), position.collateral, minLoanOut);
 
         vm.expectRevert(SettlerMock.MinimumOutputNotMet.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1OpenExactIn(
-            marketParams, collateralAssets, 10e18, minCollateralOut, swapData, type(uint256).max, block.timestamp
-        );
+        bundle.zeroExLeverageBundlesV1CloseExactIn(marketParams, minLoanOut, swapData, block.timestamp);
         assertNoResiduals();
     }
 
@@ -441,15 +393,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1OpenExactIn(marketParams, 0, 1, 1, emptySwapData, type(uint256).max, expired);
-
-        vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
-        vm.prank(user);
         bundle.zeroExLeverageBundlesV1Delever(marketParams, 1, 1, emptySwapData, type(uint256).max, expired);
-
-        vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
-        vm.prank(user);
-        bundle.zeroExLeverageBundlesV1DeleverExactIn(marketParams, 1, 1, emptySwapData, type(uint256).max, expired);
 
         vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
         vm.prank(user);
