@@ -37,18 +37,18 @@ interface IZeroExLeverageBundlesV1 {
         uint256 deadline
     ) external;
 
-    /// @notice Repays part of the caller's debt using a 0x API BUY quote for loan tokens.
+    /// @notice Repays part of the caller's debt by selling collateral using a 0x API SELL quote.
     /// @param marketParams Morpho Blue market parameters.
-    /// @param repayAssets Exact loan-token output requested from the quote.
-    /// @param maxCollateralIn Maximum collateral-token amount to withdraw and spend.
+    /// @param collateralToSell Collateral-token amount to sell.
+    /// @param minRepayAssets Minimum loan-token output to repay first; it must not exceed the current debt.
     /// @param swapData The 0x Swap API AllowanceHolder `transaction.data`, quoted with this bundle as taker.
     /// @param maxLtv Maximum resulting LTV; type(uint256).max disables the check.
     /// @param deadline Latest timestamp at which the operation may execute.
-    /// @dev Quote with `buyAmount` equal to `repayAssets`.
+    /// @dev Quote with `sellAmount` equal to `collateralToSell` and `minBuyAmount` at least `minRepayAssets`. Output above the first repayment repays remaining debt; any excess goes to the caller.
     function zeroExLeverageBundlesV1Delever(
         MarketParams memory marketParams,
-        uint256 repayAssets,
-        uint256 maxCollateralIn,
+        uint256 collateralToSell,
+        uint256 minRepayAssets,
         bytes calldata swapData,
         uint256 maxLtv,
         uint256 deadline

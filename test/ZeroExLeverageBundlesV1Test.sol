@@ -104,55 +104,65 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
-    function testDeleverExactOutputResuppliesUnusedCollateral() public {
+    function testDeleverSellsCollateral() public {
         uint256 debtBefore = openPosition();
         Position memory beforePosition = morpho.position(marketParams.id(), user);
-        Market memory marketBefore = morpho.market(marketParams.id());
-        uint256 repayAssets = debtBefore / 2;
-        uint256 collateralToSpend = repayAssets;
-        bytes memory swapData = buildSwapData(address(collateralToken), address(loanToken), 10e18, repayAssets);
+        uint256 collateralToSell = 6e18;
+        uint256 minRepayAssets = debtBefore / 2;
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
+        uint256 loanBalanceBefore = loanToken.balanceOf(user);
 
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Delever(
-            marketParams, repayAssets, 10e18, swapData, type(uint256).max, block.timestamp
+            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, block.timestamp
         );
 
         Position memory afterPosition = morpho.position(marketParams.id(), user);
-        Market memory marketAfter = morpho.market(marketParams.id());
-        assertApproxEqAbs(_debt(beforePosition, marketBefore) - _debt(afterPosition, marketAfter), repayAssets, 2);
-        assertEq(beforePosition.collateral - afterPosition.collateral, collateralToSpend);
-        assertEq(settler.lastMinAmountOut(), repayAssets);
+        uint256 debtAfter = _debt(afterPosition, morpho.market(marketParams.id()));
+        assertGe(debtBefore - debtAfter, minRepayAssets);
+        assertEq(beforePosition.collateral - afterPosition.collateral, collateralToSell);
+        assertEq(settler.lastSellAmount(), collateralToSell);
+        assertEq(settler.lastMinAmountOut(), minRepayAssets);
+        assertEq(loanToken.balanceOf(user), loanBalanceBefore);
         assertNoResiduals();
     }
 
     function testDeleverSurplusRepaysDebtThenReturnsWalletRemainder() public {
         uint256 debtBefore = openPosition();
-        uint256 repayAssets = debtBefore / 2;
-        uint256 remainingDebt = debtBefore - repayAssets;
+        uint256 minRepayAssets = debtBefore / 2;
+        uint256 remainingDebt = debtBefore - minRepayAssets;
         uint256 surplus = remainingDebt + 2e18;
-        uint256 swapOutput = repayAssets + surplus;
-        bytes memory swapData = buildSwapData(address(collateralToken), address(loanToken), 13e18, swapOutput);
+        uint256 collateralToSell = minRepayAssets + surplus;
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
         uint256 loanBalanceBefore = loanToken.balanceOf(user);
 
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Delever(
-            marketParams, repayAssets, 13e18, swapData, type(uint256).max, block.timestamp
+            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, block.timestamp
         );
 
         assertEq(morpho.position(marketParams.id(), user).borrowShares, 0);
         assertApproxEqAbs(loanToken.balanceOf(user) - loanBalanceBefore, surplus - remainingDebt, 2);
-        assertEq(settler.lastMinAmountOut(), swapOutput);
+        assertGt(collateralToSell, debtBefore);
+        assertEq(settler.lastSellAmount(), collateralToSell);
+        assertEq(settler.lastMinAmountOut(), minRepayAssets);
         assertNoResiduals();
     }
 
     function testDeleverEnforcesMaxLtv() public {
         uint256 debt = openPosition();
-        uint256 repayAssets = debt / 2;
-        bytes memory swapData = buildSwapData(address(collateralToken), address(loanToken), 10e18, repayAssets);
+        uint256 collateralToSell = debt / 2;
+        uint256 minRepayAssets = debt / 2;
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
 
         vm.expectRevert(IZeroExLeverageBundlesV1.LtvExceeded.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Delever(marketParams, repayAssets, 10e18, swapData, 0.1e18, block.timestamp);
+        bundle.zeroExLeverageBundlesV1Delever(
+            marketParams, collateralToSell, minRepayAssets, swapData, 0.1e18, block.timestamp
+        );
         assertNoResiduals();
     }
 
