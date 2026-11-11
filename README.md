@@ -42,25 +42,6 @@ The taker is msg.sender and must authorize the bundle on Midnight and approve it
 
 The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollateralAndBorrow`, `blueBundlesV1Withdraw`, and `blueBundlesV1MigrateBorrowPosition`) support VaultV2's BluePublicAllocator.
 
-## Leverage bundles (PoC)
-
-### [ZeroExLeverageBundlesV1](src/leverage/ZeroExLeverageBundlesV1.sol)
-
-The bundle provides exact-output BUY open and close, an exact-input SELL delever that sells a chosen amount of collateral, and an exact-input SELL close that sells all collateral and returns the remaining equity as loan tokens. Callers must authorize the bundle on Morpho Blue and approve it to pull collateral for open operations.
-
-For the constructor, pass the chain's Morpho Blue address, the 0x AllowanceHolder (`0x0000000000001fF3684f28c67538d4D072C22734`) and the 0x registry/deployer (`0x00000000000004533Fe15556B1E086BB1A72cEae`); the latter two addresses are shared by Ethereum, Base, Arbitrum and Robinhood.
-
-Request each 0x Swap API quote with `taker` set to the deployed bundle, then pass `transaction.data` unchanged as `swapData`:
-
-- `zeroExLeverageBundlesV1Open`: BUY `collateralToBuy`; keep `maxSellAmount` within `maxBorrowAssets`.
-- `zeroExLeverageBundlesV1Delever`: SELL `collateralToSell` with `minBuyAmount=minRepayAssets`; output above `minRepayAssets` repays more debt, and anything beyond the debt goes to the caller.
-- `zeroExLeverageBundlesV1Close`: BUY current debt plus a small buffer for interest accrued before execution, keeping `maxSellAmount` within `maxCollateralIn`; excess loan tokens return to the caller.
-- `zeroExLeverageBundlesV1CloseExactIn`: SELL the full position collateral with a `minBuyAmount` that covers both `minLoanOut` and debt.
-
-Settler calldata is passed through unchanged: the bundle does not resize stale quotes or rewrite `POSITIVE_SLIPPAGE.expectedAmount`. A stale quote may revert or execute only within the operation's input cap and output floor, so quote close to the intended amounts. For exact-output close, the quoted debt buffer is returned as loan tokens.
-
-The bundle accepts only a registered Settler: `ownerOf(2)` or `prev(2)` must match the quote's Settler. A paused registry's `ownerOf` revert is bubbled up. The quoted AllowanceHolder `exec.amount` is ignored; each swap uses the operation's cap, checks balance deltas to ensure spent input does not exceed that cap and received output meets the required floor, then resets the allowance. Settler can make arbitrary calls, so the bundle locks its entrypoints through callbacks; Morpho Blue acts only on the caller's authorized position. Affiliate fees set via API params are reflected in the quote and covered by the bundle's checks.
-
 ### [VaultBundlesV1](src/vault/VaultBundlesV1.sol)
 
 - `vaultBundlesV1Deposit` — deposit assets into a vault.
@@ -72,6 +53,26 @@ The bundle accepts only a registered Settler: `ownerOf(2)` or `prev(2)` must mat
 - `vaultExitBundlesV1InKindRedemptionVaultV1` — in-kind redeem from an illiquid Vault V1.
 - `vaultExitBundlesV1InKindRedemptionVaultV2` — withdraw idle assets and redeem the remainder in kind from an illiquid Vault V2.
 - `vaultExitBundlesV1ForceWithdrawVaultV2` — force withdraw from a liquid Vault V2.
+
+### [ZeroExLeverageBundlesV1](src/leverage/ZeroExLeverageBundlesV1.sol)
+
+Prototype, not audited.
+
+- `zeroExLeverageBundlesV1Open` — pull collateral, borrow, and buy collateral through 0x to open or increase a leveraged position.
+- `zeroExLeverageBundlesV1Delever` — sell a chosen amount of collateral through 0x and repay debt with the proceeds; any excess over the debt is sent to the user.
+- `zeroExLeverageBundlesV1Close` — repay the full debt by buying it with collateral through 0x, and return the remaining collateral and excess loan assets.
+- `zeroExLeverageBundlesV1CloseExactIn` — sell all collateral through 0x, repay the full debt, and return the remaining loan assets.
+
+The user must authorize the bundle on Blue and approve it to pull the collateral supplied on open.
+Swaps go through 0x AllowanceHolder (`0x0000000000001fF3684f28c67538d4D072C22734`) and a Settler that is current or previous in the 0x registry (`0x00000000000004533Fe15556B1E086BB1A72cEae`); both addresses are shared by Ethereum, Base, Arbitrum and Robinhood.
+`swapData` is the `transaction.data` of a 0x Swap API quote with the bundle as taker, passed through unchanged:
+
+- Open: BUY quote with `buyAmount = collateralToBuy` and `maxSellAmount <= maxBorrowAssets`.
+- Delever: SELL quote with `sellAmount = collateralToSell` and `minBuyAmount >= minRepayAssets`.
+- Close: BUY quote with `buyAmount` = debt plus a buffer for accrued interest and `maxSellAmount <= maxCollateralIn`; the buffer returns as loan assets.
+- CloseExactIn: SELL quote with `sellAmount` = the position's collateral and `minBuyAmount` covering both the debt and `minLoanOut`.
+
+Quotes are not resized on-chain: a stale quote reverts, or executes within the entrypoint's input cap and output floor, which the bundle checks with balance deltas.
 
 ## Changelog
 

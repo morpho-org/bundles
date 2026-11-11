@@ -4,7 +4,7 @@ pragma solidity ^0.8.34;
 
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
-import {ISettlerTakerSubmitted} from "../../src/leverage/interfaces/ISettlerTakerSubmitted.sol";
+import {ISettlerTakerSubmitted} from "./ISettlerTakerSubmitted.sol";
 
 contract AllowanceHolderMock {
     error InsufficientTransientAllowance();

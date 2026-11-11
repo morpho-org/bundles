@@ -7,7 +7,7 @@ import {MarketParams, Market, Position} from "../lib/morpho-blue/src/interfaces/
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SharesMathLib} from "../lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {IAllowanceHolder} from "../src/leverage/interfaces/IAllowanceHolder.sol";
-import {ISettlerTakerSubmitted} from "../src/leverage/interfaces/ISettlerTakerSubmitted.sol";
+import {ISettlerTakerSubmitted} from "./helpers/ISettlerTakerSubmitted.sol";
 import {IZeroExLeverageBundlesV1} from "../src/leverage/interfaces/IZeroExLeverageBundlesV1.sol";
 import {ZeroExLeverageBundlesV1} from "../src/leverage/ZeroExLeverageBundlesV1.sol";
 import {AllowanceHolderMock, SettlerMock, ZeroExDeployerMock} from "./helpers/ZeroExMocks.sol";
