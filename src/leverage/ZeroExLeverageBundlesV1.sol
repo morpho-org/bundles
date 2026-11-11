@@ -324,7 +324,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         }
     }
 
-    /// @dev Approves AllowanceHolder for maxIn only; the quote's exec amount is not read.
+    /// @dev Approves AllowanceHolder for at most maxIn, which caps the input whatever amount the quote encodes.
     function swap(address tokenIn, address tokenOut, uint256 maxIn, uint256 minOut, bytes memory swapData)
         internal
         returns (uint256 spent, uint256 received)
