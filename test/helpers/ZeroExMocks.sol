@@ -47,8 +47,6 @@ contract SettlerMock is ISettlerTakerSubmitted {
     uint256 public rateDenominator = 1;
     bool public exactOutput;
 
-    address public lastTaker;
-    address public lastSellToken;
     uint256 public lastSellAmount;
     uint256 public lastMinAmountOut;
     bool public reentryAttempted;
@@ -101,8 +99,6 @@ contract SettlerMock is ISettlerTakerSubmitted {
             if (amountSpent > amountIn) revert MinimumOutputNotMet();
         }
         uint256 refund = amountIn - amountSpent;
-        lastTaker = taker;
-        lastSellToken = sellToken;
         lastSellAmount = amountIn;
         lastMinAmountOut = slippage.minAmountOut;
 

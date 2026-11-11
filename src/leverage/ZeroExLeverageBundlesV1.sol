@@ -18,7 +18,6 @@ import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
-import {Math} from "../../lib/vault-v2/lib/openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 
 /// @dev Leverage bundle for Morpho Blue that swaps through 0x AllowanceHolder and Settler, using Blue's callbacks instead of flash loans.
@@ -249,7 +248,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             IMorpho(BLUE).repay(marketParams, maxBorrowAssets - spent, 0, user, "");
         }
         if (received > collateralToBuy) {
-            TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, received - collateralToBuy, user, "");
         }
     }
@@ -282,7 +280,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             Market memory market = IMorpho(BLUE).market(marketParams.id());
             uint256 debt = borrowShares.toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
 
-            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
             if (excess >= debt) {
                 if (borrowShares > 0) IMorpho(BLUE).repay(marketParams, 0, borrowShares, user, "");
                 excess -= debt;
@@ -325,7 +322,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             bytes memory settlerData
         ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
 
-        uint256 minOut = Math.max(minLoanOut, assets);
+        uint256 minOut = minLoanOut > assets ? minLoanOut : assets;
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
         (uint256 spent, uint256 received) =
             swap(marketParams.collateralToken, marketParams.loanToken, collateral, minOut, settler, settlerData);

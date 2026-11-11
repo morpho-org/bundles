@@ -23,21 +23,14 @@ abstract contract LeverageTest is TokenTest {
     address internal supplier;
     address internal user;
 
-    function setUpLeverageMarketOnly(bool loanTokenIsCurrency1) internal {
+    function setUpLeverageMarket() internal {
         owner = makeAddr("owner");
         supplier = makeAddr("supplier");
         user = makeAddr("user");
 
         morpho = IMorpho(deployCode("Morpho.sol:Morpho", abi.encode(owner)));
-        ITestToken tokenA = deployToken("token A");
-        ITestToken tokenB = deployToken("token B");
-        if ((address(tokenA) > address(tokenB)) == loanTokenIsCurrency1) {
-            loanToken = tokenA;
-            collateralToken = tokenB;
-        } else {
-            loanToken = tokenB;
-            collateralToken = tokenA;
-        }
+        loanToken = deployToken("loan token");
+        collateralToken = deployToken("collateral token");
         oracle = new OracleMock();
         oracle.setPrice(ORACLE_PRICE_SCALE);
         irm = new IrmMock();

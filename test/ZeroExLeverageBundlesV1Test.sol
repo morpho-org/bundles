@@ -38,7 +38,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
     ZeroExLeverageBundlesV1 internal bundle;
 
     function setUp() public {
-        setUpLeverageMarketOnly(false);
+        setUpLeverageMarket();
         allowanceHolder = new AllowanceHolderMock();
         settler = new SettlerMock(allowanceHolder);
         deployer = new ZeroExDeployerMock();
@@ -276,8 +276,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
     function testUnknownSettlerIsRejected() public {
         bytes[] memory actions = new bytes[](1);
         actions[0] = _transferFromAction(address(bundle), address(loanToken), 1e18);
-        bytes memory settlerData =
-            _settlerData(ISettlerTakerSubmitted.execute.selector, address(collateralToken), 1e18, actions);
+        bytes memory settlerData = _settlerData(address(collateralToken), 1e18, actions);
         bytes memory swapData = _encodeExec(address(0x1234), address(loanToken), 1e18, address(0x1234), settlerData);
 
         vm.expectRevert(IZeroExLeverageBundlesV1.InvalidSettler.selector);
@@ -299,8 +298,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
     function testWrongAllowanceHolderExecSelectorIsRejected() public {
         bytes[] memory actions = new bytes[](1);
         actions[0] = _transferFromAction(address(bundle), address(loanToken), 1e18);
-        bytes memory settlerData =
-            _settlerData(ISettlerTakerSubmitted.execute.selector, address(collateralToken), 1, actions);
+        bytes memory settlerData = _settlerData(address(collateralToken), 1, actions);
         bytes memory swapData = _encodeExecWithSelector(
             bytes4(0xdeadbeef), address(settler), address(loanToken), 1e18, address(settler), settlerData
         );
@@ -314,8 +312,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
     function testOperatorMustEqualTarget() public {
         bytes[] memory actions = new bytes[](1);
         actions[0] = _transferFromAction(address(bundle), address(loanToken), 1e18);
-        bytes memory settlerData =
-            _settlerData(ISettlerTakerSubmitted.execute.selector, address(collateralToken), 1, actions);
+        bytes memory settlerData = _settlerData(address(collateralToken), 1, actions);
         bytes memory swapData = _encodeExec(address(settler), address(loanToken), 1e18, address(0x1234), settlerData);
 
         vm.expectRevert(IZeroExLeverageBundlesV1.InvalidSwapData.selector);
@@ -458,32 +455,19 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             expectedAmount = quoteAmount * settler.rateNumerator() / settler.rateDenominator();
         }
         actions[1] = _positiveSlippageAction(ZERO_EX_FEE_RECIPIENT, feeToken, expectedAmount, 1e6, 1e6);
-        return _buildSwapDataWithActions(
-            tokenIn, tokenOut, quoteAmount, quotedMinOut, actions, ISettlerTakerSubmitted.execute.selector
-        );
-    }
-
-    function _buildSwapDataWithActions(
-        address tokenIn,
-        address tokenOut,
-        uint256 apiAmount,
-        uint256 quotedMinOut,
-        bytes[] memory actions,
-        bytes4 executeSelector
-    ) internal returns (bytes memory) {
         deal(tokenOut, address(settler), 1e30);
-        bytes memory settlerData = _settlerData(executeSelector, tokenOut, quotedMinOut, actions);
-        return _encodeExec(address(settler), tokenIn, apiAmount, address(settler), settlerData);
+        bytes memory settlerData = _settlerData(tokenOut, quotedMinOut, actions);
+        return _encodeExec(address(settler), tokenIn, quoteAmount, address(settler), settlerData);
     }
 
-    function _settlerData(bytes4 selector, address tokenOut, uint256 quotedMinOut, bytes[] memory actions)
+    function _settlerData(address tokenOut, uint256 quotedMinOut, bytes[] memory actions)
         internal
         view
         returns (bytes memory)
     {
         ISettlerTakerSubmitted.AllowedSlippage memory slippage =
             ISettlerTakerSubmitted.AllowedSlippage(address(bundle), tokenOut, quotedMinOut);
-        return abi.encodeWithSelector(selector, slippage, actions, bytes32(0));
+        return abi.encodeWithSelector(ISettlerTakerSubmitted.execute.selector, slippage, actions, bytes32(0));
     }
 
     function _transferFromAction(address recipient, address token, uint256 amount)
