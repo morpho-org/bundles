@@ -161,38 +161,3 @@ contract SettlerMock is ISettlerTakerSubmitted {
         }
     }
 }
-
-contract ZeroExDeployerMock {
-    error Paused();
-    error UnsupportedFeature();
-
-    address internal currentSettler;
-    address internal previousSettler;
-    bool public paused;
-
-    function setOwnerOf(uint256 tokenId, address settler) external {
-        if (tokenId != 2) revert UnsupportedFeature();
-        currentSettler = settler;
-    }
-
-    function setPrev(uint128 tokenId, address settler) external {
-        if (tokenId != 2) revert UnsupportedFeature();
-        previousSettler = settler;
-    }
-
-    function setPaused(bool paused_) external {
-        paused = paused_;
-    }
-
-    function ownerOf(uint256 tokenId) external view returns (address) {
-        if (paused) revert Paused();
-        if (tokenId != 2) revert UnsupportedFeature();
-        return currentSettler;
-    }
-
-    function prev(uint128 tokenId) external view returns (address) {
-        if (paused) revert Paused();
-        if (tokenId != 2) revert UnsupportedFeature();
-        return previousSettler;
-    }
-}

@@ -2,8 +2,6 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IAllowanceHolder} from "./interfaces/IAllowanceHolder.sol";
-import {IZeroExDeployer} from "./interfaces/IZeroExDeployer.sol";
 import {IZeroExLeverageBundlesV1} from "./interfaces/IZeroExLeverageBundlesV1.sol";
 import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {
@@ -26,26 +24,21 @@ import {TokenLib} from "../libraries/TokenLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
-/// @dev swapData is passed to AllowanceHolder unchanged: Settler calldata is neither parsed nor resized, and each swap is bounded only by balance-delta checks against the entrypoint's input cap and output floor.
-/// @dev The quoted Settler must be the current or previous Settler in the 0x registry.
-/// @dev Settler can make arbitrary calls, so entrypoints stay locked through Blue's callbacks.
+/// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder; neither the Settler nor its calldata is validated, so each swap is bounded only by the approval of the input cap and the balance-delta checks on input cap and output floor.
+/// @dev The swap can make arbitrary calls, so entrypoints stay locked through Blue's callbacks.
 contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyCollateralCallback, IMorphoRepayCallback {
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
     using UtilsLib for uint256;
 
-    uint128 internal constant SETTLER_FEATURE = 2;
-
     address public immutable BLUE;
     address public immutable ALLOWANCE_HOLDER;
-    address public immutable ZERO_EX_DEPLOYER;
 
     bool internal transient locked;
 
-    constructor(address _blue, address _allowanceHolder, address _zeroExDeployer) {
+    constructor(address _blue, address _allowanceHolder) {
         BLUE = _blue;
         ALLOWANCE_HOLDER = _allowanceHolder;
-        ZERO_EX_DEPLOYER = _zeroExDeployer;
     }
 
     modifier nonReentrant() {
@@ -74,7 +67,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         require(block.timestamp <= deadline, DeadlinePassed());
         require(collateralToBuy != 0, ZeroCollateralToBuy());
 
-        (address settler, bytes memory settlerData) = decodeSwapData(swapData, marketParams.loanToken);
         SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
 
@@ -87,7 +79,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
                 abi.encode(
                     this.zeroExLeverageBundlesV1Open.selector,
                     msg.sender,
-                    abi.encode(marketParams, collateralToBuy, maxBorrowAssets, settler, settlerData)
+                    abi.encode(marketParams, collateralToBuy, maxBorrowAssets, swapData)
                 )
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
@@ -108,7 +100,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         uint256 deadline
     ) external nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
-        (address settler, bytes memory settlerData) = decodeSwapData(swapData, marketParams.collateralToken);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
@@ -121,7 +112,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
                 abi.encode(
                     this.zeroExLeverageBundlesV1Delever.selector,
                     msg.sender,
-                    abi.encode(marketParams, collateralToSell, minRepayAssets, settler, settlerData)
+                    abi.encode(marketParams, collateralToSell, minRepayAssets, swapData)
                 )
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
@@ -146,7 +137,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             return;
         }
 
-        (address settler, bytes memory settlerData) = decodeSwapData(swapData, marketParams.collateralToken);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
         // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
         IMorpho(BLUE)
@@ -158,7 +148,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
                 abi.encode(
                     this.zeroExLeverageBundlesV1Close.selector,
                     msg.sender,
-                    abi.encode(marketParams, position.collateral, maxCollateralIn, settler, settlerData)
+                    abi.encode(marketParams, position.collateral, maxCollateralIn, swapData)
                 )
             );
     }
@@ -182,7 +172,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             return;
         }
 
-        (address settler, bytes memory settlerData) = decodeSwapData(swapData, marketParams.collateralToken);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
         // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
         IMorpho(BLUE)
@@ -194,7 +183,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
                 abi.encode(
                     this.zeroExLeverageBundlesV1CloseExactIn.selector,
                     msg.sender,
-                    abi.encode(marketParams, position.collateral, minLoanOut, settler, settlerData)
+                    abi.encode(marketParams, position.collateral, minLoanOut, swapData)
                 )
             );
     }
@@ -230,18 +219,12 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     /// INTERNAL ///
 
     function executeOpen(address user, bytes memory operationData) internal {
-        (
-            MarketParams memory marketParams,
-            uint256 collateralToBuy,
-            uint256 maxBorrowAssets,
-            address settler,
-            bytes memory settlerData
-        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
+        (MarketParams memory marketParams, uint256 collateralToBuy, uint256 maxBorrowAssets, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
         IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, user, address(this));
-        (uint256 spent, uint256 received) = swap(
-            marketParams.loanToken, marketParams.collateralToken, maxBorrowAssets, collateralToBuy, settler, settlerData
-        );
+        (uint256 spent, uint256 received) =
+            swap(marketParams.loanToken, marketParams.collateralToken, maxBorrowAssets, collateralToBuy, swapData);
 
         if (maxBorrowAssets > spent) {
             TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
@@ -253,18 +236,12 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     }
 
     function executeDelever(uint256 assets, address user, bytes memory operationData) internal {
-        (
-            MarketParams memory marketParams,
-            uint256 collateralToSell,
-            uint256 minRepayAssets,
-            address settler,
-            bytes memory settlerData
-        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
+        (MarketParams memory marketParams, uint256 collateralToSell, uint256 minRepayAssets, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateralToSell, user, address(this));
-        (uint256 spent, uint256 received) = swap(
-            marketParams.collateralToken, marketParams.loanToken, collateralToSell, minRepayAssets, settler, settlerData
-        );
+        (uint256 spent, uint256 received) =
+            swap(marketParams.collateralToken, marketParams.loanToken, collateralToSell, minRepayAssets, swapData);
 
         if (collateralToSell > spent) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
@@ -293,17 +270,12 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     }
 
     function executeClose(uint256 assets, address user, bytes memory operationData) internal {
-        (
-            MarketParams memory marketParams,
-            uint256 collateral,
-            uint256 maxCollateralIn,
-            address settler,
-            bytes memory settlerData
-        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
+        (MarketParams memory marketParams, uint256 collateral, uint256 maxCollateralIn, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
         (uint256 spent, uint256 received) =
-            swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, settler, settlerData);
+            swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
 
         if (collateral > spent) {
             SafeTransferLib.safeTransfer(marketParams.collateralToken, user, collateral - spent);
@@ -314,43 +286,19 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     }
 
     function executeCloseExactIn(uint256 assets, address user, bytes memory operationData) internal {
-        (
-            MarketParams memory marketParams,
-            uint256 collateral,
-            uint256 minLoanOut,
-            address settler,
-            bytes memory settlerData
-        ) = abi.decode(operationData, (MarketParams, uint256, uint256, address, bytes));
+        (MarketParams memory marketParams, uint256 collateral, uint256 minLoanOut, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
         uint256 minOut = minLoanOut > assets ? minLoanOut : assets;
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
         (uint256 spent, uint256 received) =
-            swap(marketParams.collateralToken, marketParams.loanToken, collateral, minOut, settler, settlerData);
+            swap(marketParams.collateralToken, marketParams.loanToken, collateral, minOut, swapData);
 
         if (collateral > spent) {
             SafeTransferLib.safeTransfer(marketParams.collateralToken, user, collateral - spent);
         }
         if (received > assets) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, user, received - assets);
-        }
-    }
-
-    /// @dev Reverts unless swapData calls AllowanceHolder.exec on tokenIn, with a registered Settler as both operator and target.
-    function decodeSwapData(bytes calldata swapData, address tokenIn)
-        internal
-        view
-        returns (address settler, bytes memory settlerData)
-    {
-        require(swapData.length >= 196 && bytes4(swapData[:4]) == IAllowanceHolder.exec.selector, InvalidSwapData());
-
-        address operator;
-        address token;
-        address target;
-        (operator, token,, target, settlerData) = abi.decode(swapData[4:], (address, address, uint256, address, bytes));
-        require(operator == target && token == tokenIn, InvalidSwapData());
-        settler = operator;
-        if (IZeroExDeployer(ZERO_EX_DEPLOYER).ownerOf(SETTLER_FEATURE) != settler) {
-            require(IZeroExDeployer(ZERO_EX_DEPLOYER).prev(SETTLER_FEATURE) == settler, InvalidSettler());
         }
     }
 
@@ -376,20 +324,21 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         }
     }
 
-    /// @dev Approves AllowanceHolder for maxIn only, ignoring the quoted exec amount, and reverts unless at most maxIn is spent and at least minOut is received.
-    function swap(
-        address tokenIn,
-        address tokenOut,
-        uint256 maxIn,
-        uint256 minOut,
-        address settler,
-        bytes memory settlerData
-    ) internal returns (uint256 spent, uint256 received) {
+    /// @dev Approves AllowanceHolder for maxIn only; the quote's exec amount is not read.
+    function swap(address tokenIn, address tokenOut, uint256 maxIn, uint256 minOut, bytes memory swapData)
+        internal
+        returns (uint256 spent, uint256 received)
+    {
         uint256 inBefore = IERC20(tokenIn).balanceOf(address(this));
         uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));
 
         TokenLib.safeApprove(tokenIn, ALLOWANCE_HOLDER, maxIn);
-        IAllowanceHolder(ALLOWANCE_HOLDER).exec(settler, tokenIn, maxIn, payable(settler), settlerData);
+        (bool success, bytes memory returnData) = ALLOWANCE_HOLDER.call(swapData);
+        if (!success) {
+            assembly ("memory-safe") {
+                revert(add(returnData, 0x20), mload(returnData))
+            }
+        }
         TokenLib.safeApprove(tokenIn, ALLOWANCE_HOLDER, 0);
 
         uint256 inAfter = IERC20(tokenIn).balanceOf(address(this));

@@ -8,8 +8,6 @@ interface IZeroExLeverageBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
     error IncompleteFill();
-    error InvalidSettler();
-    error InvalidSwapData();
     error LtvExceeded();
     error Reentrancy();
     error UnauthorizedCallback();
@@ -18,7 +16,6 @@ interface IZeroExLeverageBundlesV1 {
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);
     function ALLOWANCE_HOLDER() external view returns (address);
-    function ZERO_EX_DEPLOYER() external view returns (address);
 
     /// FUNCTIONS ///
     function zeroExLeverageBundlesV1Open(
