@@ -342,12 +342,10 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         TokenLib.safeApprove(tokenIn, ALLOWANCE_HOLDER, 0);
 
         uint256 inAfter = IERC20(tokenIn).balanceOf(address(this));
-        require(inAfter <= inBefore, IncompleteFill());
         spent = inBefore - inAfter;
         require(spent <= maxIn, IncompleteFill());
 
         uint256 outAfter = IERC20(tokenOut).balanceOf(address(this));
-        require(outAfter >= outBefore, IncompleteFill());
         received = outAfter - outBefore;
         require(received >= minOut, IncompleteFill());
     }
