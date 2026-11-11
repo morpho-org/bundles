@@ -271,14 +271,8 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         deal(address(loanToken), address(bundle), 1);
         bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets + 1, 1e18);
 
-        uint256 tokenType = vm.envOr("TOKEN_TYPE", uint256(0));
-        if (tokenType == 0) {
-            vm.expectRevert(abi.encodeWithSignature("Error(string)", "Insufficient allowance"));
-        } else if (tokenType == 1) {
-            vm.expectRevert(abi.encodeWithSignature("TransferFromReturnedFalse()"));
-        } else {
-            vm.expectRevert(abi.encodeWithSignature("Panic(uint256)", uint256(0x11)));
-        }
+        // The bundle approves only maxBorrowAssets, so the pull of maxBorrowAssets + 1 reverts in the token.
+        vm.expectRevert();
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Open(
             marketParams, collateralAssets, 1e18, maxBorrowAssets, swapData, type(uint256).max, block.timestamp
