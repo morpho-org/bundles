@@ -78,6 +78,31 @@ evm_version = "paris"
 optimizer_runs = 999999
 
 [[profile.default.additional_compiler_profiles]]
+name = "osaka-833"
+evm_version = "osaka"
+optimizer_runs = 833
+
+[[profile.default.additional_compiler_profiles]]
+name = "osaka-800"
+evm_version = "osaka"
+optimizer_runs = 800
+
+[[profile.default.compilation_restrictions]]
+paths = "test/imports/MidnightAdapterImport.sol"
+evm_version = "osaka"
+optimizer_runs = 833
+
+[[profile.default.compilation_restrictions]]
+paths = "lib/vault-v2/src/adapters/MidnightAdapter.sol"
+evm_version = "osaka"
+optimizer_runs = 833
+
+[[profile.default.compilation_restrictions]]
+paths = "lib/vault-v2/src/adapters/ratifiers/MidnightAdapter*.sol"
+evm_version = "osaka"
+optimizer_runs = 800
+
+[[profile.default.additional_compiler_profiles]]
 name = "osaka-466"
 evm_version = "osaka"
 optimizer_runs = 466
