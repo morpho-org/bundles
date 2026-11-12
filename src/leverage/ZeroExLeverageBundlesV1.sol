@@ -343,7 +343,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
 
         uint256 inAfter = IERC20(tokenIn).balanceOf(address(this));
         spent = inBefore - inAfter;
-        require(spent <= maxIn, IncompleteFill());
 
         uint256 outAfter = IERC20(tokenOut).balanceOf(address(this));
         received = outAfter - outBefore;
