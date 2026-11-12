@@ -26,10 +26,6 @@ import {
 } from "../lib/vault-v2/src/periphery/gates/interfaces/IVaultV2CompatibleEnterGate.sol";
 import {IWhitelistEnterSubGate} from "../lib/vault-v2/src/periphery/gates/interfaces/IWhitelistEnterSubGate.sol";
 
-interface IFrameGas {
-    function lastFrameGas() external view returns (Vm.Gas memory);
-}
-
 contract MidnightVaultExitBundlesTest is Test {
     using MathLib for uint256;
 
@@ -342,7 +338,7 @@ contract MidnightVaultExitBundlesTest is Test {
         if (!success) {
             assembly ("memory-safe") { revert(add(result, 32), mload(result)) }
         }
-        Vm.Gas memory measured = IFrameGas(address(vm)).lastFrameGas();
+        Vm.Gas memory measured = vm.lastCallGas();
         uint256 intrinsic = 21_000;
         for (uint256 i; i < data.length; ++i) {
             intrinsic += data[i] == 0 ? 4 : 16;
