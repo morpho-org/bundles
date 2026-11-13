@@ -244,7 +244,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check.
     /// @dev Assumes interest is already accrued in this block (open borrows and delever repays before calling it), then mirrors Blue's health check against maxLtv.
-    function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal {
+    function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal view {
         if (maxLtv != type(uint256).max) {
             Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
             if (position.borrowShares != 0) {
