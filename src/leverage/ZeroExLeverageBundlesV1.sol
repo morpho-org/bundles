@@ -159,11 +159,8 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         require(msg.sender == BLUE, UnauthorizedCallback());
 
         (bytes4 selector, address user, bytes memory operationData) = abi.decode(data, (bytes4, address, bytes));
-        if (selector == this.zeroExLeverageBundlesV1Open.selector) {
-            executeOpen(user, operationData);
-        } else {
-            revert UnauthorizedCallback();
-        }
+        require(selector == this.zeroExLeverageBundlesV1Open.selector, UnauthorizedCallback());
+        executeOpen(user, operationData);
     }
 
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
@@ -222,13 +219,10 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
 
             if (excess >= debt) {
                 if (borrowShares > 0) IMorpho(BLUE).repay(marketParams, 0, borrowShares, user, "");
-                excess -= debt;
+                if (excess > debt) SafeTransferLib.safeTransfer(marketParams.loanToken, user, excess - debt);
             } else {
                 IMorpho(BLUE).repay(marketParams, excess, 0, user, "");
-                excess = 0;
             }
-
-            if (excess > 0) SafeTransferLib.safeTransfer(marketParams.loanToken, user, excess);
         }
     }
 
@@ -249,17 +243,12 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check.
-    /// @dev Accrues market interest when needed, then mirrors Blue's own health check against maxLtv.
+    /// @dev Assumes interest is already accrued in this block (open borrows and delever repays before calling it), then mirrors Blue's health check against maxLtv.
     function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal {
         if (maxLtv != type(uint256).max) {
             Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
             if (position.borrowShares != 0) {
                 Market memory market = IMorpho(BLUE).market(marketParams.id());
-                if (market.lastUpdate != block.timestamp) {
-                    // forge-lint: disable-next-line(reentrancy-no-eth) The helper is only called from locked entrypoints.
-                    IMorpho(BLUE).accrueInterest(marketParams);
-                    market = IMorpho(BLUE).market(marketParams.id());
-                }
                 uint256 borrowed =
                     uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
                 uint256 price = IOracle(marketParams.oracle).price();
