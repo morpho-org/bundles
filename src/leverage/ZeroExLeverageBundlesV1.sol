@@ -133,6 +133,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
 
         Position memory position = IMorpho(BLUE).position(marketParams.id(), msg.sender);
         if (position.borrowShares == 0) {
+            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active.
             IMorpho(BLUE).withdrawCollateral(marketParams, position.collateral, msg.sender, msg.sender);
         } else {
             TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
