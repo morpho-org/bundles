@@ -153,41 +153,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             );
     }
 
-    /// @dev Repays all of msg.sender's borrow shares; in Blue's callback, withdraws all collateral and sells it through 0x for at least max(minLoanOut, debt).
-    /// @dev swapData must be a 0x SELL quote with sellAmount = msg.sender's collateral.
-    /// @dev The loan assets received above the debt, and any unsold collateral, are sent to msg.sender.
-    /// @dev Without debt, withdraws all collateral to msg.sender and ignores swapData.
-    /// @dev The msg.sender must have authorized this contract on Blue.
-    function zeroExLeverageBundlesV1CloseExactIn(
-        MarketParams memory marketParams,
-        uint256 minLoanOut,
-        bytes calldata swapData,
-        uint256 deadline
-    ) external nonReentrant {
-        require(block.timestamp <= deadline, DeadlinePassed());
-
-        Position memory position = IMorpho(BLUE).position(marketParams.id(), msg.sender);
-        if (position.borrowShares == 0) {
-            IMorpho(BLUE).withdrawCollateral(marketParams, position.collateral, msg.sender, msg.sender);
-            return;
-        }
-
-        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
-        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
-        IMorpho(BLUE)
-            .repay(
-                marketParams,
-                0,
-                position.borrowShares,
-                msg.sender,
-                abi.encode(
-                    this.zeroExLeverageBundlesV1CloseExactIn.selector,
-                    msg.sender,
-                    abi.encode(marketParams, position.collateral, minLoanOut, swapData)
-                )
-            );
-    }
-
     /// CALLBACKS ///
 
     function onMorphoSupplyCollateral(uint256, bytes calldata data) external {
@@ -209,8 +174,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             executeDelever(assets, user, operationData);
         } else if (selector == this.zeroExLeverageBundlesV1Close.selector) {
             executeClose(assets, user, operationData);
-        } else if (selector == this.zeroExLeverageBundlesV1CloseExactIn.selector) {
-            executeCloseExactIn(assets, user, operationData);
         } else {
             revert UnauthorizedCallback();
         }
@@ -276,23 +239,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
         (uint256 spent, uint256 received) =
             swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
-
-        if (collateral > spent) {
-            SafeTransferLib.safeTransfer(marketParams.collateralToken, user, collateral - spent);
-        }
-        if (received > assets) {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, user, received - assets);
-        }
-    }
-
-    function executeCloseExactIn(uint256 assets, address user, bytes memory operationData) internal {
-        (MarketParams memory marketParams, uint256 collateral, uint256 minLoanOut, bytes memory swapData) =
-            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
-
-        uint256 minOut = minLoanOut > assets ? minLoanOut : assets;
-        IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
-        (uint256 spent, uint256 received) =
-            swap(marketParams.collateralToken, marketParams.loanToken, collateral, minOut, swapData);
 
         if (collateral > spent) {
             SafeTransferLib.safeTransfer(marketParams.collateralToken, user, collateral - spent);

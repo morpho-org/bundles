@@ -61,7 +61,6 @@ Prototype, not audited.
 - `zeroExLeverageBundlesV1Open` — pull collateral, borrow, and buy collateral through 0x to open or increase a leveraged position.
 - `zeroExLeverageBundlesV1Delever` — sell a chosen amount of collateral through 0x and repay debt with the proceeds; any excess over the debt is sent to the user.
 - `zeroExLeverageBundlesV1Close` — repay the full debt by buying it with collateral through 0x, and return the remaining collateral and excess loan assets.
-- `zeroExLeverageBundlesV1CloseExactIn` — sell all collateral through 0x, repay the full debt, and return the remaining loan assets.
 
 The user must authorize the bundle on Blue and approve it to pull the collateral supplied on open.
 Swaps go through 0x AllowanceHolder (`0x0000000000001fF3684f28c67538d4D072C22734`), whose address is shared by Ethereum, Base, Arbitrum and Robinhood.
@@ -70,7 +69,6 @@ Swaps go through 0x AllowanceHolder (`0x0000000000001fF3684f28c67538d4D072C22734
 - Open: BUY quote with `buyAmount = collateralToBuy` and `maxSellAmount <= maxBorrowAssets`.
 - Delever: SELL quote with `sellAmount = collateralToSell` and `minBuyAmount >= minRepayAssets`.
 - Close: BUY quote with `buyAmount` = debt plus a buffer for accrued interest and `maxSellAmount <= maxCollateralIn`; the buffer returns as loan assets.
-- CloseExactIn: SELL quote with `sellAmount` = the position's collateral and `minBuyAmount` covering both the debt and `minLoanOut`.
 
 Quotes are not resized on-chain: a stale quote reverts or executes within the entrypoint's input cap and output floor. The Settler and its calldata are not validated, so balance-delta checks on those bounds are the bundle's only swap limits.
 
