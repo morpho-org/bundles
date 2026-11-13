@@ -24,7 +24,7 @@ import {TokenLib} from "../libraries/TokenLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
-/// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder; neither the Settler nor its calldata is validated, so each swap is bounded only by the approval of the input cap and the balance-delta checks on input cap and output floor.
+/// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder; neither the Settler nor its calldata is validated, so each swap is bounded only by the approval of the input cap and the balance-delta check on the output floor.
 /// @dev The swap can make arbitrary calls, so entrypoints stay locked through Blue's callbacks.
 contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyCollateralCallback, IMorphoRepayCallback {
     using MarketParamsLib for MarketParams;
@@ -51,11 +51,11 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     /// ENTRYPOINT ///
 
     /// @dev Pulls collateralAssets from msg.sender and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
-    /// @dev swapData must be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount <= maxBorrowAssets.
+    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount <= maxBorrowAssets.
     /// @dev The unspent borrowed assets are repaid, and the collateral bought above collateralToBuy is supplied for msg.sender.
     /// @dev The msg.sender must have authorized this contract on Blue.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
-    function zeroExLeverageBundlesV1Open(
+    function zeroExLeverageBundlesV1Lever(
         MarketParams memory marketParams,
         uint256 collateralAssets,
         uint256 collateralToBuy,
@@ -77,7 +77,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
                 collateralAssets + collateralToBuy,
                 msg.sender,
                 abi.encode(
-                    this.zeroExLeverageBundlesV1Open.selector,
+                    this.zeroExLeverageBundlesV1Lever.selector,
                     msg.sender,
                     abi.encode(marketParams, collateralToBuy, maxBorrowAssets, swapData)
                 )
@@ -86,7 +86,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     }
 
     /// @dev Repays minRepayAssets of msg.sender's debt; in Blue's callback, withdraws collateralToSell and sells it through 0x for at least minRepayAssets.
-    /// @dev swapData must be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount >= minRepayAssets.
+    /// @dev swapData is expected to be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount >= minRepayAssets.
     /// @dev minRepayAssets must not exceed msg.sender's debt, or else Blue reverts.
     /// @dev Unsold collateral is supplied back; the loan assets received above minRepayAssets repay the remaining debt, and the rest is sent to msg.sender.
     /// @dev The msg.sender must have authorized this contract on Blue.
@@ -119,7 +119,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     }
 
     /// @dev Repays all of msg.sender's borrow shares; in Blue's callback, withdraws all collateral and buys the debt through 0x, spending at most maxCollateralIn.
-    /// @dev swapData must be a 0x BUY quote with buyAmount = debt plus a buffer for the interest accrued until execution, and maxSellAmount <= maxCollateralIn.
+    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = debt plus a buffer for the interest accrued until execution, and maxSellAmount <= maxCollateralIn.
     /// @dev The unspent collateral and the loan assets received above the debt are sent to msg.sender.
     /// @dev Without debt, withdraws all collateral to msg.sender and ignores swapData.
     /// @dev The msg.sender must have authorized this contract on Blue.
@@ -159,8 +159,8 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         require(msg.sender == BLUE, UnauthorizedCallback());
 
         (bytes4 selector, address user, bytes memory operationData) = abi.decode(data, (bytes4, address, bytes));
-        require(selector == this.zeroExLeverageBundlesV1Open.selector, UnauthorizedCallback());
-        executeOpen(user, operationData);
+        require(selector == this.zeroExLeverageBundlesV1Lever.selector, UnauthorizedCallback());
+        executeLever(user, operationData);
     }
 
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
@@ -178,7 +178,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
 
     /// INTERNAL ///
 
-    function executeOpen(address user, bytes memory operationData) internal {
+    function executeLever(address user, bytes memory operationData) internal {
         (MarketParams memory marketParams, uint256 collateralToBuy, uint256 maxBorrowAssets, bytes memory swapData) =
             abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
@@ -243,7 +243,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check.
-    /// @dev Assumes interest is already accrued in this block (open borrows and delever repays before calling it), then mirrors Blue's health check against maxLtv.
+    /// @dev Assumes interest is already accrued in this block (lever borrows and delever repays before calling it), then mirrors Blue's health check against maxLtv.
     function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal view {
         if (maxLtv != type(uint256).max) {
             Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
@@ -281,6 +281,6 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
 
         uint256 outAfter = IERC20(tokenOut).balanceOf(address(this));
         received = outAfter - outBefore;
-        require(received >= minOut, IncompleteFill());
+        require(received >= minOut, InsufficientOutput());
     }
 }

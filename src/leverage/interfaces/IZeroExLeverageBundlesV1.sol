@@ -7,7 +7,7 @@ import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol"
 interface IZeroExLeverageBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
-    error IncompleteFill();
+    error InsufficientOutput();
     error LtvExceeded();
     error Reentrancy();
     error UnauthorizedCallback();
@@ -18,7 +18,7 @@ interface IZeroExLeverageBundlesV1 {
     function ALLOWANCE_HOLDER() external view returns (address);
 
     /// FUNCTIONS ///
-    function zeroExLeverageBundlesV1Open(
+    function zeroExLeverageBundlesV1Lever(
         MarketParams memory marketParams,
         uint256 collateralAssets,
         uint256 collateralToBuy,

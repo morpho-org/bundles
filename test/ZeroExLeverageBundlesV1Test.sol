@@ -41,7 +41,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle = new ZeroExLeverageBundlesV1(address(morpho), address(allowanceHolder));
     }
 
-    function testOpenExactOutput() public {
+    function testLeverExactOutput() public {
         uint256 collateralAssets = 10e18;
         uint256 collateralToBuy = 10e18;
         uint256 maxBorrowAssets = 12e18;
@@ -50,7 +50,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, collateralToBuy);
 
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Open(
+        bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
             collateralToBuy,
@@ -76,9 +76,9 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             address(loanToken), address(collateralToken), maxBorrowAssets, collateralToBuy, address(0xbeef)
         );
 
-        vm.expectRevert(IZeroExLeverageBundlesV1.IncompleteFill.selector);
+        vm.expectRevert(IZeroExLeverageBundlesV1.InsufficientOutput.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Open(
+        bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
             collateralToBuy,
@@ -90,14 +90,14 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
-    function testOpenRejectsZeroCollateralToBuy() public {
+    function testLeverRejectsZeroCollateralToBuy() public {
         vm.expectRevert(IZeroExLeverageBundlesV1.ZeroCollateralToBuy.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Open(marketParams, 0, 0, 1e18, "", type(uint256).max, block.timestamp);
+        bundle.zeroExLeverageBundlesV1Lever(marketParams, 0, 0, 1e18, "", type(uint256).max, block.timestamp);
         assertNoResiduals();
     }
 
-    function testOpenEnforcesMaxLtv() public {
+    function testLeverEnforcesMaxLtv() public {
         uint256 collateralAssets = 10e18;
         uint256 collateralToBuy = 10e18;
         fundUser(address(bundle), collateralAssets);
@@ -105,13 +105,13 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert(IZeroExLeverageBundlesV1.LtvExceeded.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Open(
+        bundle.zeroExLeverageBundlesV1Lever(
             marketParams, collateralAssets, collateralToBuy, 12e18, swapData, 0.49e18, block.timestamp
         );
         assertNoResiduals();
 
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Open(
+        bundle.zeroExLeverageBundlesV1Lever(
             marketParams, collateralAssets, collateralToBuy, 12e18, swapData, 0.51e18, block.timestamp
         );
         assertNoResiduals();
@@ -146,7 +146,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         settler.setRate(minRepayAssets - 1, collateralToSell);
         bytes memory swapData = buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, 1);
 
-        vm.expectRevert(IZeroExLeverageBundlesV1.IncompleteFill.selector);
+        vm.expectRevert(IZeroExLeverageBundlesV1.InsufficientOutput.selector);
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Delever(
             marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, block.timestamp
@@ -254,7 +254,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         // The bundle approves only maxBorrowAssets, so the pull of maxBorrowAssets + 1 reverts in the token.
         vm.expectRevert();
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Open(
+        bundle.zeroExLeverageBundlesV1Lever(
             marketParams, collateralAssets, 1e18, maxBorrowAssets, swapData, type(uint256).max, block.timestamp
         );
         deal(address(loanToken), address(bundle), 0);
@@ -267,7 +267,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         uint256 maxBorrowAssets = 12e18;
         fundUser(address(bundle), collateralAssets);
         bytes memory reentryData = abi.encodeCall(
-            bundle.zeroExLeverageBundlesV1Open,
+            bundle.zeroExLeverageBundlesV1Lever,
             (marketParams, 0, collateralToBuy, maxBorrowAssets, bytes(""), type(uint256).max, block.timestamp)
         );
         settler.setReentry(address(bundle), reentryData);
@@ -275,7 +275,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, collateralToBuy);
 
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Open(
+        bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
             collateralToBuy,
@@ -299,7 +299,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Open(marketParams, 0, 1, 1, emptySwapData, type(uint256).max, expired);
+        bundle.zeroExLeverageBundlesV1Lever(marketParams, 0, 1, 1, emptySwapData, type(uint256).max, expired);
 
         vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
         vm.prank(user);
@@ -408,7 +408,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 12e18, collateralToBuy);
 
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Open(
+        bundle.zeroExLeverageBundlesV1Lever(
             marketParams, collateralAssets, collateralToBuy, 12e18, swapData, type(uint256).max, block.timestamp
         );
         Position memory position = morpho.position(marketParams.id(), user);

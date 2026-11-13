@@ -58,19 +58,19 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 
 Prototype, not audited.
 
-- `zeroExLeverageBundlesV1Open` — pull collateral, borrow, and buy collateral through 0x to open or increase a leveraged position.
+- `zeroExLeverageBundlesV1Lever` — pull collateral, borrow, and buy collateral through 0x to open or increase a leveraged position.
 - `zeroExLeverageBundlesV1Delever` — sell a chosen amount of collateral through 0x and repay debt with the proceeds; any excess over the debt is sent to the user.
 - `zeroExLeverageBundlesV1Close` — repay the full debt by buying it with collateral through 0x, and return the remaining collateral and excess loan assets.
 
-The user must authorize the bundle on Blue and approve it to pull the collateral supplied on open.
+The user must authorize the bundle on Blue and approve it to pull the collateral supplied on lever.
 Swaps go through 0x AllowanceHolder (`0x0000000000001fF3684f28c67538d4D072C22734`), whose address is shared by Ethereum, Base, Arbitrum and Robinhood.
-`swapData` is the `transaction.data` of a 0x Swap API quote with the bundle as taker, passed to AllowanceHolder unchanged:
+`swapData` is the `transaction.data` of a 0x Swap API quote with the bundle as taker, passed to AllowanceHolder unchanged. The quote type is not enforced on-chain, only the input cap and output floor are; the expected quotes are:
 
-- Open: BUY quote with `buyAmount = collateralToBuy` and `maxSellAmount <= maxBorrowAssets`.
+- Lever: BUY quote with `buyAmount = collateralToBuy` and `maxSellAmount <= maxBorrowAssets`.
 - Delever: SELL quote with `sellAmount = collateralToSell` and `minBuyAmount >= minRepayAssets`.
 - Close: BUY quote with `buyAmount` = debt plus a buffer for accrued interest and `maxSellAmount <= maxCollateralIn`; the buffer returns as loan assets.
 
-Quotes are not resized on-chain: a stale quote reverts or executes within the entrypoint's input cap and output floor. The Settler and its calldata are not validated, so balance-delta checks on those bounds are the bundle's only swap limits.
+Quotes are not resized on-chain: a stale quote reverts or executes within the entrypoint's input cap and output floor. The Settler and its calldata are not validated, so the approval of the input cap and the balance-delta check on the output floor are the bundle's only swap limits.
 
 ## Changelog
 
