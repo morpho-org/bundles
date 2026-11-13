@@ -85,9 +85,7 @@ rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Market
     address token;
     address loanToken = market.loanToken;
 
-    // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick.
-    // This is sound because MidnightBundlesV2 never compares addresses, so it behaves the same when some of them are equal,
-    // and the balance change of such an address is then the sum of the balance changes tracked separately here.
+    // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since MidnightBundlesV2 never compares addresses.
     require e.msg.sender == 11, "ack";
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
@@ -111,9 +109,7 @@ rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Marke
     address token;
     address loanToken = market.loanToken;
 
-    // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick.
-    // This is sound because MidnightBundlesV2 never compares addresses, so it behaves the same when some of them are equal,
-    // and the balance change of such an address is then the sum of the balance changes tracked separately here.
+    // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since MidnightBundlesV2 never compares addresses.
     require e.msg.sender == 11, "ack";
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
@@ -137,9 +133,7 @@ rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, Utils.Market 
     address token;
     address loanToken = market.loanToken;
 
-    // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick.
-    // This is sound because MidnightBundlesV2 never compares addresses, so it behaves the same when some of them are equal,
-    // and the balance change of such an address is then the sum of the balance changes tracked separately here.
+    // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since MidnightBundlesV2 never compares addresses.
     require receiver == 11, "ack";
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
@@ -171,9 +165,7 @@ rule supplyCollateralAndSellWithAssetsTargetDoesntLoseTokens(env e, Utils.Market
     address token;
     address loanToken = market.loanToken;
 
-    // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick.
-    // This is sound because MidnightBundlesV2 never compares addresses, so it behaves the same when some of them are equal,
-    // and the balance change of such an address is then the sum of the balance changes tracked separately here.
+    // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since MidnightBundlesV2 never compares addresses.
     require receiver == 11, "ack";
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
@@ -205,9 +197,7 @@ rule cancelAndMakeDoesntLoseTokens(env e, MidnightBundlesV2.MarketParams blueMar
     address token;
     address loanToken = blueMarket.loanToken;
 
-    // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick.
-    // This is sound because MidnightBundlesV2 never compares addresses, so it behaves the same when some of them are equal,
-    // and the balance change of such an address is then the sum of the balance changes tracked separately here.
+    // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since MidnightBundlesV2 never compares addresses.
     require e.msg.sender == 11, "ack";
     require currentContract == 13, "ack";
 
