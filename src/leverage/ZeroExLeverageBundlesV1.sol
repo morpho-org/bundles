@@ -134,23 +134,22 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         Position memory position = IMorpho(BLUE).position(marketParams.id(), msg.sender);
         if (position.borrowShares == 0) {
             IMorpho(BLUE).withdrawCollateral(marketParams, position.collateral, msg.sender, msg.sender);
-            return;
-        }
-
-        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
-        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
-        IMorpho(BLUE)
-            .repay(
-                marketParams,
-                0,
-                position.borrowShares,
-                msg.sender,
-                abi.encode(
-                    this.zeroExLeverageBundlesV1Close.selector,
+        } else {
+            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
+            IMorpho(BLUE)
+                .repay(
+                    marketParams,
+                    0,
+                    position.borrowShares,
                     msg.sender,
-                    abi.encode(marketParams, position.collateral, maxCollateralIn, swapData)
-                )
-            );
+                    abi.encode(
+                        this.zeroExLeverageBundlesV1Close.selector,
+                        msg.sender,
+                        abi.encode(marketParams, position.collateral, maxCollateralIn, swapData)
+                    )
+                );
+        }
     }
 
     /// CALLBACKS ///
