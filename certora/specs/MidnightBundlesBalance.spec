@@ -3,7 +3,6 @@
 using Utils as Utils;
 
 methods {
-    function Utils.hashMarket(Utils.Market market) external returns (bytes32) envfree;
 
     // Over-approximate view functions.
     function TakeAmountsLib.sellerAssetsToUnits(address, bytes32, MidnightBundlesV2.Offer memory, uint256) internal returns (uint256) => NONDET;
