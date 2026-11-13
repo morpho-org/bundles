@@ -48,7 +48,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         locked = false;
     }
 
-    /// ENTRYPOINT ///
+    /// ENTRYPOINTS ///
 
     /// @dev Pulls collateralAssets from msg.sender and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
     /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount <= maxBorrowAssets.
@@ -242,11 +242,11 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         }
     }
 
-    /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check.
+    /// @dev Reverts unless user's LTV is at or below maxLtv; type(uint256).max disables the check.
     /// @dev Assumes interest is already accrued in this block (lever borrows and delever repays before calling it), then mirrors Blue's health check against maxLtv.
-    function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal view {
+    function requireMaxLtv(MarketParams memory marketParams, address user, uint256 maxLtv) internal view {
         if (maxLtv != type(uint256).max) {
-            Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
+            Position memory position = IMorpho(BLUE).position(marketParams.id(), user);
             if (position.borrowShares != 0) {
                 Market memory market = IMorpho(BLUE).market(marketParams.id());
                 uint256 borrowed =
