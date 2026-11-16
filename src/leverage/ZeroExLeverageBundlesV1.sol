@@ -76,11 +76,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
                 marketParams,
                 collateralAssets + collateralToBuy,
                 msg.sender,
-                abi.encode(
-                    this.zeroExLeverageBundlesV1Lever.selector,
-                    msg.sender,
-                    abi.encode(marketParams, collateralToBuy, maxBorrowAssets, swapData)
-                )
+                abi.encode(msg.sender, abi.encode(marketParams, collateralToBuy, maxBorrowAssets, swapData))
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
@@ -158,8 +154,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     function onMorphoSupplyCollateral(uint256, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
 
-        (bytes4 selector, address user, bytes memory operationData) = abi.decode(data, (bytes4, address, bytes));
-        require(selector == this.zeroExLeverageBundlesV1Lever.selector, UnauthorizedCallback());
+        (address user, bytes memory operationData) = abi.decode(data, (address, bytes));
         executeLever(user, operationData);
     }
 

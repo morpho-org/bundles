@@ -321,12 +321,8 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
-    function testCallbacksRejectUnknownSelector() public {
+    function testRepayCallbackRejectsUnknownSelector() public {
         bytes memory callbackData = abi.encode(bytes4(0xdeadbeef), user, bytes(""));
-
-        vm.expectRevert(IZeroExLeverageBundlesV1.UnauthorizedCallback.selector);
-        vm.prank(address(morpho));
-        bundle.onMorphoSupplyCollateral(0, callbackData);
 
         vm.expectRevert(IZeroExLeverageBundlesV1.UnauthorizedCallback.selector);
         vm.prank(address(morpho));
