@@ -217,12 +217,11 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
             Market memory market = IMorpho(BLUE).market(marketParams.id());
             uint256 debt = borrowShares.toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
 
-            if (excess >= debt) {
-                if (borrowShares > 0) IMorpho(BLUE).repay(marketParams, 0, borrowShares, user, "");
-                if (excess > debt) SafeTransferLib.safeTransfer(marketParams.loanToken, user, excess - debt);
-            } else {
-                IMorpho(BLUE).repay(marketParams, excess, 0, user, "");
+            if (borrowShares > 0) {
+                if (excess >= debt) IMorpho(BLUE).repay(marketParams, 0, borrowShares, user, "");
+                else IMorpho(BLUE).repay(marketParams, excess, 0, user, "");
             }
+            if (excess > debt) SafeTransferLib.safeTransfer(marketParams.loanToken, user, excess - debt);
         }
     }
 
