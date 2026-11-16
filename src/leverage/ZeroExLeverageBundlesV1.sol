@@ -112,7 +112,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
                 abi.encode(
                     this.zeroExLeverageBundlesV1Delever.selector,
                     msg.sender,
-                    abi.encode(marketParams, collateralToSell, minRepayAssets, swapData)
+                    abi.encode(marketParams, collateralToSell, swapData)
                 )
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
@@ -196,12 +196,12 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     }
 
     function executeDelever(uint256 assets, address user, bytes memory operationData) internal {
-        (MarketParams memory marketParams, uint256 collateralToSell, uint256 minRepayAssets, bytes memory swapData) =
-            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
+        (MarketParams memory marketParams, uint256 collateralToSell, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, bytes));
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateralToSell, user, address(this));
         (uint256 spent, uint256 received) =
-            swap(marketParams.collateralToken, marketParams.loanToken, collateralToSell, minRepayAssets, swapData);
+            swap(marketParams.collateralToken, marketParams.loanToken, collateralToSell, assets, swapData);
 
         if (collateralToSell > spent) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
