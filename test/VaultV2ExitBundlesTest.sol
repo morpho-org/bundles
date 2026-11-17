@@ -40,8 +40,7 @@ contract VaultV2ExitBundlesTest is TokenTest {
     uint256 internal constant LLTV_2 = 0.9e18;
     uint256 internal constant PENALTY = 0.01e18;
 
-    uint256 internal constant MIN_ASSETS = 2; // assets == 1 ⇒ deallocatedAssets == 0 (see
-    // testInKindRedemptionTooSmallNoOp).
+    uint256 internal constant MIN_ASSETS = 2; // assets == 1 ⇒ deallocatedAssets == 0 (see testInKindRedemptionTooSmallNoOp).
     uint256 internal constant MAX_ASSETS = 1e24;
 
     uint256 internal constant RAY = 1e27;

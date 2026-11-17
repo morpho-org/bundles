@@ -129,8 +129,7 @@ contract VaultBundlesTest is TokenTest {
         return IERC4626(vaultV2Factory.createVaultV2(owner, asset, salt));
     }
 
-    /// @dev The user deposits assets into vault directly and approves the bundler over the resulting shares, as
-    /// required by withdraw and migrate.
+    /// @dev The user deposits assets into vault directly and approves the bundler over the resulting shares, as required by withdraw and migrate.
     function _deposited(IERC4626 vault, uint256 assets) internal {
         deal(address(loanToken), user, assets);
         safeApprove(loanToken, address(vault), type(uint256).max);
@@ -361,8 +360,7 @@ contract VaultBundlesTest is TokenTest {
         _testWithdrawTargetNet(vaultV2, targetNet, referralFeePct);
     }
 
-    /// @dev Checks the doc formula: to receive targetNet, pass assets = floor(targetNet * WAD / (WAD -
-    /// referralFeePct)).
+    /// @dev Checks the doc formula: to receive targetNet, pass assets = floor(targetNet * WAD / (WAD - referralFeePct)).
     function _testWithdrawTargetNet(IERC4626 vault, uint256 targetNet, uint256 referralFeePct) internal {
         targetNet = bound(targetNet, MIN_ASSETS, MAX_ASSETS);
         referralFeePct = bound(referralFeePct, 0, WAD - 1);
@@ -731,9 +729,7 @@ contract VaultBundlesTest is TokenTest {
 
     /// SEND ASSETS GATE ///
 
-    /// @dev With the bundler registered as an intermediary on the vault's send assets gate, a deposit resolves the
-    /// depositor to the bundler's initiator (the user who called the bundler) instead of to the bundler itself. So
-    /// depositing through the bundler succeeds if and only if that user is whitelisted.
+    /// @dev With the bundler registered as an intermediary on the vault's send assets gate, a deposit resolves the depositor to the bundler's initiator (the user who called the bundler) instead of to the bundler itself. So depositing through the bundler succeeds if and only if that user is whitelisted.
     function testDepositThroughWhitelistedIntermediary() public {
         address roleSetter = makeAddr("roleSetter");
         address whitelister = makeAddr("whitelister");

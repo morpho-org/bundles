@@ -30,8 +30,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
-/// @dev Share-price slippage is not checked. Users must instead ensure that they use only markets that are protected
-/// against supply share price inflation attacks.
+/// @dev Share-price slippage is not checked. Users must instead ensure that they use only markets that are protected against supply share price inflation attacks.
 contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoanCallback {
     using UtilsLib for uint256;
     using MarketParamsLib for MarketParams;
@@ -52,15 +51,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
     /// ENTRYPOINT ///
 
-    /// @dev Pulls collateralAssets from msg.sender (optionally via ERC-2612 or Permit2), supplies it on Blue, then
-    /// borrows borrowAssets (if non-zero) on behalf of msg.sender.
-    /// @dev When native tokens are sent, collateralPermit.kind must be PermitKind.None and collateralAssets must equal
-    /// msg.value; the native tokens are wrapped into marketParams.collateralToken (which must be the wrapped-native
-    /// token) instead of being pulled.
+    /// @dev Pulls collateralAssets from msg.sender (optionally via ERC-2612 or Permit2), supplies it on Blue, then borrows borrowAssets (if non-zero) on behalf of msg.sender.
+    /// @dev When native tokens are sent, collateralPermit.kind must be PermitKind.None and collateralAssets must equal msg.value; the native tokens are wrapped into marketParams.collateralToken (which must be the wrapped-native token) instead of being pulled.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
-    /// @dev The aggregate public allocator penalties P are deducted from borrowAssets before the referral fee is
-    /// charged. The resulting net borrow proceeds are sent to msg.sender. Fee = floor((borrowAssets - P) *
-    /// referralFeePct / WAD).
+    /// @dev The aggregate public allocator penalties P are deducted from borrowAssets before the referral fee is charged. The resulting net borrow proceeds are sent to msg.sender. Fee = floor((borrowAssets - P) * referralFeePct / WAD).
     /// @dev To receive an amount W, pass borrowAssets = P + floor(W * WAD / (WAD - referralFeePct)).
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     /// @dev reallocations must be empty when borrowAssets is zero.
@@ -123,21 +117,13 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         }
     }
 
-    /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt (if repayAssets or repayShares are
-    /// non-zero), reimburses the unused remainder (if any) at the end of the call, and withdraws collateral if
-    /// collateralAssets > 0.
-    /// @dev When native tokens are sent, loanTokenPermit.kind must be PermitKind.None and maxRepayAssets must equal
-    /// msg.value; the native tokens are wrapped into marketParams.loanToken (which must be the wrapped-native token)
-    /// instead of being pulled, and the reimbursed remainder is unwrapped back to native.
+    /// @dev Pulls maxRepayAssets from msg.sender, repays msg.sender's debt (if repayAssets or repayShares are non-zero), reimburses the unused remainder (if any) at the end of the call, and withdraws collateral if collateralAssets > 0.
+    /// @dev When native tokens are sent, loanTokenPermit.kind must be PermitKind.None and maxRepayAssets must equal msg.value; the native tokens are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of being pulled, and the reimbursed remainder is unwrapped back to native.
     /// @dev Reimbursing native tokens requires msg.sender to be able to receive native tokens, or else it will revert.
-    /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization, if some
-    /// collateral is withdrawn.
-    /// @dev At least one of repayAssets and repayShares must be zero to repay; set both to zero for a pure collateral
-    /// withdrawal.
-    /// @dev When repayShares is type(uint256).max, it is replaced with msg.sender's borrow shares at execution to close
-    /// any remaining debt.
-    /// @dev The fee is repaidAssets * referralFeePct / (WAD - referralFeePct), where repaidAssets is the actual assets
-    /// repaid.
+    /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization, if some collateral is withdrawn.
+    /// @dev At least one of repayAssets and repayShares must be zero to repay; set both to zero for a pure collateral withdrawal.
+    /// @dev When repayShares is type(uint256).max, it is replaced with msg.sender's borrow shares at execution to close any remaining debt.
+    /// @dev The fee is repaidAssets * referralFeePct / (WAD - referralFeePct), where repaidAssets is the actual assets repaid.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function blueBundlesV1RepayAndWithdrawCollateral(
         MarketParams memory marketParams,
@@ -189,11 +175,8 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         }
     }
 
-    /// @dev Pulls assets from msg.sender (optionally via ERC-2612 or Permit2) and supplies them to the market for
-    /// msg.sender.
-    /// @dev When native tokens are sent, loanTokenPermit.kind must be PermitKind.None and assets must equal msg.value;
-    /// the native tokens are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of
-    /// being pulled.
+    /// @dev Pulls assets from msg.sender (optionally via ERC-2612 or Permit2) and supplies them to the market for msg.sender.
+    /// @dev When native tokens are sent, loanTokenPermit.kind must be PermitKind.None and assets must equal msg.value; the native tokens are wrapped into marketParams.loanToken (which must be the wrapped-native token) instead of being pulled.
     /// @dev The referral fee is deducted from assets; the remainder is supplied to the market for msg.sender.
     /// @dev Fee = assets * referralFeePct / WAD; supplied = assets - fee.
     function blueBundlesV1Supply(
@@ -222,18 +205,11 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
     /// @dev Withdraws from msg.sender's supply position.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
-    /// @dev Exactly one of withdrawAssets and withdrawShares should be non-zero: the position is withdrawn by assets,
-    /// or by shares. To close the full supply position so no supply shares remain, pass msg.sender's full supply shares
-    /// as withdrawShares.
-    /// @dev The aggregate public allocator penalties P are deducted from withdrawnAssets before the referral fee is
-    /// charged. The resulting net withdrawal proceeds are sent to msg.sender. Fee = floor((withdrawnAssets - P) *
-    /// referralFeePct / WAD).
-    /// @dev To receive an amount W when withdrawing by assets, pass withdrawAssets = P + floor(W * WAD / (WAD -
-    /// referralFeePct)) and withdrawShares = 0.
-    /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a
-    /// reverted exit retried later would be on similar or worse terms.
-    /// @dev All public reallocations execute unconditionally; their aggregate penalty is not bounded relative to
-    /// withdrawAssets.
+    /// @dev Exactly one of withdrawAssets and withdrawShares should be non-zero: the position is withdrawn by assets, or by shares. To close the full supply position so no supply shares remain, pass msg.sender's full supply shares as withdrawShares.
+    /// @dev The aggregate public allocator penalties P are deducted from withdrawnAssets before the referral fee is charged. The resulting net withdrawal proceeds are sent to msg.sender. Fee = floor((withdrawnAssets - P) * referralFeePct / WAD).
+    /// @dev To receive an amount W when withdrawing by assets, pass withdrawAssets = P + floor(W * WAD / (WAD - referralFeePct)) and withdrawShares = 0.
+    /// @dev The supply share price is not checked: any drop due to bad debt realisation is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
+    /// @dev All public reallocations execute unconditionally; their aggregate penalty is not bounded relative to withdrawAssets.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
     function blueBundlesV1Withdraw(
         MarketParams memory marketParams,
@@ -285,14 +261,10 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
             IMorpho(BLUE).withdraw(marketParams, withdrawAssets, withdrawShares, sender, address(this));
     }
 
-    /// @dev Moves the full position of msg.sender (collateral and borrow shares, read from Blue) from the source market
-    /// to the destination market.
+    /// @dev Moves the full position of msg.sender (collateral and borrow shares, read from Blue) from the source market to the destination market.
     /// @dev The msg.sender must have authorized this contract on Blue, beforehand or via signedAuthorization.
-    /// @dev The referral fee and public allocator penalties are borrowed on the destination on top of the repaid
-    /// assets, adding to the debt. Fee = repaidAssets * referralFeePct / (WAD - referralFeePct); total borrowed =
-    /// repaidAssets + fee + penalties.
-    /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position.
-    /// Pass type(uint256).max to disable.
+    /// @dev The referral fee and public allocator penalties are borrowed on the destination on top of the repaid assets, adding to the debt. Fee = repaidAssets * referralFeePct / (WAD - referralFeePct); total borrowed = repaidAssets + fee + penalties.
+    /// @dev maxLtv caps the resulting LTV of the destination position, which includes fees, and any previous position. Pass type(uint256).max to disable.
     /// @dev Migrating a position without debt reverts on Blue.
     /// @dev The aggregate penalty of the reallocations is flash loaned to pay the public allocator upfront.
     /// @dev All public reallocations execute unconditionally.
@@ -344,8 +316,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         requireMaxLtv(destMarketParams, msg.sender, maxLtv);
     }
 
-    /// @dev migrationData is the onMorphoRepay callback data, passed through opaquely; the flash-loaned penaltyAssets
-    /// is appended to it.
+    /// @dev migrationData is the onMorphoRepay callback data, passed through opaquely; the flash-loaned penaltyAssets is appended to it.
     function executeMigrateBorrowPosition(
         MarketParams memory sourceMarketParams,
         uint256 borrowShares,
@@ -421,8 +392,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
 
     /// INTERNAL ///
 
-    /// @dev All touched markets' loan token must be the flash-loaned loanToken, such that all penalties are paid in
-    /// that same token.
+    /// @dev All touched markets' loan token must be the flash-loaned loanToken, such that all penalties are paid in that same token.
     function executePublicAllocations(address loanToken, PublicAllocations[] memory reallocations) internal {
         if (reallocations.length == 0) return;
 
@@ -464,8 +434,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         return penaltyAssets;
     }
 
-    /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable
-    /// until signedAuthorization.deadline, as revoking on Blue does not consume the nonce.
+    /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until signedAuthorization.deadline, as revoking on Blue does not consume the nonce.
     function setAuthorizationWithSig(SignedAuthorization memory signedAuthorization) internal {
         Signature memory signature = signedAuthorization.signature;
         bool emptySignature = signature.v == 0 && signature.r == 0 && signature.s == 0;
@@ -482,8 +451,7 @@ contract BlueBundlesV1 is IBlueBundlesV1, IMorphoRepayCallback, IMorphoFlashLoan
         }
     }
 
-    /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips
-    /// the oracle call).
+    /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).
     /// @dev Accrues market interest when needed, then mirrors Blue's own health check against maxLtv.
     function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal {
         if (maxLtv != type(uint256).max) {

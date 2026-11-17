@@ -28,14 +28,12 @@ import {
 } from "./interfaces/IMidnightBundlesV2.sol";
 
 /// @dev This contract enables:
-/// - Midnight offer creation and reposting, including BlueBuyCallback-funded lend offers and collateralized borrow
-/// offers. - Midnight batch-takes, including collateral supply/withdrawal and repayment at face value.
+/// - Midnight offer creation and reposting, including BlueBuyCallback-funded lend offers and collateralized borrow offers.
+/// - Midnight batch-takes, including collateral supply/withdrawal and repayment at face value.
 /// @dev Inherits the token safety requirements of Midnight and Morpho Blue.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev All entrypoints share the same native-token handling: when msg.value is non-zero, it is wrapped using
-/// wrappedNative and transferred to msg.sender before the regular ERC20 pulls.
-/// @dev Native tokens may be combined with an existing wrappedNative balance and are not required to match any
-/// individual transfer amount.
+/// @dev All entrypoints share the same native-token handling: when msg.value is non-zero, it is wrapped using wrappedNative and transferred to msg.sender before the regular ERC20 pulls.
+/// @dev Native tokens may be combined with an existing wrappedNative balance and are not required to match any individual transfer amount.
 /// @dev wrappedNative must behave like WETH9.
 /// @dev msg.sender must approve this contract to pull wrappedNative before using native tokens.
 /// @dev The users must authorize this contract on Midnight beforehand.
@@ -60,35 +58,24 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// MAKE-SIDE EXTERNAL FUNCTIONS ///
 
     /// @dev Optionally parks loan assets on Blue for msg.sender's derived callback.
-    /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived
-    /// BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
+    /// @dev Buy offers intended to be funded by the assets supplied to Blue must set Offer.callback to the derived BlueBuyCallback address and Offer.callbackData to abi.encode(blueMarket).
     /// @dev Optionally supplies collateral to msg.sender on Midnight.
-    /// @dev First checks consumption limits and cancels the groups in groupsToCancel for msg.sender. Pass an empty
-    /// array to skip cancellation.
+    /// @dev First checks consumption limits and cancels the groups in groupsToCancel for msg.sender. Pass an empty array to skip cancellation.
     /// @dev Use consumption limits to avoid reposting oversized offers if additional fills occur before cancellation.
-    /// @dev Each group's maxConsumed is the maximum acceptable Midnight consumption before cancellation, in the group's
-    /// units or assets.
+    /// @dev Each group's maxConsumed is the maximum acceptable Midnight consumption before cancellation, in the group's units or assets.
     /// @dev Set a group's maxConsumed to type(uint128).max to disable the limit for that group.
-    /// @dev If newRoot is non-zero, this call grants the ratifier full authorization over msg.sender's Midnight
-    /// account. Users must verify that ratifier is the intended, trusted contract before calling.
-    /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports
-    /// PriceRatifierV1 and RateRatifierV1; the selected root setter must return SET_IS_ROOT_RATIFIED_SUCCESS.
-    /// @dev Pass v = r = s = 0 to call setIsRootRatified. Otherwise, the signature parameters are passed to
-    /// setIsRootRatifiedWithSig. The signature deadline is independent of the bundle's deadline.
-    /// @dev If newRoot is zero, ratifier, signature parameters, and payload are ignored and ratifier authorizations are
-    /// unchanged.
-    /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving
-    /// assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
+    /// @dev If newRoot is non-zero, this call grants the ratifier full authorization over msg.sender's Midnight account. Users must verify that ratifier is the intended, trusted contract before calling.
+    /// @dev If newRoot is non-zero, authorizes ratifier, activates newRoot on it, and publishes payload. Supports PriceRatifierV1 and RateRatifierV1; the selected root setter must return SET_IS_ROOT_RATIFIED_SUCCESS.
+    /// @dev Pass v = r = s = 0 to call setIsRootRatified. Otherwise, the signature parameters are passed to setIsRootRatifiedWithSig. The signature deadline is independent of the bundle's deadline.
+    /// @dev If newRoot is zero, ratifier, signature parameters, and payload are ignored and ratifier authorizations are unchanged.
+    /// @dev Set assetsToPark to zero and pass an empty collateralSupplies array to repost or cancel without moving assets. blueMarket and callbackSalt are unused when assetsToPark is zero.
     /// @dev msg.sender must approve this contract for all supplied loan and collateral assets beforehand.
     /// @dev The new root may contain offers for multiple markets.
-    /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected
-    /// against supply-share-price inflation attacks.
+    /// @dev Share-price slippage when parking assets on Blue is not checked. Users must only use markets protected against supply-share-price inflation attacks.
     /// @dev This bundle notably does not check that:
-    /// - Offers in newRoot or payload match the selected ratifier, the intended use case (lend limit or borrow limit),
-    /// and the supplied funding or collateral inputs. - newRoot corresponds to the offers described by payload. The
-    /// payload posted to LOG is not validated against any on-chain state or bundle inputs.
-    /// - Prior offers are cancelled when reposting. Include their group IDs in groupsToCancel and use fresh group IDs
-    /// for the new offers, otherwise both old and new offers remain takeable.
+    /// - Offers in newRoot or payload match the selected ratifier, the intended use case (lend limit or borrow limit), and the supplied funding or collateral inputs.
+    /// - newRoot corresponds to the offers described by payload. The payload posted to LOG is not validated against any on-chain state or bundle inputs.
+    /// - Prior offers are cancelled when reposting. Include their group IDs in groupsToCancel and use fresh group IDs for the new offers, otherwise both old and new offers remain takeable.
     function midnightBundlesV2CancelAndMake(
         MarketParams memory blueMarket,
         uint256 assetsToPark,
@@ -158,27 +145,20 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// TAKE-SIDE EXTERNAL FUNCTIONS ///
 
     // Only touched offers are checked to point to the given market.
-    // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other
-    // offers passed as argument still have liquidity. msg.sender is always the tokens payer (for buy, supplyCollateral
-    // and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
-    // The bundler contract must have an allowance to pull enough tokens from msg.sender for the buy/sell functions
-    // below. Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing
-    // to buy, decreasing to sell).
-    // offerFills[i].units should prevent taking more than what is takeable w.r.t. the callback / the balances / the
-    // health. For the buy functions below, the current market continuous fee must be at most maxContinuousFee when
-    // taking offers.
+    // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
+    // msg.sender is always the tokens payer (for buy, supplyCollateral and repay), and receiver is always the tokens receiver (for sell, withdraw and withdraw collateral).
+    // The bundler contract must have an allowance to pull enough tokens from msg.sender for the buy/sell functions below.
+    // Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing to buy, decreasing to sell).
+    // offerFills[i].units should prevent taking more than what is takeable w.r.t. the callback / the balances / the health.
+    // For the buy functions below, the current market continuous fee must be at most maxContinuousFee when taking offers.
 
     /// @dev This function pulls maxBuyerAssets from the msg.sender and transfers back the remaining tokens at the end.
     /// @dev msg.sender will pay at most maxBuyerAssets.
     /// @dev If repayEnabled and msg.sender has debt, the remaining amount not covered by the take loop is repaid.
-    /// @dev targetUnits = type(uint256).max targets msg.sender's debt before taking offers; with repayEnabled = true
-    /// and empty offerFills, it repays all debt directly.
-    /// @dev Total loan assets transferred from msg.sender is filledBuyerAssets + filledBuyerAssets * referralFeePct /
-    /// (WAD - referralFeePct).
-    /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of
-    /// collateralWithdrawals, etc.
-    /// @dev Set collateralWithdrawals[i].assets to type(uint256).max to withdraw msg.sender's full balance of that
-    /// collateral at the time of withdrawal.
+    /// @dev targetUnits = type(uint256).max targets msg.sender's debt before taking offers; with repayEnabled = true and empty offerFills, it repays all debt directly.
+    /// @dev Total loan assets transferred from msg.sender is filledBuyerAssets + filledBuyerAssets * referralFeePct / (WAD - referralFeePct).
+    /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
+    /// @dev Set collateralWithdrawals[i].assets to type(uint256).max to withdraw msg.sender's full balance of that collateral at the time of withdrawal.
     function midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(
         Market memory market,
         uint256 targetUnits,
@@ -254,8 +234,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev The receiver will receive at least minSellerAssets.
     /// @dev If msg.sender has credit, as much credit as possible is withdrawn before the take loop.
     /// @dev targetUnits = type(uint256).max targets msg.sender's credit before withdrawing and taking offers.
-    /// @dev Total loan assets received by the receiver is filledSellerAssets - filledSellerAssets * referralFeePct /
-    /// WAD.
+    /// @dev Total loan assets received by the receiver is filledSellerAssets - filledSellerAssets * referralFeePct / WAD.
     /// @dev msg.sender will pay collateralSupplies[0].assets of the first token of collateralSupplies, etc.
     function midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
         Market memory market,
@@ -327,12 +306,9 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     /// @dev If repayEnabled and msg.sender has debt, the remaining amount not covered by the take loop is repaid.
     /// @dev msg.sender will gain at least minUnits.
     /// @dev The referral fee changes the amount that must be filled, which can change the average taking price.
-    /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of
-    /// collateralWithdrawals, etc.
-    /// @dev Set collateralWithdrawals[i].assets to type(uint256).max to withdraw msg.sender's full balance of that
-    /// collateral at the time of withdrawal.
-    /// @dev For full repayment, use midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral with targetUnits =
-    /// type(uint256).max instead.
+    /// @dev The collateralReceiver will receive collateralWithdrawals[0].assets of the first token of collateralWithdrawals, etc.
+    /// @dev Set collateralWithdrawals[i].assets to type(uint256).max to withdraw msg.sender's full balance of that collateral at the time of withdrawal.
+    /// @dev For full repayment, use midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral with targetUnits = type(uint256).max instead.
     function midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(
         Market memory market,
         uint256 targetBuyerAssets,
@@ -507,8 +483,7 @@ contract MidnightBundlesV2 is IMidnightBundlesV2 {
     }
 
     /// @dev Wraps msg.value into wrappedNative and transfers it to msg.sender.
-    // forge-lint: disable-next-item(arbitrary-send-eth) wrappedNative is chosen by msg.sender, who also receives the
-    // wrapped tokens.
+    // forge-lint: disable-next-item(arbitrary-send-eth) wrappedNative is chosen by msg.sender, who also receives the wrapped tokens.
     function wrapNativeToMsgSender(address wrappedNative) internal {
         IWNative(wrappedNative).deposit{value: msg.value}();
         SafeTransferLib.safeTransfer(wrappedNative, msg.sender, msg.value);

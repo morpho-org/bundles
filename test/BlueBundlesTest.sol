@@ -56,8 +56,7 @@ contract BlueBundlesTest is TokenTest {
         oracle = new OracleMock();
         oracle.setPrice(ORACLE_PRICE_SCALE);
 
-        // No reallocation is executed in this file, so the public allocator is never called: see
-        // BluePublicAllocatorTest.
+        // No reallocation is executed in this file, so the public allocator is never called: see BluePublicAllocatorTest.
         blueBundles = new BlueBundlesV1(address(morpho), makeAddr("publicAllocator"));
         assertEq(blueBundles.BLUE(), address(morpho));
 
@@ -662,8 +661,7 @@ contract BlueBundlesTest is TokenTest {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev Checks the doc formula: to receive targetNet, pass borrowAssets = floor(targetNet * WAD / (WAD -
-    /// referralFeePct)).
+    /// @dev Checks the doc formula: to receive targetNet, pass borrowAssets = floor(targetNet * WAD / (WAD - referralFeePct)).
     function testSupplyCollateralAndBorrowTargetNet(uint256 targetNet, uint256 referralFeePct) public {
         targetNet = bound(targetNet, 1, 1e30);
         referralFeePct = bound(referralFeePct, 0, WAD - 1);
@@ -1444,8 +1442,7 @@ contract BlueBundlesTest is TokenTest {
         assertEq(loanToken.balanceOf(address(blueBundles)), 0, "bundler residual");
     }
 
-    /// @dev Checks the doc formula: to receive targetNet, pass assets = floor(targetNet * WAD / (WAD -
-    /// referralFeePct)).
+    /// @dev Checks the doc formula: to receive targetNet, pass assets = floor(targetNet * WAD / (WAD - referralFeePct)).
     function testWithdrawTargetNet(uint256 targetNet, uint256 referralFeePct) public {
         targetNet = bound(targetNet, 1, 1e30);
         referralFeePct = bound(referralFeePct, 0, WAD - 1);

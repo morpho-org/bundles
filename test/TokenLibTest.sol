@@ -80,8 +80,7 @@ contract TokenLibTest is TokenTest {
         assertEq(token.balanceOf(address(harness)), amount);
     }
 
-    /// @dev A third party may consume the permit before the pull; the stale permit is tolerated and the transfer still
-    /// goes through on the allowance it set.
+    /// @dev A third party may consume the permit before the pull; the stale permit is tolerated and the transfer still goes through on the allowance it set.
     function testPullTokenPermitAlreadyConsumed() public {
         uint256 amount = 100e18;
         TokenPermit memory permit = _permit(amount, 0, vm.getBlockTimestamp() + 1);
@@ -107,8 +106,7 @@ contract TokenLibTest is TokenTest {
         assertEq(token.balanceOf(address(harness)), amount);
     }
 
-    /// @dev Unlike ERC2612, the Permit2 path pulls atomically and does not tolerate a spent nonce: replaying the same
-    /// permit reverts instead of silently transferring again.
+    /// @dev Unlike ERC2612, the Permit2 path pulls atomically and does not tolerate a spent nonce: replaying the same permit reverts instead of silently transferring again.
     function testPullTokenPermit2AlreadyConsumed() public {
         uint256 amount = 100e18;
         vm.prank(holder);
