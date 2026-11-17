@@ -18,7 +18,8 @@ methods {
 
 /// HELPERS ///
 
-persistent ghost mapping(address => mapping(address => uint256)) tokenBalance;
+// Net amount transferred to each account during the interaction, per token, which is not the token balance.
+persistent ghost mapping(address => mapping(address => mathint)) transferBalanceChange;
 
 persistent ghost mapping(address => address) assetOf;
 
@@ -32,17 +33,11 @@ function summarySafeTransfer(address token, address to, uint256 amount) {
 }
 
 function increaseBalance(address token, address account, uint256 amount) {
-    if (amount + tokenBalance[token][account] > max_uint256) {
-        revert();
-    }
-    tokenBalance[token][account] = assert_uint256(tokenBalance[token][account] + amount);
+    transferBalanceChange[token][account] = transferBalanceChange[token][account] + amount;
 }
 
 function decreaseBalance(address token, address account, uint256 amount) {
-    if (amount > tokenBalance[token][account]) {
-        revert();
-    }
-    tokenBalance[token][account] = assert_uint256(tokenBalance[token][account] - amount);
+    transferBalanceChange[token][account] = transferBalanceChange[token][account] - amount;
 }
 
 function summaryFlashLoan(address blue, address token, uint256 assets, bytes data) {
@@ -86,14 +81,13 @@ rule inKindRedemptionVaultV1DoesntLoseTokens(env e, address vault, VaultExitBund
     require marketParamsList.length > 0 => marketParamsList[0].loanToken == asset, "vault market";
     require marketParamsList.length > 1 => marketParamsList[1].loanToken == asset, "vault market";
 
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     suppliedAssets = 0;
     withdrawnAssets = 0;
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
-    uint256 bundlerBalanceBefore = tokenBalance[token][currentContract];
     vaultExitBundlesV1InKindRedemptionVaultV1(e, vault, marketParamsList, exitAssets, sharesPermit, deadline);
 
-    assert tokenBalance[token][e.msg.sender] == senderBalanceBefore;
-    assert tokenBalance[token][currentContract] == bundlerBalanceBefore;
+    assert transferBalanceChange[token][e.msg.sender] == 0;
+    assert transferBalanceChange[token][currentContract] == 0;
     assert suppliedAssets == exitAssets && withdrawnAssets == exitAssets;
 }
 
@@ -109,15 +103,14 @@ rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapt
     require marketParamsList.length > 0 => marketParamsList[0].loanToken == asset, "adapter market";
     require marketParamsList.length > 1 => marketParamsList[1].loanToken == asset, "adapter market";
 
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     suppliedAssets = 0;
     withdrawnAssets = 0;
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
-    uint256 bundlerBalanceBefore = tokenBalance[token][currentContract];
     vaultExitBundlesV1InKindRedemptionVaultV2(e, vault, adapter, marketParamsList, exitAssets, sharesPermit, deadline);
 
-    mathint received = tokenBalance[token][e.msg.sender] - senderBalanceBefore;
+    mathint received = transferBalanceChange[token][e.msg.sender];
 
-    assert tokenBalance[token][currentContract] == bundlerBalanceBefore;
+    assert transferBalanceChange[token][currentContract] == 0;
     assert token == asset => received == withdrawnAssets - suppliedAssets;
     assert token != asset => received == 0;
 }
@@ -131,16 +124,14 @@ rule forceWithdrawVaultV2DoesntLoseTokens(env e, address vault, address adapter,
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     withdrawnAssets = 0;
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
-    uint256 bundlerBalanceBefore = tokenBalance[token][currentContract];
     vaultExitBundlesV1ForceWithdrawVaultV2(e, vault, adapter, exitAssets, minSharePriceE27, sharesPermit, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint received = tokenBalance[token][e.msg.sender] - senderBalanceBefore;
-    mathint fees = tokenBalance[token][referralFeeRecipient] - feeBalanceBefore;
+    mathint received = transferBalanceChange[token][e.msg.sender];
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
-    assert tokenBalance[token][currentContract] == bundlerBalanceBefore;
+    assert transferBalanceChange[token][currentContract] == 0;
     assert token == asset => received == withdrawnAssets - fees;
     assert token != asset => received == 0 && fees == 0;
 }
