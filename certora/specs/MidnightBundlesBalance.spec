@@ -23,6 +23,7 @@ methods {
     function _.repay(Utils.Market, uint256 units, address, address, bytes) external => summaryRepay(units) expect void;
     function _.withdraw(Utils.Market, uint256 units, address, address) external => summaryWithdraw(units) expect void;
     function _.supplyCollateral(Utils.Market market, uint256 collateralIndex, uint256 assets, address) external => summarySupplyCollateral(market.collateralParams[collateralIndex].token, assets) expect void;
+    function _.withdrawCollateral(Utils.Market market, uint256 collateralIndex, uint256 assets, address, address receiver) external => summaryWithdrawCollateral(market.collateralParams[collateralIndex].token, assets, receiver) expect void;
     function _.supply(MidnightBundlesV2.MarketParams, uint256 assets, uint256 shares, address, bytes) external => summarySupply(assets, shares) expect(uint256, uint256);
 }
 
@@ -52,6 +53,8 @@ persistent ghost mathint withdrawnAssets;
 
 persistent ghost mapping(address => mathint) suppliedCollateral;
 
+persistent ghost mapping(address => mathint) withdrawnCollateral;
+
 persistent ghost mathint parkedAssets;
 
 function summaryTake() returns (uint256, uint256) {
@@ -74,6 +77,11 @@ function summarySupplyCollateral(address token, uint256 assets) {
     suppliedCollateral[token] = suppliedCollateral[token] + assets;
 }
 
+function summaryWithdrawCollateral(address token, uint256 assets, address receiver) {
+    withdrawnCollateral[token] = withdrawnCollateral[token] + assets;
+    tokenBalance[token][receiver] = require_uint256(tokenBalance[token][receiver] + assets);
+}
+
 function summarySupply(uint256 assets, uint256 shares) returns (uint256, uint256) {
     parkedAssets = parkedAssets + assets;
     return (assets, shares);
@@ -89,20 +97,27 @@ rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Market
     require e.msg.sender == 11, "ack";
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
+    require collateralReceiver == 14, "ack";
 
     boughtAssets = 0;
     repaidAssets = 0;
+    mathint withdrawnBefore = withdrawnCollateral[token];
+    uint256 receiverBalanceBefore = tokenBalance[token][collateralReceiver];
     uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
     uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
     midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(e, market, targetUnits, maxBuyerAssets, reduceOnly, repayEnabled, offerFills, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline, wrappedNative);
     uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
     uint256 feeBalanceAfter = tokenBalance[token][referralFeeRecipient];
+    uint256 receiverBalanceAfter = tokenBalance[token][collateralReceiver];
 
     mathint spent = senderBalanceBefore - senderBalanceAfter;
     mathint fees = feeBalanceAfter - feeBalanceBefore;
+    mathint received = receiverBalanceAfter - receiverBalanceBefore;
+    mathint withdrawn = withdrawnCollateral[token] - withdrawnBefore;
 
     assert token == loanToken => spent == boughtAssets + repaidAssets + fees;
     assert token != loanToken => spent == 0 && fees == 0;
+    assert received == withdrawn;
 }
 
 rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Market market, uint256 targetBuyerAssets, uint256 minUnits, bool reduceOnly, bool repayEnabled, MidnightBundlesV2.OfferFill[] offerFills, MidnightBundlesV2.CollateralTransfer[] collateralWithdrawals, address collateralReceiver, uint256 referralFeePct, address referralFeeRecipient, uint256 maxContinuousFee, uint256 deadline, address wrappedNative) {
@@ -113,20 +128,27 @@ rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Marke
     require e.msg.sender == 11, "ack";
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
+    require collateralReceiver == 14, "ack";
 
     boughtAssets = 0;
     repaidAssets = 0;
+    mathint withdrawnBefore = withdrawnCollateral[token];
+    uint256 receiverBalanceBefore = tokenBalance[token][collateralReceiver];
     uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
     uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
     midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(e, market, targetBuyerAssets, minUnits, reduceOnly, repayEnabled, offerFills, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline, wrappedNative);
     uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
     uint256 feeBalanceAfter = tokenBalance[token][referralFeeRecipient];
+    uint256 receiverBalanceAfter = tokenBalance[token][collateralReceiver];
 
     mathint spent = senderBalanceBefore - senderBalanceAfter;
     mathint fees = feeBalanceAfter - feeBalanceBefore;
+    mathint received = receiverBalanceAfter - receiverBalanceBefore;
+    mathint withdrawn = withdrawnCollateral[token] - withdrawnBefore;
 
     assert token == loanToken => spent == boughtAssets + repaidAssets + fees;
     assert token != loanToken => spent == 0 && fees == 0;
+    assert received == withdrawn;
 }
 
 rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, Utils.Market market, uint256 targetUnits, uint256 minSellerAssets, bool reduceOnly, address receiver, MidnightBundlesV2.CollateralTransfer[] collateralSupplies, MidnightBundlesV2.OfferFill[] offerFills, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline, address wrappedNative) {
