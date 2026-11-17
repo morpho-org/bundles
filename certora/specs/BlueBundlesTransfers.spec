@@ -33,7 +33,8 @@ methods {
 
 /// HELPERS ///
 
-persistent ghost mapping(address => mapping(address => uint256)) tokenBalance;
+// Net amount transferred to each account during the interaction, per token, which is not the token balance.
+persistent ghost mapping(address => mapping(address => mathint)) transferBalanceChange;
 
 persistent ghost mapping(address => mathint) wrappedAssets;
 
@@ -54,17 +55,11 @@ persistent ghost mapping(address => mathint) withdrawnCollateral;
 persistent ghost mapping(address => mathint) flashLoanedAssets;
 
 function increaseBalance(address token, address account, uint256 amount) {
-    if (amount + tokenBalance[token][account] > max_uint256) {
-        revert();
-    }
-    tokenBalance[token][account] = assert_uint256(tokenBalance[token][account] + amount);
+    transferBalanceChange[token][account] = transferBalanceChange[token][account] + amount;
 }
 
 function decreaseBalance(address token, address account, uint256 amount) {
-    if (amount > tokenBalance[token][account]) {
-        revert();
-    }
-    tokenBalance[token][account] = assert_uint256(tokenBalance[token][account] - amount);
+    transferBalanceChange[token][account] = transferBalanceChange[token][account] - amount;
 }
 
 function summarySafeTransfer(address token, address to, uint256 amount) {
@@ -152,20 +147,16 @@ rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
-    mathint wrappedBefore = wrappedAssets[token];
-    mathint borrowedBefore = borrowedAssets[token];
-    mathint suppliedCollateralBefore = suppliedCollateral[token];
-    mathint flashLoanedBefore = flashLoanedAssets[token];
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
+    require wrappedAssets[token] == 0 && borrowedAssets[token] == 0 && suppliedCollateral[token] == 0 && flashLoanedAssets[token] == 0, "only count operations of the interaction";
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, borrowAssets, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint received = tokenBalance[token][e.msg.sender] - senderBalanceBefore;
-    mathint fees = tokenBalance[token][referralFeeRecipient] - feeBalanceBefore;
-    mathint wrapped = wrappedAssets[token] - wrappedBefore;
-    mathint borrowed = borrowedAssets[token] - borrowedBefore;
-    mathint supplied = suppliedCollateral[token] - suppliedCollateralBefore;
-    mathint flashLoaned = flashLoanedAssets[token] - flashLoanedBefore;
+    mathint received = transferBalanceChange[token][e.msg.sender];
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
+    mathint wrapped = wrappedAssets[token];
+    mathint borrowed = borrowedAssets[token];
+    mathint supplied = suppliedCollateral[token];
+    mathint flashLoaned = flashLoanedAssets[token];
 
     assert received == borrowed - flashLoaned - fees + wrapped - supplied;
     assert token != marketParams.loanToken => fees == 0;
@@ -179,20 +170,16 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
-    mathint wrappedBefore = wrappedAssets[token];
-    mathint unwrappedBefore = unwrappedAssets[token];
-    mathint repaidBefore = repaidAssets[token];
-    mathint withdrawnCollateralBefore = withdrawnCollateral[token];
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
+    require wrappedAssets[token] == 0 && unwrappedAssets[token] == 0 && repaidAssets[token] == 0 && withdrawnCollateral[token] == 0, "only count operations of the interaction";
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, repayAssets, repayShares, maxRepayAssets, collateralAssets, maxLtv, loanTokenPermit, signedAuthorization, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint received = tokenBalance[token][e.msg.sender] - senderBalanceBefore;
-    mathint fees = tokenBalance[token][referralFeeRecipient] - feeBalanceBefore;
-    mathint wrapped = wrappedAssets[token] - wrappedBefore;
-    mathint unwrapped = unwrappedAssets[token] - unwrappedBefore;
-    mathint repaid = repaidAssets[token] - repaidBefore;
-    mathint withdrawn = withdrawnCollateral[token] - withdrawnCollateralBefore;
+    mathint received = transferBalanceChange[token][e.msg.sender];
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
+    mathint wrapped = wrappedAssets[token];
+    mathint unwrapped = unwrappedAssets[token];
+    mathint repaid = repaidAssets[token];
+    mathint withdrawn = withdrawnCollateral[token];
 
     assert received == withdrawn - repaid - fees + wrapped - unwrapped;
     assert token != marketParams.loanToken => fees == 0;
@@ -206,16 +193,14 @@ rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
-    mathint wrappedBefore = wrappedAssets[token];
-    mathint suppliedBefore = suppliedAssets[token];
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
+    require wrappedAssets[token] == 0 && suppliedAssets[token] == 0, "only count operations of the interaction";
     blueBundlesV1Supply(e, marketParams, assets, loanTokenPermit, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint spent = senderBalanceBefore - tokenBalance[token][e.msg.sender];
-    mathint fees = tokenBalance[token][referralFeeRecipient] - feeBalanceBefore;
-    mathint wrapped = wrappedAssets[token] - wrappedBefore;
-    mathint supplied = suppliedAssets[token] - suppliedBefore;
+    mathint spent = -transferBalanceChange[token][e.msg.sender];
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
+    mathint wrapped = wrappedAssets[token];
+    mathint supplied = suppliedAssets[token];
 
     assert spent + wrapped == supplied + fees;
     assert token != marketParams.loanToken => spent == 0 && fees == 0;
@@ -229,16 +214,14 @@ rule withdrawDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, ui
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
-    mathint withdrawnBefore = withdrawnAssets[token];
-    mathint flashLoanedBefore = flashLoanedAssets[token];
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
+    require withdrawnAssets[token] == 0 && flashLoanedAssets[token] == 0, "only count operations of the interaction";
     blueBundlesV1Withdraw(e, marketParams, withdrawAssets, withdrawShares, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint received = tokenBalance[token][e.msg.sender] - senderBalanceBefore;
-    mathint fees = tokenBalance[token][referralFeeRecipient] - feeBalanceBefore;
-    mathint withdrawn = withdrawnAssets[token] - withdrawnBefore;
-    mathint flashLoaned = flashLoanedAssets[token] - flashLoanedBefore;
+    mathint received = transferBalanceChange[token][e.msg.sender];
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
+    mathint withdrawn = withdrawnAssets[token];
+    mathint flashLoaned = flashLoanedAssets[token];
 
     assert received == withdrawn - flashLoaned - fees;
     assert token != marketParams.loanToken => received == 0 && fees == 0;
@@ -252,22 +235,17 @@ rule migrateBorrowPositionDoesntLoseTokens(env e, BlueBundlesV1.MarketParams sou
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
-    mathint borrowedBefore = borrowedAssets[token];
-    mathint repaidBefore = repaidAssets[token];
-    mathint suppliedCollateralBefore = suppliedCollateral[token];
-    mathint withdrawnCollateralBefore = withdrawnCollateral[token];
-    mathint flashLoanedBefore = flashLoanedAssets[token];
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
+    require borrowedAssets[token] == 0 && repaidAssets[token] == 0 && suppliedCollateral[token] == 0 && withdrawnCollateral[token] == 0 && flashLoanedAssets[token] == 0, "only count operations of the interaction";
     blueBundlesV1MigrateBorrowPosition(e, sourceMarketParams, destMarketParams, maxLtv, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint fees = tokenBalance[token][referralFeeRecipient] - feeBalanceBefore;
-    mathint borrowed = borrowedAssets[token] - borrowedBefore;
-    mathint repaid = repaidAssets[token] - repaidBefore;
-    mathint flashLoaned = flashLoanedAssets[token] - flashLoanedBefore;
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
+    mathint borrowed = borrowedAssets[token];
+    mathint repaid = repaidAssets[token];
+    mathint flashLoaned = flashLoanedAssets[token];
 
-    assert tokenBalance[token][e.msg.sender] == senderBalanceBefore;
+    assert transferBalanceChange[token][e.msg.sender] == 0;
     assert fees == borrowed - repaid - flashLoaned;
-    assert suppliedCollateral[token] - suppliedCollateralBefore == withdrawnCollateral[token] - withdrawnCollateralBefore;
+    assert suppliedCollateral[token] == withdrawnCollateral[token];
     assert token != destMarketParams.loanToken => fees == 0;
 }
