@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 permissions: {}
 
 jobs:
@@ -87,22 +91,16 @@ jobs:
         run: pip install certora-cli==8.20.3
 
       - name: Install solc (0.8.34)
-        env:
-          EXPECTED_SOLC_SHA256: d40adc6f9fdbb22a97d32a02fa05688bf2ee7886affc48c9851b0afd4a726b39
         run: |
           wget https://github.com/ethereum/solidity/releases/download/v0.8.34/solc-static-linux
-          actual="$(sha256sum solc-static-linux | awk '{print $1}')"
-          [ "$actual" = "$EXPECTED_SOLC_SHA256" ] || { echo "solc hash mismatch"; exit 1; }
+          echo "d40adc6f9fdbb22a97d32a02fa05688bf2ee7886affc48c9851b0afd4a726b39  solc-static-linux" | sha256sum --check --strict
           chmod +x solc-static-linux
           sudo mv solc-static-linux /usr/local/bin/solc-0.8.34
 
       - name: Install solc (0.8.28)
-        env:
-          EXPECTED_SOLC_SHA256: 9a0fb7e0db2c0641dbae1c5cc645dc686820c83af516226abb1c0a2f76636f25
         run: |
           wget https://github.com/ethereum/solidity/releases/download/v0.8.28/solc-static-linux
-          actual="$(sha256sum solc-static-linux | awk '{print $1}')"
-          [ "$actual" = "$EXPECTED_SOLC_SHA256" ] || { echo "solc hash mismatch"; exit 1; }
+          echo "9a0fb7e0db2c0641dbae1c5cc645dc686820c83af516226abb1c0a2f76636f25  solc-static-linux" | sha256sum --check --strict
           chmod +x solc-static-linux
           sudo mv solc-static-linux /usr/local/bin/solc-0.8.28
 
