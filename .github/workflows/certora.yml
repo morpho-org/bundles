@@ -23,7 +23,9 @@ jobs:
           python-version: "3.15.2"
 
       - name: Install certora
-        run: pip install certora-cli
+        run: |
+          python -m pip install pip==26.3
+          python -m pip install certora-cli
 
       - name: Run Certora Specs Linter
         run: |
@@ -74,7 +76,9 @@ jobs:
           python-version: "3.15.2"
 
       - name: Install certora
-        run: pip install certora-cli
+        run: |
+          python -m pip install pip==26.3
+          python -m pip install certora-cli
 
       - name: Install solc (0.8.34)
         env:
