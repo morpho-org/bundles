@@ -85,7 +85,7 @@ contract ZeroExLeverageBundlesV1 is
 
         uint256 penaltyAssets = totalPenaltyAssets(reallocations);
         bytes memory leverData = abi.encode(
-            msg.sender, marketParams, collateralToBuy, maxBorrowAssets, maxBorrowAssets - penaltyAssets, swapData
+            marketParams, msg.sender, collateralToBuy, maxBorrowAssets, maxBorrowAssets - penaltyAssets, swapData
         );
 
         if (penaltyAssets > 0) {
@@ -95,7 +95,7 @@ contract ZeroExLeverageBundlesV1 is
                 .flashLoan(
                     marketParams.loanToken,
                     penaltyAssets,
-                    abi.encode(collateralAssets + collateralToBuy, reallocations, leverData)
+                    abi.encode(marketParams, msg.sender, collateralAssets + collateralToBuy, reallocations, leverData)
                 );
         } else {
             executePublicAllocations(marketParams.loanToken, reallocations);
@@ -236,10 +236,13 @@ contract ZeroExLeverageBundlesV1 is
     function onMorphoFlashLoan(uint256, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
 
-        (uint256 supplyAssets, PublicAllocations[] memory reallocations, bytes memory leverData) =
-            abi.decode(data, (uint256, PublicAllocations[], bytes));
-        // Only the head of leverData is decoded: the user and the market params.
-        (address user, MarketParams memory marketParams) = abi.decode(leverData, (address, MarketParams));
+        (
+            MarketParams memory marketParams,
+            address user,
+            uint256 supplyAssets,
+            PublicAllocations[] memory reallocations,
+            bytes memory leverData
+        ) = abi.decode(data, (MarketParams, address, uint256, PublicAllocations[], bytes));
 
         executePublicAllocations(marketParams.loanToken, reallocations);
         IMorpho(BLUE).supplyCollateral(marketParams, supplyAssets, user, leverData);
@@ -250,13 +253,13 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev maxSwapIn is maxBorrowAssets minus the penalties of the public reallocations, which stay in this contract to repay the flash loan.
     function executeLever(bytes calldata leverData) internal {
         (
-            address user,
             MarketParams memory marketParams,
+            address user,
             uint256 collateralToBuy,
             uint256 maxBorrowAssets,
             uint256 maxSwapIn,
             bytes memory swapData
-        ) = abi.decode(leverData, (address, MarketParams, uint256, uint256, uint256, bytes));
+        ) = abi.decode(leverData, (MarketParams, address, uint256, uint256, uint256, bytes));
 
         IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, user, address(this));
         (uint256 spent, uint256 received) =
