@@ -72,11 +72,6 @@ jobs:
           persist-credentials: false
           submodules: recursive
 
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
-        with:
-          version: nightly # Catch upstream Foundry changes before the next stable release.
-
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
@@ -103,7 +98,7 @@ jobs:
           chmod +x solc-static-linux
           sudo mv solc-static-linux /usr/local/bin/solc-0.8.28
 
-      - name: Verify ${{ matrix.conf }}
+      - name: Verify ${{ matrix.conf }} specification
         run: certoraRun "certora/confs/$CONF.conf"
         env:
           CONF: ${{ matrix.conf }}
