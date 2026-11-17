@@ -11,6 +11,10 @@ import {ISettlerTakerSubmitted} from "./helpers/ISettlerTakerSubmitted.sol";
 import {IZeroExLeverageBundlesV1} from "../src/leverage/interfaces/IZeroExLeverageBundlesV1.sol";
 import {ZeroExLeverageBundlesV1} from "../src/leverage/ZeroExLeverageBundlesV1.sol";
 import {AllowanceHolderMock, SettlerMock} from "./helpers/ZeroExMocks.sol";
+import {PublicAllocatorMock} from "./helpers/PublicAllocatorMock.sol";
+import {PublicAllocations} from "../src/blue/interfaces/IBlueBundlesV1.sol";
+import {IMorphoBase} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {ErrorsLib as BlueErrorsLib} from "../lib/morpho-blue/src/libraries/ErrorsLib.sol";
 
 contract ZeroExLeverageBundlesV1Test is LeverageTest {
     using MarketParamsLib for MarketParams;
@@ -34,11 +38,22 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
     SettlerMock internal settler;
     ZeroExLeverageBundlesV1 internal bundle;
 
+    uint256 internal constant LLTV_LIQUID = 0.9e18;
+    uint64 internal constant PENALTY = 0.01e18;
+
+    PublicAllocatorMock internal publicAllocator;
+    address internal vault;
+    /// @dev Another market of the same loan token, used as the deallocation source of the reallocations.
+    MarketParams internal liquidMarketParams;
+
     function setUp() public {
         setUpLeverageMarket();
         allowanceHolder = new AllowanceHolderMock();
         settler = new SettlerMock(allowanceHolder);
-        bundle = new ZeroExLeverageBundlesV1(address(morpho), address(allowanceHolder));
+        publicAllocator = new PublicAllocatorMock(morpho);
+        vault = makeAddr("vault");
+        bundle = new ZeroExLeverageBundlesV1(address(morpho), address(allowanceHolder), address(publicAllocator));
+        assertEq(bundle.PUBLIC_ALLOCATOR(), address(publicAllocator));
     }
 
     function testLeverExactOutput() public {
@@ -57,6 +72,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             maxBorrowAssets,
             swapData,
             type(uint256).max,
+            noReallocations(),
             block.timestamp
         );
 
@@ -85,6 +101,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             maxBorrowAssets,
             swapData,
             type(uint256).max,
+            noReallocations(),
             block.timestamp
         );
         assertNoResiduals();
@@ -93,7 +110,9 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
     function testLeverRejectsZeroCollateralToBuy() public {
         vm.expectRevert(IZeroExLeverageBundlesV1.ZeroCollateralToBuy.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Lever(marketParams, 0, 0, 1e18, "", type(uint256).max, block.timestamp);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 0, 0, 1e18, "", type(uint256).max, noReallocations(), block.timestamp
+        );
         assertNoResiduals();
     }
 
@@ -106,13 +125,27 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.expectRevert(IZeroExLeverageBundlesV1.LtvExceeded.selector);
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, collateralAssets, collateralToBuy, 12e18, swapData, 0.49e18, block.timestamp
+            marketParams,
+            collateralAssets,
+            collateralToBuy,
+            12e18,
+            swapData,
+            0.49e18,
+            noReallocations(),
+            block.timestamp
         );
         assertNoResiduals();
 
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, collateralAssets, collateralToBuy, 12e18, swapData, 0.51e18, block.timestamp
+            marketParams,
+            collateralAssets,
+            collateralToBuy,
+            12e18,
+            swapData,
+            0.51e18,
+            noReallocations(),
+            block.timestamp
         );
         assertNoResiduals();
     }
@@ -323,7 +356,14 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.expectRevert();
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, collateralAssets, 1e18, maxBorrowAssets, swapData, type(uint256).max, block.timestamp
+            marketParams,
+            collateralAssets,
+            1e18,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
         );
         deal(address(loanToken), address(bundle), 0);
         assertNoResiduals();
@@ -336,7 +376,16 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         fundUser(address(bundle), collateralAssets);
         bytes memory reentryData = abi.encodeCall(
             bundle.zeroExLeverageBundlesV1Lever,
-            (marketParams, 0, collateralToBuy, maxBorrowAssets, bytes(""), type(uint256).max, block.timestamp)
+            (
+                marketParams,
+                0,
+                collateralToBuy,
+                maxBorrowAssets,
+                bytes(""),
+                type(uint256).max,
+                noReallocations(),
+                block.timestamp
+            )
         );
         settler.setReentry(address(bundle), reentryData);
         bytes memory swapData =
@@ -350,6 +399,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             maxBorrowAssets,
             swapData,
             type(uint256).max,
+            noReallocations(),
             block.timestamp
         );
 
@@ -367,7 +417,9 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Lever(marketParams, 0, 1, 1, emptySwapData, type(uint256).max, expired);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 0, 1, 1, emptySwapData, type(uint256).max, noReallocations(), expired
+        );
 
         vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
         vm.prank(user);
@@ -390,6 +442,9 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert(IZeroExLeverageBundlesV1.UnauthorizedCallback.selector);
         bundle.onMorphoRepay(0, "");
+
+        vm.expectRevert(IZeroExLeverageBundlesV1.UnauthorizedCallback.selector);
+        bundle.onMorphoFlashLoan(0, "");
         assertNoResiduals();
     }
 
@@ -400,6 +455,175 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.prank(address(morpho));
         bundle.onMorphoRepay(0, callbackData);
         assertNoResiduals();
+    }
+
+    /// PUBLIC ALLOCATOR ///
+
+    function testLeverWithoutLiquidityReverts() public {
+        setUpIlliquidMarket();
+        fundUser(address(bundle), 10e18);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 12e18, 10e18);
+
+        vm.expectRevert(bytes(BlueErrorsLib.INSUFFICIENT_LIQUIDITY));
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 10e18, 10e18, 12e18, swapData, type(uint256).max, noReallocations(), block.timestamp
+        );
+    }
+
+    function testLeverAllocatesFromIdleAndPaysPenaltyFromBorrow() public {
+        setUpIlliquidMarket();
+        _testLeverWithPenalty(idleReallocation(12e18, PENALTY));
+    }
+
+    function testLeverReallocatesFromMarketAndPaysPenaltyFromBorrow() public {
+        setUpIlliquidMarket();
+        _testLeverWithPenalty(marketReallocation(12e18, PENALTY));
+    }
+
+    function _testLeverWithPenalty(PublicAllocations[] memory reallocations) internal {
+        uint256 collateralAssets = 10e18;
+        uint256 collateralToBuy = 10e18;
+        uint256 maxBorrowAssets = 12e18;
+        uint256 penaltyAssets = 0.12e18;
+        fundUser(address(bundle), collateralAssets);
+        bytes memory swapData = buildSwapData(
+            address(loanToken), address(collateralToken), maxBorrowAssets - penaltyAssets, collateralToBuy
+        );
+
+        vm.expectCall(
+            address(morpho),
+            abi.encodeWithSelector(IMorphoBase.flashLoan.selector, address(loanToken), penaltyAssets),
+            1
+        );
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            reallocations,
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, collateralAssets + collateralToBuy);
+        assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy + penaltyAssets);
+        assertEq(loanToken.balanceOf(vault), penaltyAssets);
+        assertNoResiduals();
+    }
+
+    function testLeverWithZeroPenaltySkipsFlashLoan() public {
+        setUpIlliquidMarket();
+        publicAllocator.setPenalty(vault, 0);
+        uint256 collateralAssets = 10e18;
+        uint256 collateralToBuy = 10e18;
+        uint256 maxBorrowAssets = 12e18;
+        fundUser(address(bundle), collateralAssets);
+        bytes memory swapData =
+            buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, collateralToBuy);
+
+        vm.expectCall(address(morpho), abi.encodeWithSelector(IMorphoBase.flashLoan.selector), 0);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            idleReallocation(12e18, 0),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy);
+        assertEq(loanToken.balanceOf(vault), 0);
+        assertNoResiduals();
+    }
+
+    function testLeverSwapInputIsCappedNetOfPenalty() public {
+        setUpIlliquidMarket();
+        fundUser(address(bundle), 10e18);
+        // The quote pulls the full maxBorrowAssets, which exceeds what is left after the penalty.
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 12e18, 10e18);
+
+        vm.expectRevert();
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            10e18,
+            10e18,
+            12e18,
+            swapData,
+            type(uint256).max,
+            idleReallocation(12e18, PENALTY),
+            block.timestamp
+        );
+    }
+
+    function testLeverRejectsReallocationOfAnotherLoanToken() public {
+        setUpIlliquidMarket();
+        fundUser(address(bundle), 10e18);
+        PublicAllocations[] memory reallocations = idleReallocation(12e18, PENALTY);
+        reallocations[0].marketParams.loanToken = address(collateralToken);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 11.88e18, 10e18);
+
+        vm.expectRevert(IZeroExLeverageBundlesV1.InconsistentTokens.selector);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 10e18, 10e18, 12e18, swapData, type(uint256).max, reallocations, block.timestamp
+        );
+    }
+
+    /// HELPERS ///
+
+    function noReallocations() internal pure returns (PublicAllocations[] memory) {
+        return new PublicAllocations[](0);
+    }
+
+    /// @dev Empties the lever market, and gives the public allocator idle assets and a supply position in another
+    /// market of the same loan token (which also keeps Blue able to flash loan the penalty).
+    function setUpIlliquidMarket() internal {
+        vm.prank(supplier);
+        morpho.withdraw(marketParams, LIQUIDITY, 0, supplier, supplier);
+
+        liquidMarketParams = MarketParams({
+            loanToken: address(loanToken),
+            collateralToken: address(collateralToken),
+            oracle: address(oracle),
+            irm: address(irm),
+            lltv: LLTV_LIQUID
+        });
+        vm.prank(owner);
+        morpho.enableLltv(LLTV_LIQUID);
+        morpho.createMarket(liquidMarketParams);
+
+        deal(address(loanToken), address(publicAllocator), 200e18);
+        vm.startPrank(address(publicAllocator));
+        safeApprove(loanToken, address(morpho), type(uint256).max);
+        morpho.supply(liquidMarketParams, 100e18, 0, address(publicAllocator), "");
+        vm.stopPrank();
+        publicAllocator.setPenalty(vault, PENALTY);
+    }
+
+    function idleReallocation(uint128 assets, uint64 penalty) internal view returns (PublicAllocations[] memory) {
+        PublicAllocations[] memory reallocations = new PublicAllocations[](1);
+        reallocations[0].vault = vault;
+        reallocations[0].marketParams = marketParams;
+        reallocations[0].fromIdle = true;
+        reallocations[0].assets = assets;
+        reallocations[0].penalty = penalty;
+        return reallocations;
+    }
+
+    function marketReallocation(uint128 assets, uint64 penalty) internal view returns (PublicAllocations[] memory) {
+        PublicAllocations[] memory reallocations = idleReallocation(assets, penalty);
+        reallocations[0].fromIdle = false;
+        reallocations[0].sourceMarketParams = liquidMarketParams;
+        return reallocations;
     }
 
     function buildSwapData(address tokenIn, address tokenOut, uint256 quoteAmount, uint256 quotedMinOut)
@@ -477,7 +701,14 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, collateralAssets, collateralToBuy, 12e18, swapData, type(uint256).max, block.timestamp
+            marketParams,
+            collateralAssets,
+            collateralToBuy,
+            12e18,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
         );
         Position memory position = morpho.position(marketParams.id(), user);
         debt = _debt(position, morpho.market(marketParams.id()));

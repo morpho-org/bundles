@@ -3,10 +3,12 @@
 pragma solidity >=0.8.0;
 
 import {MarketParams} from "../../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {PublicAllocations} from "../../blue/interfaces/IBlueBundlesV1.sol";
 
 interface IZeroExLeverageBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
+    error InconsistentTokens();
     error InsufficientOutput();
     error LtvExceeded();
     error Reentrancy();
@@ -16,6 +18,7 @@ interface IZeroExLeverageBundlesV1 {
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);
     function ALLOWANCE_HOLDER() external view returns (address);
+    function PUBLIC_ALLOCATOR() external view returns (address);
 
     /// FUNCTIONS ///
     function zeroExLeverageBundlesV1Lever(
@@ -25,6 +28,7 @@ interface IZeroExLeverageBundlesV1 {
         uint256 maxBorrowAssets,
         bytes calldata swapData,
         uint256 maxLtv,
+        PublicAllocations[] calldata reallocations,
         uint256 deadline
     ) external;
 

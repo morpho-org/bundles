@@ -5,6 +5,7 @@ pragma solidity 0.8.34;
 import {IZeroExLeverageBundlesV1} from "./interfaces/IZeroExLeverageBundlesV1.sol";
 import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {
+    IMorphoFlashLoanCallback,
     IMorphoRepayCallback,
     IMorphoSupplyCollateralCallback
 } from "../../lib/morpho-blue/src/interfaces/IMorphoCallbacks.sol";
@@ -17,8 +18,10 @@ import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
+import {PublicAllocations} from "../blue/interfaces/IBlueBundlesV1.sol";
+import {IBluePublicAllocator} from "../blue/interfaces/IBluePublicAllocator.sol";
 
-/// @dev Leverage bundle for Morpho Blue that swaps through 0x AllowanceHolder and Settler, using Blue's callbacks instead of flash loans.
+/// @dev Leverage bundle for Morpho Blue that swaps through 0x AllowanceHolder and Settler, using Blue's callbacks instead of flash loans (a flash loan is only taken to pay the public allocator's penalties).
 /// @dev Prototype: not audited.
 /// @dev Inherits the token safety requirements of Morpho Blue (see Morpho.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
@@ -26,19 +29,26 @@ import {TokenLib} from "../libraries/TokenLib.sol";
 /// @dev Zero checks are not systematically performed.
 /// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder; neither the Settler nor its calldata is validated, so each swap is bounded only by the approval of the input cap and the balance-delta check on the output floor.
 /// @dev The swap can make arbitrary calls, so entrypoints stay locked through Blue's callbacks.
-contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyCollateralCallback, IMorphoRepayCallback {
+contract ZeroExLeverageBundlesV1 is
+    IZeroExLeverageBundlesV1,
+    IMorphoSupplyCollateralCallback,
+    IMorphoRepayCallback,
+    IMorphoFlashLoanCallback
+{
     using MarketParamsLib for MarketParams;
     using SharesMathLib for uint256;
     using UtilsLib for uint256;
 
     address public immutable BLUE;
     address public immutable ALLOWANCE_HOLDER;
+    address public immutable PUBLIC_ALLOCATOR;
 
     bool internal transient locked;
 
-    constructor(address _blue, address _allowanceHolder) {
+    constructor(address _blue, address _allowanceHolder, address _publicAllocator) {
         BLUE = _blue;
         ALLOWANCE_HOLDER = _allowanceHolder;
+        PUBLIC_ALLOCATOR = _publicAllocator;
     }
 
     modifier nonReentrant() {
@@ -50,8 +60,10 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
 
     /// ENTRYPOINTS ///
 
-    /// @dev Pulls collateralAssets from msg.sender and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
-    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount <= maxBorrowAssets.
+    /// @dev Executes the public reallocations, pulls collateralAssets from msg.sender and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
+    /// @dev The aggregate penalty P of the reallocations is flash loaned to pay the public allocator upfront, and is repaid from the borrowed assets: at most maxBorrowAssets - P is swapped.
+    /// @dev All public reallocations execute unconditionally.
+    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount <= maxBorrowAssets - P.
     /// @dev The unspent borrowed assets are repaid, and the collateral bought above collateralToBuy is supplied for msg.sender.
     /// @dev The msg.sender must have authorized this contract on Blue.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
@@ -62,6 +74,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         uint256 maxBorrowAssets,
         bytes calldata swapData,
         uint256 maxLtv,
+        PublicAllocations[] calldata reallocations,
         uint256 deadline
     ) external nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
@@ -70,14 +83,25 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
 
-        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
-        IMorpho(BLUE)
-            .supplyCollateral(
-                marketParams,
-                collateralAssets + collateralToBuy,
-                msg.sender,
-                abi.encode(msg.sender, abi.encode(marketParams, collateralToBuy, maxBorrowAssets, swapData))
-            );
+        uint256 penaltyAssets = totalPenaltyAssets(reallocations);
+        bytes memory leverData = abi.encode(
+            msg.sender, marketParams, collateralToBuy, maxBorrowAssets, maxBorrowAssets - penaltyAssets, swapData
+        );
+
+        if (penaltyAssets > 0) {
+            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
+            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
+            IMorpho(BLUE)
+                .flashLoan(
+                    marketParams.loanToken,
+                    penaltyAssets,
+                    abi.encode(collateralAssets + collateralToBuy, reallocations, leverData)
+                );
+        } else {
+            executePublicAllocations(marketParams.loanToken, reallocations);
+            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
+            IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets + collateralToBuy, msg.sender, leverData);
+        }
         requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
@@ -190,8 +214,7 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
     function onMorphoSupplyCollateral(uint256, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
 
-        (address user, bytes memory operationData) = abi.decode(data, (address, bytes));
-        executeLever(user, operationData);
+        executeLever(data);
     }
 
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
@@ -209,23 +232,87 @@ contract ZeroExLeverageBundlesV1 is IZeroExLeverageBundlesV1, IMorphoSupplyColla
         }
     }
 
+    /// @dev The flash loaned assets pay the penalties of the public reallocations, and are repaid from the assets borrowed in the supply collateral callback.
+    function onMorphoFlashLoan(uint256, bytes calldata data) external {
+        require(msg.sender == BLUE, UnauthorizedCallback());
+
+        (uint256 supplyAssets, PublicAllocations[] memory reallocations, bytes memory leverData) =
+            abi.decode(data, (uint256, PublicAllocations[], bytes));
+        // Only the head of leverData is decoded: the user and the market params.
+        (address user, MarketParams memory marketParams) = abi.decode(leverData, (address, MarketParams));
+
+        executePublicAllocations(marketParams.loanToken, reallocations);
+        IMorpho(BLUE).supplyCollateral(marketParams, supplyAssets, user, leverData);
+    }
+
     /// INTERNAL ///
 
-    function executeLever(address user, bytes memory operationData) internal {
-        (MarketParams memory marketParams, uint256 collateralToBuy, uint256 maxBorrowAssets, bytes memory swapData) =
-            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
+    /// @dev maxSwapIn is maxBorrowAssets minus the penalties of the public reallocations, which stay in this contract to repay the flash loan.
+    function executeLever(bytes calldata leverData) internal {
+        (
+            address user,
+            MarketParams memory marketParams,
+            uint256 collateralToBuy,
+            uint256 maxBorrowAssets,
+            uint256 maxSwapIn,
+            bytes memory swapData
+        ) = abi.decode(leverData, (address, MarketParams, uint256, uint256, uint256, bytes));
 
         IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, user, address(this));
         (uint256 spent, uint256 received) =
-            swap(marketParams.loanToken, marketParams.collateralToken, maxBorrowAssets, collateralToBuy, swapData);
+            swap(marketParams.loanToken, marketParams.collateralToken, maxSwapIn, collateralToBuy, swapData);
 
-        if (maxBorrowAssets > spent) {
+        if (maxSwapIn > spent) {
             TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
-            IMorpho(BLUE).repay(marketParams, maxBorrowAssets - spent, 0, user, "");
+            IMorpho(BLUE).repay(marketParams, maxSwapIn - spent, 0, user, "");
         }
         if (received > collateralToBuy) {
             IMorpho(BLUE).supplyCollateral(marketParams, received - collateralToBuy, user, "");
         }
+    }
+
+    /// @dev All touched markets' loan token must be loanToken, such that all penalties are paid in that same token.
+    function executePublicAllocations(address loanToken, PublicAllocations[] memory reallocations) internal {
+        if (reallocations.length > 0) {
+            TokenLib.forceApproveMax(loanToken, PUBLIC_ALLOCATOR);
+
+            for (uint256 i; i < reallocations.length; i++) {
+                PublicAllocations memory reallocation = reallocations[i];
+                require(reallocation.marketParams.loanToken == loanToken, InconsistentTokens());
+
+                if (reallocation.fromIdle) {
+                    // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active.
+                    IBluePublicAllocator(PUBLIC_ALLOCATOR)
+                        .allocateFromIdle(
+                            reallocation.vault,
+                            reallocation.adapter,
+                            reallocation.marketParams,
+                            reallocation.assets,
+                            reallocation.penalty
+                        );
+                } else {
+                    // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active.
+                    IBluePublicAllocator(PUBLIC_ALLOCATOR)
+                        .reallocate(
+                            reallocation.vault,
+                            reallocation.sourceAdapter,
+                            reallocation.sourceMarketParams,
+                            reallocation.adapter,
+                            reallocation.marketParams,
+                            reallocation.assets,
+                            reallocation.penalty
+                        );
+                }
+            }
+        }
+    }
+
+    function totalPenaltyAssets(PublicAllocations[] calldata reallocations) internal pure returns (uint256) {
+        uint256 penaltyAssets;
+        for (uint256 i; i < reallocations.length; i++) {
+            penaltyAssets += uint256(reallocations[i].assets).mulDivUp(reallocations[i].penalty, WAD);
+        }
+        return penaltyAssets;
     }
 
     function executeDelever(uint256 assets, address user, bytes memory operationData) internal {
