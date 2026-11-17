@@ -10,12 +10,16 @@ import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 
 /// @dev Designed and audited for Vault V1 (MetaMorpho V1 or V1.1) and Vault V2.
-/// @dev Adapters of Vault V2 that are used with this contract must be either MorphoMarketV1AdapterV2 or MorphoVaultV1Adapter.
+/// @dev Adapters of Vault V2 that are used with this contract must be either MorphoMarketV1AdapterV2 or
+/// MorphoVaultV1Adapter.
 /// @dev Inherits the token safety requirements of the vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev When using a Vault V2 with this contract, the sendAssetsGate must allow this contract to deposit assets. The gate can query the bundle's initiator through to the exposed transient variable.
-/// @dev When using a Vault V2 with this contract, the receiveAssetsGate must allow this contract to receive the withdrawn assets. The gate can query the bundle's initiator through to the exposed transient variable.
-/// @dev This contract can approve tokens to arbitrary addresses. This is safe because a token amount pulled is always fully spent in the same transaction, and because the only tokens pulled to this contract are owned by msg.sender.
+/// @dev When using a Vault V2 with this contract, the sendAssetsGate must allow this contract to deposit assets. The
+/// gate can query the bundle's initiator through to the exposed transient variable.
+/// @dev When using a Vault V2 with this contract, the receiveAssetsGate must allow this contract to receive the
+/// withdrawn assets. The gate can query the bundle's initiator through to the exposed transient variable.
+/// @dev This contract can approve tokens to arbitrary addresses. This is safe because a token amount pulled is always
+/// fully spent in the same transaction, and because the only tokens pulled to this contract are owned by msg.sender.
 contract VaultBundlesV1 is IVaultBundlesV1 {
     using UtilsLib for uint256;
 
@@ -23,11 +27,14 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
 
     /// EXTERNAL ///
 
-    /// @dev Pulls assets of the vault asset from msg.sender (optionally via ERC-2612 or Permit2) and deposits them into vault.
-    /// @dev When native tokens are sent, assetPermit.kind must be PermitKind.None and assets must equal msg.value; the native tokens are wrapped into the vault asset (which must be the wrapped-native token) instead of being pulled.
+    /// @dev Pulls assets of the vault asset from msg.sender (optionally via ERC-2612 or Permit2) and deposits them into
+    /// vault.
+    /// @dev When native tokens are sent, assetPermit.kind must be PermitKind.None and assets must equal msg.value; the
+    /// native tokens are wrapped into the vault asset (which must be the wrapped-native token) instead of being pulled.
     /// @dev The referral fee is deducted from assets; the remainder is deposited into vault for msg.sender.
     /// @dev Fee = assets * referralFeePct / WAD; deposited = assets - fee.
-    /// @dev maxSharePriceE27 upper-bounds the realized deposit share price (deposited assets per share, scaled by 1e27).
+    /// @dev maxSharePriceE27 upper-bounds the realized deposit share price (deposited assets per share, scaled by
+    /// 1e27).
     function vaultBundlesV1Deposit(
         address vault,
         uint256 assets,
@@ -56,12 +63,15 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
     }
 
     /// @dev Withdraws msg.sender's position in the vault.
-    /// @dev Requires the sender to have given enough allowance over its vault shares to this contract, beforehand or via sharesPermit.
-    /// @dev Exactly one of assets and shares should be non-zero: the vault is withdrawn by assets, or redeemed by shares. To withdraw the sender's entire position, pass its full share balance as shares.
+    /// @dev Requires the sender to have given enough allowance over its vault shares to this contract, beforehand or
+    /// via sharesPermit.
+    /// @dev Exactly one of assets and shares should be non-zero: the vault is withdrawn by assets, or redeemed by
+    /// shares. To withdraw the sender's entire position, pass its full share balance as shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
     /// @dev To receive an amount W, pass assets = floor(W * WAD / (WAD - referralFeePct)).
-    /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
+    /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a
+    /// reverted exit retried later would be on similar or worse terms.
     function vaultBundlesV1Withdraw(
         address vault,
         uint256 assets,
@@ -88,14 +98,21 @@ contract VaultBundlesV1 is IVaultBundlesV1 {
         SafeTransferLib.safeTransfer(asset, msg.sender, assets - referralFeeAssets);
     }
 
-    /// @dev Migrates msg.sender's position in sourceVault to a position in destVault, by withdrawing them from sourceVault then depositing them into destVault.
-    /// @dev sourceVault and destVault can each be a Vault V1 or a Vault V2. Migrating from a Vault V2 to a Vault V1 is not prevented, even though it is not expected to be useful.
-    /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract, beforehand or via sharesPermit.
-    /// @dev Exactly one of assetsWithdrawn and sharesRedeemed should be non-zero: sourceVault is withdrawn by assets, or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as shares.
+    /// @dev Migrates msg.sender's position in sourceVault to a position in destVault, by withdrawing them from
+    /// sourceVault then depositing them into destVault.
+    /// @dev sourceVault and destVault can each be a Vault V1 or a Vault V2. Migrating from a Vault V2 to a Vault V1 is
+    /// not prevented, even though it is not expected to be useful.
+    /// @dev Requires the sender to have given enough allowance over its sourceVault shares to this contract, beforehand
+    /// or via sharesPermit.
+    /// @dev Exactly one of assetsWithdrawn and sharesRedeemed should be non-zero: sourceVault is withdrawn by assets,
+    /// or redeemed by shares. To migrate the sender's entire position, pass its full sourceVault share balance as
+    /// shares.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is deposited into destVault.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; deposited = withdrawnAssets - fee.
-    /// @dev The source vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
-    /// @dev destMaxSharePriceE27 upper-bounds the realized destVault deposit share price (deposited assets per share, scaled by 1e27).
+    /// @dev The source vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly
+    /// reversed, so a reverted exit retried later would be on similar or worse terms.
+    /// @dev destMaxSharePriceE27 upper-bounds the realized destVault deposit share price (deposited assets per share,
+    /// scaled by 1e27).
     function vaultBundlesV1Migrate(
         address sourceVault,
         address destVault,

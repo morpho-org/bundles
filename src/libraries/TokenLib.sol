@@ -48,7 +48,8 @@ library TokenLib {
         require(returndata.length == 0 || abi.decode(returndata, (bool)), ApproveReturnedFalse());
     }
 
-    /// @dev Skips the approval entirely to save gas when the current allowance is already at least 2^95 - 1 (some tokens like COMP and UNI on Ethereum have a max allowance of type(uint96).max).
+    /// @dev Skips the approval entirely to save gas when the current allowance is already at least 2^95 - 1 (some
+    /// tokens like COMP and UNI on Ethereum have a max allowance of type(uint96).max).
     /// @dev Resets to 0 before re-approving to support USDT-like tokens.
     function forceApproveMax(address token, address spender) internal {
         if (IERC20Permit(token).allowance(address(this), spender) >= type(uint96).max / 2) return;
@@ -93,9 +94,12 @@ library TokenLib {
     }
 
     /// @dev The parameters signed by the user should be the same as the inputs of this function.
-    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature), useful when the tokens are already permitted.
-    /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that case.
-    /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable until permit.deadline.
+    /// @dev Skipped when the permit is empty (v, r and s all zero; which doesn't correspond to a valid signature),
+    /// useful when the tokens are already permitted.
+    /// @dev Skipped on an already consumed nonce (e.g. a front-run submission): the permit is not submitted in that
+    /// case.
+    /// @dev The signature deadline is independent of the bundle's deadline: signature not submitted stays submittable
+    /// until permit.deadline.
     function submitPermit(address token, Permit memory permit) internal {
         bool emptyPermit = permit.v == 0 && permit.r == 0 && permit.s == 0;
 

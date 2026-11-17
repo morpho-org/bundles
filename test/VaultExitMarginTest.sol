@@ -24,7 +24,8 @@ import {
     IMorphoMarketV1AdapterV2Factory
 } from "../lib/vault-v2/src/adapters/interfaces/IMorphoMarketV1AdapterV2Factory.sol";
 
-/// @dev Harness verifying the theoretical safety margin `shares` for which exitAssets = previewRedeem(balanceOf(sender) - shares) does not revert, for the three exit functions and a varying number of markets.
+/// @dev Harness verifying the theoretical safety margin `shares` for which exitAssets = previewRedeem(balanceOf(sender)
+/// - shares) does not revert, for the three exit functions and a varying number of markets.
 contract VaultExitMarginTest is TokenTest {
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
@@ -276,7 +277,8 @@ contract VaultExitMarginTest is TokenTest {
             _boundAmounts(rawMarketAmounts, rawYieldAmounts);
         _setupV2(marketAmounts, yieldAmounts, true);
 
-        // The illiquid V2 path makes two withdrawals per market (penalty and deallocated assets), hence margin = 2 * numberOfMarkets.
+        // The illiquid V2 path makes two withdrawals per market (penalty and deallocated assets), hence margin = 2 *
+        // numberOfMarkets.
         uint256 margin = 2 * marketAmounts.length;
         uint256 balance = IVaultV2(vault).balanceOf(address(this));
         if (margin >= balance) return;
@@ -293,7 +295,8 @@ contract VaultExitMarginTest is TokenTest {
             _boundAmounts(rawMarketAmounts, rawYieldAmounts);
         _setupV2(marketAmounts, yieldAmounts, false);
 
-        // The liquid V2 path makes one upfront withdrawal, one penalty withdrawal per market, and one final withdrawal, hence margin = numberOfMarkets + 2.
+        // The liquid V2 path makes one upfront withdrawal, one penalty withdrawal per market, and one final withdrawal,
+        // hence margin = numberOfMarkets + 2.
         uint256 margin = marketAmounts.length + 2;
         uint256 balance = IVaultV2(vault).balanceOf(address(this));
         if (margin >= balance) return;

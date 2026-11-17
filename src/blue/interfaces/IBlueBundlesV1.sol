@@ -6,15 +6,18 @@ import {MarketParams, Signature} from "../../../lib/morpho-blue/src/interfaces/I
 import {TokenPermit} from "../../libraries/TokenLib.sol";
 
 /// @dev An empty signature (v, r and s all zero) means no authorization is submitted.
-/// @dev The signature deadline is independent of the call deadline: an unsubmitted signature stays submittable until deadline, as revoking on Blue does not consume the nonce.
+/// @dev The signature deadline is independent of the call deadline: an unsubmitted signature stays submittable until
+/// deadline, as revoking on Blue does not consume the nonce.
 struct SignedAuthorization {
     Signature signature;
     uint256 nonce;
     uint256 deadline;
 }
 
-/// @dev When fromIdle is true, the vault's idle assets are allocated and sourceAdapter and sourceMarketParams are ignored; otherwise assets are first deallocated from sourceAdapter's sourceMarketParams.
-/// @dev penalty is the exact WAD-scaled penalty rate and must equal the vault's configured penalty when the allocation executes.
+/// @dev When fromIdle is true, the vault's idle assets are allocated and sourceAdapter and sourceMarketParams are
+/// ignored; otherwise assets are first deallocated from sourceAdapter's sourceMarketParams.
+/// @dev penalty is the exact WAD-scaled penalty rate and must equal the vault's configured penalty when the allocation
+/// executes.
 struct PublicAllocations {
     address vault;
     address adapter;

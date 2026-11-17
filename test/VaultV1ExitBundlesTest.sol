@@ -288,7 +288,8 @@ contract VaultV1ExitBundlesTest is TokenTest {
         assertApproxEqAbs(vault.balanceOf(sigUser), 0, 1, "vault balance");
     }
 
-    /// @dev The markets of the withdraw queue keep some liquidity (only half borrowed out). The exit still in-kind redeems the sender across the whole list.
+    /// @dev The markets of the withdraw queue keep some liquidity (only half borrowed out). The exit still in-kind
+    /// redeems the sender across the whole list.
     function testInKindRedemptionNotCompletelyIlliquid() public {
         uint256 assets1 = 60e18;
         uint256 assets2 = 60e18;

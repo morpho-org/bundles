@@ -791,7 +791,8 @@ contract BluePublicAllocatorTest is TokenTest {
         assertEq(_allocation(marketParams), 0, "bundle market not funded by the vault");
     }
 
-    /// @dev A reallocation destination whose loan token differs from the bundle's is rejected: penalties are paid in the bundle's loan token.
+    /// @dev A reallocation destination whose loan token differs from the bundle's is rejected: penalties are paid in
+    /// the bundle's loan token.
     function testReallocationDestinationLoanTokenMismatchReverts() public {
         uint256 assets = 10e18;
         _fundVault(VAULT_ASSETS);
@@ -808,7 +809,8 @@ contract BluePublicAllocatorTest is TokenTest {
     }
 }
 
-/// @dev The rest of the allocator's surface, used only by this test: the setters it is configured through, and the errors it throws inside a reallocation, which bubble up through the bundler.
+/// @dev The rest of the allocator's surface, used only by this test: the setters it is configured through, and the
+/// errors it throws inside a reallocation, which bubble up through the bundler.
 interface IBluePublicAllocatorConfig {
     error CannotPullFromMarket();
     error InactiveAdapter();

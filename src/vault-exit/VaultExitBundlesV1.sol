@@ -21,13 +21,17 @@ import {MarketParamsLib} from "../../lib/metamorpho/lib/morpho-blue/src/librarie
 import {SharesMathLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {UtilsLib} from "../../lib/metamorpho/lib/morpho-blue/src/libraries/UtilsLib.sol";
 
-/// @dev Meant to be used to exit a vault that allocates assets to Morpho Blue. The user gets Morpho Blue shares (in-kind redemption), assets (withdrawal), or both.
+/// @dev Meant to be used to exit a vault that allocates assets to Morpho Blue. The user gets Morpho Blue shares
+/// (in-kind redemption), assets (withdrawal), or both.
 /// @dev Vaults that are used with this contract must be Vault V1 (MetaMorpho V1 or V1.1) or Vault V2.
-/// @dev Vault V2 that are used with this contract must have only one adapter, and that adapter must be the MorphoMarketV1AdapterV2.
-/// @dev Vault V1 that are used with this contract must not be Morpho Blue's fee recipient, otherwise its expected supply assets are underestimated since the shares internally computed do not include the accrued fee shares.
+/// @dev Vault V2 that are used with this contract must have only one adapter, and that adapter must be the
+/// MorphoMarketV1AdapterV2.
+/// @dev Vault V1 that are used with this contract must not be Morpho Blue's fee recipient, otherwise its expected
+/// supply assets are underestimated since the shares internally computed do not include the accrued fee shares.
 /// @dev Inherits the token safety requirements of Morpho Vaults and their dependencies.
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
-/// @dev When using a Vault V2 with this contract, the receiveAssetsGate must allow this contract to receive the withdrawn assets. The gate can query the bundle's initiator through to the exposed transient variable.
+/// @dev When using a Vault V2 with this contract, the receiveAssetsGate must allow this contract to receive the
+/// withdrawn assets. The gate can query the bundle's initiator through to the exposed transient variable.
 contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorphoFlashLoanCallback {
     using MathLib for uint256;
     using MarketParamsLib for MarketParams;
@@ -43,18 +47,25 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     /// IN-KIND REDEMPTION VAULT V1 ///
 
-    /// @dev Exit from a Vault V1 and get Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
-    /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
+    /// @dev Exit from a Vault V1 and get Morpho Blue shares, even if the vault is illiquid and if the vault roles are
+    /// not cooperating.
+    /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via
+    /// sharesPermit.
     /// @dev The allowance/permit of shares can also be used to bound the max burned shares.
     /// @dev The assets withdrawn are exitAssets.
     /// @dev Requires Morpho Blue to have at least exitAssets in loan token balance.
     /// @dev Requires the sender to have enough shares to withdraw exitAssets.
-    /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets.
+    /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the
+    /// markets.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    /// @dev Passing as marketParamsList a superset of withdrawQueue makes the call immune to vault allocation changes: the full vault allocation is taken into account.
-    /// @dev The withdrawal queue can change before inclusion: additions can be anticipated when timelocked, and markets not in the withdrawal queue are skipped.
-    /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
-    /// @dev The Morpho Blue market share price is not checked: at most a wei per supply is lost to rounding, assuming a reasonable supply share price, which is expected since markets are curated.
+    /// @dev Passing as marketParamsList a superset of withdrawQueue makes the call immune to vault allocation changes:
+    /// the full vault allocation is taken into account.
+    /// @dev The withdrawal queue can change before inclusion: additions can be anticipated when timelocked, and markets
+    /// not in the withdrawal queue are skipped.
+    /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a
+    /// reverted exit retried later would be on similar or worse terms.
+    /// @dev The Morpho Blue market share price is not checked: at most a wei per supply is lost to rounding, assuming a
+    /// reasonable supply share price, which is expected since markets are curated.
     function vaultExitBundlesV1InKindRedemptionVaultV1(
         address vault,
         MarketParams[] memory marketParamsList,
@@ -99,23 +110,34 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
 
     /// IN-KIND REDEMPTION VAULT V2 ///
 
-    /// @dev Exit from a Vault V2 and get idle assets and/or Morpho Blue shares, even if the vault is illiquid and if the vault roles are not cooperating.
-    /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
+    /// @dev Exit from a Vault V2 and get idle assets and/or Morpho Blue shares, even if the vault is illiquid and if
+    /// the vault roles are not cooperating.
+    /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via
+    /// sharesPermit.
     /// @dev The allowance/permit of shares can also be used to bound the max burned shares.
     /// @dev The vault's idle assets are withdrawn first.
     /// @dev The assetsToDeallocate amount is floor((exitAssets - assetsToWithdrawFromIdle) * WAD / (WAD + penalty)).
-    /// @dev The in-kind portion is withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error against the users). The sum of the assets passed as argument to the withdraw function can be greater than exitAssets, but no greater than exitAssets+N.
+    /// @dev The in-kind portion is withdrawn in a number of iterations that is bounded by N the number of markets in
+    /// the adapter (each of them can result in a rounding error against the users). The sum of the assets passed as
+    /// argument to the withdraw function can be greater than exitAssets, but no greater than exitAssets+N.
     /// @dev Requires Morpho Blue to have at least assetsToDeallocate in loan token balance.
     /// @dev Requires the sender to have enough shares to:
     /// - first withdraw assetsToWithdrawFromIdle
-    /// - then withdraw ceil(assets * penalty / WAD) and withdraw assets, for each market in the list, where the sum of the assets is equal to assetsToDeallocate.
-    /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the markets, and potentially pays the penalty.
-    /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function avoids the penalty.
+    /// - then withdraw ceil(assets * penalty / WAD) and withdraw assets, for each market in the list, where the sum of
+    /// the assets is equal to assetsToDeallocate.
+    /// @dev It may be the case that the vault became liquid, but calling this function still yields positions on the
+    /// markets, and potentially pays the penalty.
+    /// @dev If the liquidity adapter has some liquidity, withdrawing from the vault instead of calling this function
+    /// avoids the penalty.
     /// @dev It's acknowledged that it is possible to call this function with duplicate markets in the list.
-    /// @dev Passing as marketParamsList a superset of the adapter's market list makes the call immune to vault allocation changes.
-    /// @dev The market list can change before inclusion: additions can be anticipated when timelocked, and market not in the list are skipped.
-    /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a reverted exit retried later would be on similar or worse terms.
-    /// @dev The Morpho Blue market share price is not checked: at most a wei per supply is lost to rounding, assuming a reasonable supply share price, which is expected since markets are curated.
+    /// @dev Passing as marketParamsList a superset of the adapter's market list makes the call immune to vault
+    /// allocation changes.
+    /// @dev The market list can change before inclusion: additions can be anticipated when timelocked, and market not
+    /// in the list are skipped.
+    /// @dev The vault share price is not checked: any drop (e.g. a bad debt realisation) is not quickly reversed, so a
+    /// reverted exit retried later would be on similar or worse terms.
+    /// @dev The Morpho Blue market share price is not checked: at most a wei per supply is lost to rounding, assuming a
+    /// reasonable supply share price, which is expected since markets are curated.
     function vaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
         address adapter,
@@ -170,16 +192,25 @@ contract VaultExitBundlesV1 is IVaultExitBundlesV1, IMorphoSupplyCallback, IMorp
     /// FORCE WITHDRAW VAULT V2 ///
 
     /// @dev Withdraw from a Vault V2, even if the vault doesn't have enough idle and liquidity market assets.
-    /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and reverts.
-    /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via sharesPermit.
-    /// @dev Starts by withdrawing everything the vault can pay without penalty: its idle assets and the liquidity available through the liquidity adapter.
-    /// @dev The assetsToDeallocate amount is floor((exitAssets - assetsToWithdraw) * WAD / (WAD + penalty)), where assetsToWithdraw is the amount withdrawn without penalty.
-    /// @dev The assetsToDeallocate amount is force deallocated by looping over the adapter's markets, taking from each market as much as its liquidity and the adapter's position allow before moving to the next one.
-    /// @dev The assets are withdrawn in a number of iterations that is bounded by N the number of markets in the adapter (each of them can result in a rounding error for the users). The sum of the assets passed as argument to the withdraw function can be greater than exitAssets, but no greater than exitAssets+N.
+    /// @dev Requires the adapter's markets to be liquid enough, otherwise the loop runs past the market list and
+    /// reverts.
+    /// @dev The sender must have given enough allowance over vault shares to this bundler, beforehand or via
+    /// sharesPermit.
+    /// @dev Starts by withdrawing everything the vault can pay without penalty: its idle assets and the liquidity
+    /// available through the liquidity adapter.
+    /// @dev The assetsToDeallocate amount is floor((exitAssets - assetsToWithdraw) * WAD / (WAD + penalty)), where
+    /// assetsToWithdraw is the amount withdrawn without penalty.
+    /// @dev The assetsToDeallocate amount is force deallocated by looping over the adapter's markets, taking from each
+    /// market as much as its liquidity and the adapter's position allow before moving to the next one.
+    /// @dev The assets are withdrawn in a number of iterations that is bounded by N the number of markets in the
+    /// adapter (each of them can result in a rounding error for the users). The sum of the assets passed as argument to
+    /// the withdraw function can be greater than exitAssets, but no greater than exitAssets+N.
     /// @dev The referral fee is deducted from the withdrawn assets; the remainder is sent to msg.sender.
     /// @dev Fee = withdrawnAssets * referralFeePct / WAD; net = withdrawnAssets - fee.
-    /// @dev minSharePriceE27 lower-bounds the realized exit share price (withdrawn assets per share, scaled by 1e27). The force deallocate penalty is deducted from the withdrawn assets, so it lowers this price.
-    /// @dev If msg.sender is a vault fee recipient, totalSharesBurnt is underestimated (fee shares accrue to it during the withdrawals), weakening the share price check.
+    /// @dev minSharePriceE27 lower-bounds the realized exit share price (withdrawn assets per share, scaled by 1e27).
+    /// The force deallocate penalty is deducted from the withdrawn assets, so it lowers this price.
+    /// @dev If msg.sender is a vault fee recipient, totalSharesBurnt is underestimated (fee shares accrue to it during
+    /// the withdrawals), weakening the share price check.
     function vaultExitBundlesV1ForceWithdrawVaultV2(
         address vault,
         address adapter,
