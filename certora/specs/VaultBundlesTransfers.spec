@@ -18,27 +18,22 @@ methods {
 
 /// HELPERS ///
 
-persistent ghost mapping(address => mapping(address => uint256)) tokenBalance;
+// Net amount transferred to each account during the interaction, per token, which is not the token balance.
+persistent ghost mapping(address => mapping(address => mathint)) transferBalanceChange;
 
 function summarySafeTransfer(address token, address to, uint256 amount) {
     summarySafeTransferFrom(token, currentContract, to, amount);
 }
 
 function summarySafeTransferFrom(address token, address from, address to, uint256 amount) {
-    if (amount > tokenBalance[token][from] || amount + tokenBalance[token][to] > max_uint256) {
-        revert();
-    }
-    tokenBalance[token][from] = assert_uint256(tokenBalance[token][from] - amount);
-    tokenBalance[token][to] = assert_uint256(tokenBalance[token][to] + amount);
+    transferBalanceChange[token][from] = transferBalanceChange[token][from] - amount;
+    transferBalanceChange[token][to] = transferBalanceChange[token][to] + amount;
 }
 
 persistent ghost mathint wrappedAssets;
 
 function summaryWrapNative(address token, uint256 value) {
-    if (value + tokenBalance[token][currentContract] > max_uint256) {
-        revert();
-    }
-    tokenBalance[token][currentContract] = assert_uint256(tokenBalance[token][currentContract] + value);
+    transferBalanceChange[token][currentContract] = transferBalanceChange[token][currentContract] + value;
     wrappedAssets = wrappedAssets + value;
 }
 
@@ -77,16 +72,13 @@ rule depositDoesntLoseTokens(env e, address vault, uint256 assets, uint256 maxSh
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     wrappedAssets = 0;
     depositedAssets = 0;
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
     vaultBundlesV1Deposit(e, vault, assets, maxSharePriceE27, assetPermit, referralFeePct, referralFeeRecipient, deadline);
-    uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
-    uint256 feeBalanceAfter = tokenBalance[token][referralFeeRecipient];
 
-    mathint spent = senderBalanceBefore - senderBalanceAfter;
-    mathint fees = feeBalanceAfter - feeBalanceBefore;
+    mathint spent = -transferBalanceChange[token][e.msg.sender];
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
     assert token == asset => spent + wrappedAssets == depositedAssets + fees;
     assert token != asset => spent == 0 && fees == 0;
@@ -101,15 +93,12 @@ rule withdrawDoesntLoseTokens(env e, address vault, uint256 assets, uint256 shar
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     withdrawnAssets = 0;
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
     vaultBundlesV1Withdraw(e, vault, assets, shares, sharesPermit, referralFeePct, referralFeeRecipient, deadline);
-    uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
-    uint256 feeBalanceAfter = tokenBalance[token][referralFeeRecipient];
 
-    mathint received = senderBalanceAfter - senderBalanceBefore;
-    mathint fees = feeBalanceAfter - feeBalanceBefore;
+    mathint received = transferBalanceChange[token][e.msg.sender];
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
     assert token == asset => received == withdrawnAssets - fees;
     assert token != asset => received == 0 && fees == 0;
@@ -124,17 +113,14 @@ rule migrateDoesntLoseTokens(env e, address sourceVault, address destVault, uint
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     withdrawnAssets = 0;
     depositedAssets = 0;
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
     vaultBundlesV1Migrate(e, sourceVault, destVault, assetsWithdrawn, sharesRedeemed, destMaxSharePriceE27, sharesPermit, referralFeePct, referralFeeRecipient, deadline);
-    uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
-    uint256 feeBalanceAfter = tokenBalance[token][referralFeeRecipient];
 
-    mathint fees = feeBalanceAfter - feeBalanceBefore;
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
-    assert senderBalanceAfter == senderBalanceBefore;
+    assert transferBalanceChange[token][e.msg.sender] == 0;
     assert token == asset => withdrawnAssets == depositedAssets + fees;
     assert token != asset => fees == 0;
 }
