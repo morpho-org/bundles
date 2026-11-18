@@ -182,36 +182,6 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
-    function testLeverFromLoanAssetsExactInput() public {
-        uint256 loanAssets = 10e18;
-        uint256 borrowAssets = 10e18;
-        uint256 minCollateralOut = 20e18;
-        fundUserWithLoanAssets(loanAssets);
-        settler.setRate(21, 20);
-        bytes memory swapData = buildExactInSwapData(
-            address(loanToken), address(collateralToken), loanAssets + borrowAssets, minCollateralOut
-        );
-
-        vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Lever(
-            marketParams,
-            0,
-            loanAssets,
-            minCollateralOut,
-            borrowAssets,
-            swapData,
-            type(uint256).max,
-            noReallocations(),
-            block.timestamp
-        );
-
-        Position memory position = morpho.position(marketParams.id(), user);
-        assertEq(position.collateral, 21e18);
-        assertEq(_debt(position, morpho.market(marketParams.id())), borrowAssets);
-        assertEq(loanToken.balanceOf(user), 0);
-        assertNoResiduals();
-    }
-
     function testLeverFromBothAssets() public {
         uint256 collateralAssets = 5e18;
         uint256 loanAssets = 5e18;
@@ -241,7 +211,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
-    function testLeverUnspentAboveDebtIsSentToUser() public {
+    function testLeverSurplusAboveDebtIsSentToUser() public {
         uint256 loanAssets = 10e18;
         uint256 collateralToBuy = 5e18;
         uint256 maxBorrowAssets = 1e18;
@@ -342,7 +312,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
-    function testCloseExactOutputReturnsBufferAsLoanTokens() public {
+    function testCloseExactOutputReturnsBufferAsLoanAssets() public {
         openPosition();
         Position memory beforePosition = morpho.position(marketParams.id(), user);
         uint256 debt = _debt(beforePosition, morpho.market(marketParams.id()));
@@ -364,7 +334,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
-    function testCloseExactInReturnsEquityAsLoanTokens() public {
+    function testCloseExactInReturnsEquityAsLoanAssets() public {
         openPosition();
         Position memory beforePosition = morpho.position(marketParams.id(), user);
         uint256 debt = _debt(beforePosition, morpho.market(marketParams.id()));
@@ -634,6 +604,38 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         Position memory position = morpho.position(marketParams.id(), user);
         assertEq(position.collateral, collateralAssets + collateralToBuy);
         assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy + penaltyAssets);
+        assertEq(loanToken.balanceOf(vault), penaltyAssets);
+        assertNoResiduals();
+    }
+
+    function testLeverFromLoanAssetsPaysPenaltyFromBorrow() public {
+        setUpIlliquidMarket();
+        uint256 loanAssets = 10e18;
+        uint256 collateralToBuy = 20e18;
+        uint256 maxBorrowAssets = 12e18;
+        uint256 penaltyAssets = 0.12e18;
+        fundUserWithLoanAssets(loanAssets);
+        bytes memory swapData = buildSwapData(
+            address(loanToken), address(collateralToken), loanAssets + maxBorrowAssets - penaltyAssets, collateralToBuy
+        );
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            0,
+            loanAssets,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            idleReallocation(12e18, PENALTY),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, collateralToBuy);
+        assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy - loanAssets + penaltyAssets);
+        assertEq(loanToken.balanceOf(user), 0);
         assertEq(loanToken.balanceOf(vault), penaltyAssets);
         assertNoResiduals();
     }

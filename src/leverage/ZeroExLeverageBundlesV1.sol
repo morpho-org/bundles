@@ -58,14 +58,15 @@ contract ZeroExLeverageBundlesV1 is
         locked = false;
     }
 
-    /// ENTRYPOINTS ///
+    /// ENTRYPOINT ///
 
-    /// @dev Executes the public reallocations, pulls collateralAssets and loanAssets from msg.sender and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
+    /// @dev Pulls collateralAssets and loanAssets from msg.sender, executes the public reallocations and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
     /// @dev The aggregate penalty P of the reallocations is flash loaned to pay the public allocator upfront, and is repaid from the borrowed assets: at most loanAssets + maxBorrowAssets - P is swapped.
     /// @dev All public reallocations execute unconditionally.
     /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount <= loanAssets + maxBorrowAssets - P.
-    /// @dev The unspent loan assets repay msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
-    /// @dev The msg.sender must have authorized this contract on Blue.
+    /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
+    /// @dev Blue's health check is performed with maxBorrowAssets borrowed, before the surplus is repaid.
+    /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function zeroExLeverageBundlesV1Lever(
         MarketParams memory marketParams,
@@ -120,6 +121,7 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev swapData is expected to be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount >= minRepayAssets.
     /// @dev minRepayAssets must not exceed msg.sender's debt, or else Blue reverts.
     /// @dev Unsold collateral is supplied back; the loan assets received above minRepayAssets repay the remaining debt, and the rest is sent to msg.sender.
+    /// @dev Blue's health check on the withdrawal is performed with minRepayAssets repaid, before the surplus is repaid.
     /// @dev The msg.sender must have authorized this contract on Blue.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function zeroExLeverageBundlesV1Delever(
@@ -151,7 +153,7 @@ contract ZeroExLeverageBundlesV1 is
 
     /// @dev Repays all of msg.sender's borrow shares; in Blue's callback, withdraws all collateral and buys the debt through 0x, spending at most maxCollateralIn.
     /// @dev swapData is expected to be a 0x BUY quote with buyAmount = debt plus a buffer for the interest accrued until execution, and maxSellAmount <= maxCollateralIn.
-    /// @dev The unspent collateral and the loan assets received above the debt are sent to msg.sender.
+    /// @dev The unsold collateral and the loan assets received above the debt are sent to msg.sender.
     /// @dev Without debt, withdraws all collateral to msg.sender and ignores swapData.
     /// @dev The msg.sender must have authorized this contract on Blue.
     function zeroExLeverageBundlesV1Close(
@@ -231,13 +233,13 @@ contract ZeroExLeverageBundlesV1 is
     function onMorphoRepay(uint256 assets, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
 
-        (bytes4 selector, address user, bytes memory operationData) = abi.decode(data, (bytes4, address, bytes));
+        (bytes4 selector, address sender, bytes memory operationData) = abi.decode(data, (bytes4, address, bytes));
         if (selector == this.zeroExLeverageBundlesV1Delever.selector) {
-            executeDelever(assets, user, operationData);
+            executeDelever(assets, sender, operationData);
         } else if (selector == this.zeroExLeverageBundlesV1Close.selector) {
-            executeClose(assets, user, operationData);
+            executeClose(assets, sender, operationData);
         } else if (selector == this.zeroExLeverageBundlesV1CloseExactIn.selector) {
-            executeCloseExactIn(assets, user, operationData);
+            executeCloseExactIn(assets, sender, operationData);
         } else {
             revert UnauthorizedCallback();
         }
@@ -249,14 +251,14 @@ contract ZeroExLeverageBundlesV1 is
 
         (
             MarketParams memory marketParams,
-            address user,
+            address sender,
             uint256 supplyAssets,
             PublicAllocations[] memory reallocations,
             bytes memory leverData
         ) = abi.decode(data, (MarketParams, address, uint256, PublicAllocations[], bytes));
 
         executePublicAllocations(marketParams.loanToken, reallocations);
-        IMorpho(BLUE).supplyCollateral(marketParams, supplyAssets, user, leverData);
+        IMorpho(BLUE).supplyCollateral(marketParams, supplyAssets, sender, leverData);
     }
 
     /// INTERNAL ///
@@ -265,20 +267,20 @@ contract ZeroExLeverageBundlesV1 is
     function executeLever(bytes calldata leverData) internal {
         (
             MarketParams memory marketParams,
-            address user,
+            address sender,
             uint256 collateralToBuy,
             uint256 maxBorrowAssets,
             uint256 maxSwapIn,
             bytes memory swapData
         ) = abi.decode(leverData, (MarketParams, address, uint256, uint256, uint256, bytes));
 
-        IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, user, address(this));
+        IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, sender, address(this));
         (uint256 spent, uint256 received) =
             swap(marketParams.loanToken, marketParams.collateralToken, maxSwapIn, collateralToBuy, swapData);
 
-        repaySurplus(marketParams, user, maxSwapIn - spent);
+        repaySurplus(marketParams, sender, maxSwapIn - spent);
         if (received > collateralToBuy) {
-            IMorpho(BLUE).supplyCollateral(marketParams, received - collateralToBuy, user, "");
+            IMorpho(BLUE).supplyCollateral(marketParams, received - collateralToBuy, sender, "");
         }
     }
 
@@ -326,74 +328,74 @@ contract ZeroExLeverageBundlesV1 is
         return penaltyAssets;
     }
 
-    function executeDelever(uint256 assets, address user, bytes memory operationData) internal {
+    function executeDelever(uint256 assets, address sender, bytes memory operationData) internal {
         (MarketParams memory marketParams, uint256 collateralToSell, bytes memory swapData) =
             abi.decode(operationData, (MarketParams, uint256, bytes));
 
-        IMorpho(BLUE).withdrawCollateral(marketParams, collateralToSell, user, address(this));
+        IMorpho(BLUE).withdrawCollateral(marketParams, collateralToSell, sender, address(this));
         (uint256 spent, uint256 received) =
             swap(marketParams.collateralToken, marketParams.loanToken, collateralToSell, assets, swapData);
 
         if (collateralToSell > spent) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
-            IMorpho(BLUE).supplyCollateral(marketParams, collateralToSell - spent, user, "");
+            IMorpho(BLUE).supplyCollateral(marketParams, collateralToSell - spent, sender, "");
         }
-        repaySurplus(marketParams, user, received - assets);
+        repaySurplus(marketParams, sender, received - assets);
     }
 
-    /// @dev Repays user's debt with the surplus of loan assets, and sends what is left above the debt to user.
-    function repaySurplus(MarketParams memory marketParams, address user, uint256 surplus) internal {
+    /// @dev Repays sender's debt with the surplus of loan assets, and sends what is left above the debt to sender.
+    function repaySurplus(MarketParams memory marketParams, address sender, uint256 surplus) internal {
         if (surplus > 0) {
-            uint256 borrowShares = IMorpho(BLUE).position(marketParams.id(), user).borrowShares;
+            uint256 borrowShares = IMorpho(BLUE).position(marketParams.id(), sender).borrowShares;
             Market memory market = IMorpho(BLUE).market(marketParams.id());
             uint256 debt = borrowShares.toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
 
             if (borrowShares > 0) {
-                if (surplus >= debt) IMorpho(BLUE).repay(marketParams, 0, borrowShares, user, "");
-                else IMorpho(BLUE).repay(marketParams, surplus, 0, user, "");
+                if (surplus >= debt) IMorpho(BLUE).repay(marketParams, 0, borrowShares, sender, "");
+                else IMorpho(BLUE).repay(marketParams, surplus, 0, sender, "");
             }
-            if (surplus > debt) SafeTransferLib.safeTransfer(marketParams.loanToken, user, surplus - debt);
+            if (surplus > debt) SafeTransferLib.safeTransfer(marketParams.loanToken, sender, surplus - debt);
         }
     }
 
-    function executeClose(uint256 assets, address user, bytes memory operationData) internal {
+    function executeClose(uint256 assets, address sender, bytes memory operationData) internal {
         (MarketParams memory marketParams, uint256 collateral, uint256 maxCollateralIn, bytes memory swapData) =
             abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
-        IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
+        IMorpho(BLUE).withdrawCollateral(marketParams, collateral, sender, address(this));
         (uint256 spent, uint256 received) =
             swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
 
         if (collateral > spent) {
-            SafeTransferLib.safeTransfer(marketParams.collateralToken, user, collateral - spent);
+            SafeTransferLib.safeTransfer(marketParams.collateralToken, sender, collateral - spent);
         }
         if (received > assets) {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, user, received - assets);
+            SafeTransferLib.safeTransfer(marketParams.loanToken, sender, received - assets);
         }
     }
 
-    function executeCloseExactIn(uint256 assets, address user, bytes memory operationData) internal {
+    function executeCloseExactIn(uint256 assets, address sender, bytes memory operationData) internal {
         (MarketParams memory marketParams, uint256 collateral, uint256 minLoanOut, bytes memory swapData) =
             abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
         uint256 minOut = minLoanOut > assets ? minLoanOut : assets;
-        IMorpho(BLUE).withdrawCollateral(marketParams, collateral, user, address(this));
+        IMorpho(BLUE).withdrawCollateral(marketParams, collateral, sender, address(this));
         (uint256 spent, uint256 received) =
             swap(marketParams.collateralToken, marketParams.loanToken, collateral, minOut, swapData);
 
         if (collateral > spent) {
-            SafeTransferLib.safeTransfer(marketParams.collateralToken, user, collateral - spent);
+            SafeTransferLib.safeTransfer(marketParams.collateralToken, sender, collateral - spent);
         }
         if (received > assets) {
-            SafeTransferLib.safeTransfer(marketParams.loanToken, user, received - assets);
+            SafeTransferLib.safeTransfer(marketParams.loanToken, sender, received - assets);
         }
     }
 
-    /// @dev Reverts unless user's LTV is at or below maxLtv; type(uint256).max disables the check.
+    /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).
     /// @dev Assumes interest is already accrued in this block (lever borrows and delever repays before calling it), then mirrors Blue's health check against maxLtv.
-    function requireMaxLtv(MarketParams memory marketParams, address user, uint256 maxLtv) internal view {
+    function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal view {
         if (maxLtv != type(uint256).max) {
-            Position memory position = IMorpho(BLUE).position(marketParams.id(), user);
+            Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
             if (position.borrowShares != 0) {
                 Market memory market = IMorpho(BLUE).market(marketParams.id());
                 uint256 borrowed =
