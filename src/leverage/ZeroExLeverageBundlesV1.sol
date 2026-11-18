@@ -156,7 +156,7 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev The unsold collateral and the loan assets received above the debt are sent to msg.sender.
     /// @dev Without debt, withdraws all collateral to msg.sender and ignores swapData.
     /// @dev The msg.sender must have authorized this contract on Blue.
-    function zeroExLeverageBundlesV1Close(
+    function zeroExLeverageBundlesV1CloseExactOut(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,
         bytes calldata swapData,
@@ -178,7 +178,7 @@ contract ZeroExLeverageBundlesV1 is
                     position.borrowShares,
                     msg.sender,
                     abi.encode(
-                        this.zeroExLeverageBundlesV1Close.selector,
+                        this.zeroExLeverageBundlesV1CloseExactOut.selector,
                         msg.sender,
                         abi.encode(marketParams, position.collateral, maxCollateralIn, swapData)
                     )
@@ -236,8 +236,8 @@ contract ZeroExLeverageBundlesV1 is
         (bytes4 selector, address sender, bytes memory operationData) = abi.decode(data, (bytes4, address, bytes));
         if (selector == this.zeroExLeverageBundlesV1Delever.selector) {
             executeDelever(assets, sender, operationData);
-        } else if (selector == this.zeroExLeverageBundlesV1Close.selector) {
-            executeClose(assets, sender, operationData);
+        } else if (selector == this.zeroExLeverageBundlesV1CloseExactOut.selector) {
+            executeCloseExactOut(assets, sender, operationData);
         } else if (selector == this.zeroExLeverageBundlesV1CloseExactIn.selector) {
             executeCloseExactIn(assets, sender, operationData);
         } else {
@@ -358,7 +358,7 @@ contract ZeroExLeverageBundlesV1 is
         }
     }
 
-    function executeClose(uint256 assets, address sender, bytes memory operationData) internal {
+    function executeCloseExactOut(uint256 assets, address sender, bytes memory operationData) internal {
         (MarketParams memory marketParams, uint256 collateral, uint256 maxCollateralIn, bytes memory swapData) =
             abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
