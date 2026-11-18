@@ -347,7 +347,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         uint256 collateralBalanceBefore = collateralToken.balanceOf(user);
 
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Close(marketParams, type(uint256).max, minLoanOut, swapData, block.timestamp);
+        bundle.zeroExLeverageBundlesV1Close(marketParams, 0, minLoanOut, swapData, block.timestamp);
 
         Position memory afterPosition = morpho.position(marketParams.id(), user);
         assertEq(afterPosition.borrowShares, 0);
@@ -368,7 +368,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert(IZeroExLeverageBundlesV1.InsufficientOutput.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Close(marketParams, type(uint256).max, minLoanOut, swapData, block.timestamp);
+        bundle.zeroExLeverageBundlesV1Close(marketParams, 0, minLoanOut, swapData, block.timestamp);
         assertNoResiduals();
     }
 
@@ -382,7 +382,20 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert(IZeroExLeverageBundlesV1.InsufficientOutput.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Close(marketParams, type(uint256).max, 1, swapData, block.timestamp);
+        bundle.zeroExLeverageBundlesV1Close(marketParams, 0, 1, swapData, block.timestamp);
+        assertNoResiduals();
+    }
+
+    function testCloseRequiresExactlyOneBound() public {
+        openPosition();
+
+        vm.expectRevert(IZeroExLeverageBundlesV1.InconsistentCloseInput.selector);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Close(marketParams, 0, 0, "", block.timestamp);
+
+        vm.expectRevert(IZeroExLeverageBundlesV1.InconsistentCloseInput.selector);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Close(marketParams, 1, 1, "", block.timestamp);
         assertNoResiduals();
     }
 
@@ -396,7 +409,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.stopPrank();
 
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Close(marketParams, 0, 0, "", block.timestamp);
+        bundle.zeroExLeverageBundlesV1Close(marketParams, 0, 1, "", block.timestamp);
         assertEq(collateralToken.balanceOf(user), collateral);
         assertEq(morpho.position(marketParams.id(), user).collateral, 0);
         assertNoResiduals();
@@ -503,7 +516,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
         vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
         vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Close(marketParams, 1, 1, emptySwapData, expired);
+        bundle.zeroExLeverageBundlesV1Close(marketParams, 1, 0, emptySwapData, expired);
 
         assertNoResiduals();
     }
