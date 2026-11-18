@@ -68,6 +68,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
+            0,
             collateralToBuy,
             maxBorrowAssets,
             swapData,
@@ -97,6 +98,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
+            0,
             collateralToBuy,
             maxBorrowAssets,
             swapData,
@@ -111,7 +113,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.expectRevert(IZeroExLeverageBundlesV1.ZeroCollateralToBuy.selector);
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, 0, 0, 1e18, "", type(uint256).max, noReallocations(), block.timestamp
+            marketParams, 0, 0, 0, 1e18, "", type(uint256).max, noReallocations(), block.timestamp
         );
         assertNoResiduals();
     }
@@ -127,6 +129,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
+            0,
             collateralToBuy,
             12e18,
             swapData,
@@ -140,6 +143,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
+            0,
             collateralToBuy,
             12e18,
             swapData,
@@ -147,6 +151,121 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             noReallocations(),
             block.timestamp
         );
+        assertNoResiduals();
+    }
+
+    function testLeverFromLoanAssetsExactOutput() public {
+        uint256 loanAssets = 10e18;
+        uint256 collateralToBuy = 20e18;
+        uint256 maxBorrowAssets = 12e18;
+        fundUserWithLoanAssets(loanAssets);
+        bytes memory swapData =
+            buildSwapData(address(loanToken), address(collateralToken), loanAssets + maxBorrowAssets, collateralToBuy);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            0,
+            loanAssets,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, collateralToBuy);
+        assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy - loanAssets);
+        assertEq(loanToken.balanceOf(user), 0);
+        assertNoResiduals();
+    }
+
+    function testLeverFromLoanAssetsExactInput() public {
+        uint256 loanAssets = 10e18;
+        uint256 borrowAssets = 10e18;
+        uint256 minCollateralOut = 20e18;
+        fundUserWithLoanAssets(loanAssets);
+        settler.setRate(21, 20);
+        bytes memory swapData = buildExactInSwapData(
+            address(loanToken), address(collateralToken), loanAssets + borrowAssets, minCollateralOut
+        );
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            0,
+            loanAssets,
+            minCollateralOut,
+            borrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, 21e18);
+        assertEq(_debt(position, morpho.market(marketParams.id())), borrowAssets);
+        assertEq(loanToken.balanceOf(user), 0);
+        assertNoResiduals();
+    }
+
+    function testLeverFromBothAssets() public {
+        uint256 collateralAssets = 5e18;
+        uint256 loanAssets = 5e18;
+        uint256 collateralToBuy = 15e18;
+        uint256 maxBorrowAssets = 12e18;
+        fundUser(address(bundle), collateralAssets);
+        fundUserWithLoanAssets(loanAssets);
+        bytes memory swapData =
+            buildSwapData(address(loanToken), address(collateralToken), loanAssets + maxBorrowAssets, collateralToBuy);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            loanAssets,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, collateralAssets + collateralToBuy);
+        assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy - loanAssets);
+        assertNoResiduals();
+    }
+
+    function testLeverUnspentAboveDebtIsSentToUser() public {
+        uint256 loanAssets = 10e18;
+        uint256 collateralToBuy = 5e18;
+        uint256 maxBorrowAssets = 1e18;
+        fundUserWithLoanAssets(loanAssets);
+        bytes memory swapData =
+            buildSwapData(address(loanToken), address(collateralToken), loanAssets + maxBorrowAssets, collateralToBuy);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            0,
+            loanAssets,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, collateralToBuy);
+        assertEq(position.borrowShares, 0);
+        assertEq(loanToken.balanceOf(user), loanAssets - collateralToBuy);
         assertNoResiduals();
     }
 
@@ -358,6 +477,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
+            0,
             1e18,
             maxBorrowAssets,
             swapData,
@@ -379,6 +499,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             (
                 marketParams,
                 0,
+                0,
                 collateralToBuy,
                 maxBorrowAssets,
                 bytes(""),
@@ -395,6 +516,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
+            0,
             collateralToBuy,
             maxBorrowAssets,
             swapData,
@@ -418,7 +540,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, 0, 1, 1, emptySwapData, type(uint256).max, noReallocations(), expired
+            marketParams, 0, 0, 1, 1, emptySwapData, type(uint256).max, noReallocations(), expired
         );
 
         vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
@@ -467,7 +589,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.expectRevert(bytes(BlueErrorsLib.INSUFFICIENT_LIQUIDITY));
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, 10e18, 10e18, 12e18, swapData, type(uint256).max, noReallocations(), block.timestamp
+            marketParams, 10e18, 0, 10e18, 12e18, swapData, type(uint256).max, noReallocations(), block.timestamp
         );
     }
 
@@ -500,6 +622,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
+            0,
             collateralToBuy,
             maxBorrowAssets,
             swapData,
@@ -530,6 +653,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
+            0,
             collateralToBuy,
             maxBorrowAssets,
             swapData,
@@ -555,6 +679,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             10e18,
+            0,
             10e18,
             12e18,
             swapData,
@@ -574,7 +699,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.expectRevert(IZeroExLeverageBundlesV1.InconsistentTokens.selector);
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, 10e18, 10e18, 12e18, swapData, type(uint256).max, reallocations, block.timestamp
+            marketParams, 10e18, 0, 10e18, 12e18, swapData, type(uint256).max, reallocations, block.timestamp
         );
     }
 
@@ -693,6 +818,14 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             );
     }
 
+    function fundUserWithLoanAssets(uint256 loanAssets) internal {
+        deal(address(loanToken), user, loanAssets);
+        vm.startPrank(user);
+        safeApprove(loanToken, address(bundle), loanAssets);
+        if (!morpho.isAuthorized(user, address(bundle))) morpho.setAuthorization(address(bundle), true);
+        vm.stopPrank();
+    }
+
     function openPosition() internal returns (uint256 debt) {
         uint256 collateralAssets = 10e18;
         uint256 collateralToBuy = 10e18;
@@ -703,6 +836,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
+            0,
             collateralToBuy,
             12e18,
             swapData,

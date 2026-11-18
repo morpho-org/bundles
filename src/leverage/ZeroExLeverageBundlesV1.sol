@@ -60,16 +60,17 @@ contract ZeroExLeverageBundlesV1 is
 
     /// ENTRYPOINTS ///
 
-    /// @dev Executes the public reallocations, pulls collateralAssets from msg.sender and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
-    /// @dev The aggregate penalty P of the reallocations is flash loaned to pay the public allocator upfront, and is repaid from the borrowed assets: at most maxBorrowAssets - P is swapped.
+    /// @dev Executes the public reallocations, pulls collateralAssets and loanAssets from msg.sender and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
+    /// @dev The aggregate penalty P of the reallocations is flash loaned to pay the public allocator upfront, and is repaid from the borrowed assets: at most loanAssets + maxBorrowAssets - P is swapped.
     /// @dev All public reallocations execute unconditionally.
-    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount <= maxBorrowAssets - P.
-    /// @dev The unspent borrowed assets are repaid, and the collateral bought above collateralToBuy is supplied for msg.sender.
+    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount <= loanAssets + maxBorrowAssets - P.
+    /// @dev The unspent loan assets repay msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
     /// @dev The msg.sender must have authorized this contract on Blue.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function zeroExLeverageBundlesV1Lever(
         MarketParams memory marketParams,
         uint256 collateralAssets,
+        uint256 loanAssets,
         uint256 collateralToBuy,
         uint256 maxBorrowAssets,
         bytes calldata swapData,
@@ -80,16 +81,26 @@ contract ZeroExLeverageBundlesV1 is
         require(block.timestamp <= deadline, DeadlinePassed());
         require(collateralToBuy != 0, ZeroCollateralToBuy());
 
-        SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
+        if (collateralAssets > 0) {
+            SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
+        }
+        if (loanAssets > 0) {
+            SafeTransferLib.safeTransferFrom(marketParams.loanToken, msg.sender, address(this), loanAssets);
+        }
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
+        TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         uint256 penaltyAssets = totalPenaltyAssets(reallocations);
         bytes memory leverData = abi.encode(
-            marketParams, msg.sender, collateralToBuy, maxBorrowAssets, maxBorrowAssets - penaltyAssets, swapData
+            marketParams,
+            msg.sender,
+            collateralToBuy,
+            maxBorrowAssets,
+            loanAssets + maxBorrowAssets - penaltyAssets,
+            swapData
         );
 
         if (penaltyAssets > 0) {
-            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
             // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
             IMorpho(BLUE)
                 .flashLoan(
@@ -250,7 +261,7 @@ contract ZeroExLeverageBundlesV1 is
 
     /// INTERNAL ///
 
-    /// @dev maxSwapIn is maxBorrowAssets minus the penalties of the public reallocations, which stay in this contract to repay the flash loan.
+    /// @dev maxSwapIn is loanAssets + maxBorrowAssets minus the penalties of the public reallocations, which stay in this contract to repay the flash loan.
     function executeLever(bytes calldata leverData) internal {
         (
             MarketParams memory marketParams,
@@ -265,10 +276,7 @@ contract ZeroExLeverageBundlesV1 is
         (uint256 spent, uint256 received) =
             swap(marketParams.loanToken, marketParams.collateralToken, maxSwapIn, collateralToBuy, swapData);
 
-        if (maxSwapIn > spent) {
-            TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
-            IMorpho(BLUE).repay(marketParams, maxSwapIn - spent, 0, user, "");
-        }
+        repaySurplus(marketParams, user, maxSwapIn - spent);
         if (received > collateralToBuy) {
             IMorpho(BLUE).supplyCollateral(marketParams, received - collateralToBuy, user, "");
         }
@@ -330,21 +338,21 @@ contract ZeroExLeverageBundlesV1 is
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, collateralToSell - spent, user, "");
         }
-        repaySurplus(marketParams, user, assets, received);
+        repaySurplus(marketParams, user, received - assets);
     }
 
-    function repaySurplus(MarketParams memory marketParams, address user, uint256 assets, uint256 received) internal {
-        if (received > assets) {
-            uint256 excess = received - assets;
+    /// @dev Repays user's debt with the surplus of loan assets, and sends what is left above the debt to user.
+    function repaySurplus(MarketParams memory marketParams, address user, uint256 surplus) internal {
+        if (surplus > 0) {
             uint256 borrowShares = IMorpho(BLUE).position(marketParams.id(), user).borrowShares;
             Market memory market = IMorpho(BLUE).market(marketParams.id());
             uint256 debt = borrowShares.toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
 
             if (borrowShares > 0) {
-                if (excess >= debt) IMorpho(BLUE).repay(marketParams, 0, borrowShares, user, "");
-                else IMorpho(BLUE).repay(marketParams, excess, 0, user, "");
+                if (surplus >= debt) IMorpho(BLUE).repay(marketParams, 0, borrowShares, user, "");
+                else IMorpho(BLUE).repay(marketParams, surplus, 0, user, "");
             }
-            if (excess > debt) SafeTransferLib.safeTransfer(marketParams.loanToken, user, excess - debt);
+            if (surplus > debt) SafeTransferLib.safeTransfer(marketParams.loanToken, user, surplus - debt);
         }
     }
 

@@ -24,6 +24,7 @@ interface IZeroExLeverageBundlesV1 {
     function zeroExLeverageBundlesV1Lever(
         MarketParams memory marketParams,
         uint256 collateralAssets,
+        uint256 loanAssets,
         uint256 collateralToBuy,
         uint256 maxBorrowAssets,
         bytes calldata swapData,
