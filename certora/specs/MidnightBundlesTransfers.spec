@@ -28,18 +28,16 @@ methods {
 
 /// HELPERS ///
 
-persistent ghost mapping(address => mapping(address => uint256)) tokenBalance;
+// Net amount transferred to each account during the interaction, per token, which is not the token balance.
+persistent ghost mapping(address => mapping(address => mathint)) transferBalanceChange;
 
 function summarySafeTransfer(address token, address to, uint256 amount) {
     summarySafeTransferFrom(token, currentContract, to, amount);
 }
 
 function summarySafeTransferFrom(address token, address from, address to, uint256 amount) {
-    if (amount > tokenBalance[token][from] || amount + tokenBalance[token][to] > max_uint256) {
-        revert();
-    }
-    tokenBalance[token][from] = assert_uint256(tokenBalance[token][from] - amount);
-    tokenBalance[token][to] = assert_uint256(tokenBalance[token][to] + amount);
+    transferBalanceChange[token][from] = transferBalanceChange[token][from] - amount;
+    transferBalanceChange[token][to] = transferBalanceChange[token][to] + amount;
 }
 
 persistent ghost mathint boughtAssets;
@@ -90,16 +88,13 @@ rule buyWithUnitsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Market
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     boughtAssets = 0;
     repaidAssets = 0;
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
     midnightBundlesV2BuyWithUnitsTargetAndWithdrawCollateral(e, market, targetUnits, maxBuyerAssets, reduceOnly, repayEnabled, offerFills, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline, wrappedNative);
-    uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
-    uint256 feeBalanceAfter = tokenBalance[token][referralFeeRecipient];
 
-    mathint spent = senderBalanceBefore - senderBalanceAfter;
-    mathint fees = feeBalanceAfter - feeBalanceBefore;
+    mathint spent = -transferBalanceChange[token][e.msg.sender];
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
     assert token == loanToken => spent == boughtAssets + repaidAssets + fees;
     assert token != loanToken => spent == 0 && fees == 0;
@@ -114,16 +109,13 @@ rule buyWithAssetsTargetAndWithdrawCollateralDoesntLoseTokens(env e, Utils.Marke
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     boughtAssets = 0;
     repaidAssets = 0;
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
     midnightBundlesV2BuyWithAssetsTargetAndWithdrawCollateral(e, market, targetBuyerAssets, minUnits, reduceOnly, repayEnabled, offerFills, collateralWithdrawals, collateralReceiver, referralFeePct, referralFeeRecipient, maxContinuousFee, deadline, wrappedNative);
-    uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
-    uint256 feeBalanceAfter = tokenBalance[token][referralFeeRecipient];
 
-    mathint spent = senderBalanceBefore - senderBalanceAfter;
-    mathint fees = feeBalanceAfter - feeBalanceBefore;
+    mathint spent = -transferBalanceChange[token][e.msg.sender];
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
     assert token == loanToken => spent == boughtAssets + repaidAssets + fees;
     assert token != loanToken => spent == 0 && fees == 0;
@@ -139,22 +131,17 @@ rule supplyCollateralAndSellWithUnitsTargetDoesntLoseTokens(env e, Utils.Market 
     require currentContract == 13, "ack";
     require e.msg.sender == 14, "ack";
 
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     soldAssets = 0;
     withdrawnAssets = 0;
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    mathint suppliedBefore = suppliedCollateral[token];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
-    uint256 receiverBalanceBefore = tokenBalance[token][receiver];
+    require suppliedCollateral[token] == 0, "only count operations of the interaction";
     midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(e, market, targetUnits, minSellerAssets, reduceOnly, receiver, collateralSupplies, offerFills, referralFeePct, referralFeeRecipient, deadline, wrappedNative);
-    uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
-    uint256 receiverBalanceAfter = tokenBalance[token][receiver];
-    uint256 feeBalanceAfter = tokenBalance[token][referralFeeRecipient];
 
-    mathint received = receiverBalanceAfter - receiverBalanceBefore;
-    mathint fees = feeBalanceAfter - feeBalanceBefore;
+    mathint received = transferBalanceChange[token][receiver];
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
-    mathint spent = senderBalanceBefore - senderBalanceAfter;
-    mathint supplied = suppliedCollateral[token] - suppliedBefore;
+    mathint spent = -transferBalanceChange[token][e.msg.sender];
+    mathint supplied = suppliedCollateral[token];
 
     assert token == loanToken => received == soldAssets + withdrawnAssets - fees;
     assert token != loanToken => received == 0 && fees == 0;
@@ -171,22 +158,17 @@ rule supplyCollateralAndSellWithAssetsTargetDoesntLoseTokens(env e, Utils.Market
     require currentContract == 13, "ack";
     require e.msg.sender == 14, "ack";
 
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     soldAssets = 0;
     withdrawnAssets = 0;
-    uint256 feeBalanceBefore = tokenBalance[token][referralFeeRecipient];
-    mathint suppliedBefore = suppliedCollateral[token];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
-    uint256 receiverBalanceBefore = tokenBalance[token][receiver];
+    require suppliedCollateral[token] == 0, "only count operations of the interaction";
     midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(e, market, targetSellerAssets, maxUnits, reduceOnly, receiver, collateralSupplies, offerFills, referralFeePct, referralFeeRecipient, deadline, wrappedNative);
-    uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
-    uint256 receiverBalanceAfter = tokenBalance[token][receiver];
-    uint256 feeBalanceAfter = tokenBalance[token][referralFeeRecipient];
 
-    mathint received = receiverBalanceAfter - receiverBalanceBefore;
-    mathint fees = feeBalanceAfter - feeBalanceBefore;
+    mathint received = transferBalanceChange[token][receiver];
+    mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
-    mathint spent = senderBalanceBefore - senderBalanceAfter;
-    mathint supplied = suppliedCollateral[token] - suppliedBefore;
+    mathint spent = -transferBalanceChange[token][e.msg.sender];
+    mathint supplied = suppliedCollateral[token];
 
     assert token == loanToken => received == soldAssets + withdrawnAssets - fees;
     assert token != loanToken => received == 0 && fees == 0;
@@ -201,14 +183,13 @@ rule cancelAndMakeDoesntLoseTokens(env e, MidnightBundlesV2.MarketParams blueMar
     require e.msg.sender == 11, "ack";
     require currentContract == 13, "ack";
 
+    require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     parkedAssets = 0;
-    mathint suppliedBefore = suppliedCollateral[token];
-    uint256 senderBalanceBefore = tokenBalance[token][e.msg.sender];
+    require suppliedCollateral[token] == 0, "only count operations of the interaction";
     midnightBundlesV2CancelAndMake(e, blueMarket, assetsToPark, callbackSalt, market, collateralSupplies, ratifier, newRoot, signatureHeight, signatureNonce, signatureDeadline, v, r, s, groupsToCancel, payload, deadline, wrappedNative);
-    uint256 senderBalanceAfter = tokenBalance[token][e.msg.sender];
 
-    mathint spent = senderBalanceBefore - senderBalanceAfter;
-    mathint supplied = suppliedCollateral[token] - suppliedBefore;
+    mathint spent = -transferBalanceChange[token][e.msg.sender];
+    mathint supplied = suppliedCollateral[token];
 
     assert token == loanToken => spent == parkedAssets + supplied;
     assert token != loanToken => spent == supplied;
