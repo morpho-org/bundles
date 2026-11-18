@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {TokenLib} from "../libraries/TokenLib.sol";
+import {TokenLib, Permit} from "../libraries/TokenLib.sol";
 import {SafeTransferLib} from "../../lib/midnight/src/libraries/SafeTransferLib.sol";
 import {IMidnight, Market} from "../../lib/midnight/src/interfaces/IMidnight.sol";
 import {IMorpho} from "../../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -29,6 +29,7 @@ contract MidnightVaultExitBundlesV1 is IMorphoFlashLoanCallback {
     error AdapterNotPartOfVault();
     error MidnightMismatch();
     error LoanAssetMismatch();
+    error InsufficientMarketCredit();
     error UnauthorizedCallback();
     error ZeroSeed();
 
@@ -41,15 +42,20 @@ contract MidnightVaultExitBundlesV1 is IMorphoFlashLoanCallback {
         MORPHO = morpho;
     }
 
-    /// @dev Buys exactly assets units of credit; pending Midnight fees can reduce its net value.
-    /// @dev maxSeed == 0 uses available Blue liquidity, capped at the full exit's principal plus settlement fee.
+    /// @dev Buys exactly exitAssets units of credit across marketList; pending Midnight fees can reduce their net value.
+    /// @dev Passing a superset of the adapter's market list makes the call immune to vault allocation changes.
+    /// @dev Markets with no adapter credit are skipped, so timelocked additions can be anticipated before inclusion.
+    /// @dev Requires enough vault-share allowance, beforehand or through sharesPermit, for each penalty and withdrawal.
+    /// @dev The allowance/permit value can bound the maximum shares burned.
+    /// @dev maxSeed == 0 uses available Blue liquidity, capped at the full exit's principal plus settlement fees.
     /// @dev A smaller seed increases round count, gas, and per-round fee/penalty rounding. The seed must fund at least one unit plus its fee.
     function midnightVaultExitBundlesV1InKindRedemptionVaultV2(
         address vault,
         address adapter,
-        Market memory market,
-        uint256 assets,
+        Market[] memory marketList,
+        uint256 exitAssets,
         uint256 maxSeed,
+        Permit memory sharesPermit,
         uint256 deadline
     ) external {
         require(initiator == address(0), AlreadyInitiated());
@@ -57,46 +63,77 @@ contract MidnightVaultExitBundlesV1 is IMorphoFlashLoanCallback {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(IVaultV2(vault).isAdapter(adapter), AdapterNotPartOfVault());
         require(IMidnightAdapter(adapter).midnight() == MIDNIGHT, MidnightMismatch());
-        require(market.loanToken == IVaultV2(vault).asset(), LoanAssetMismatch());
 
-        uint256 fee = assets.mulDivUp(
-            IMidnight(MIDNIGHT).settlementFee(IdLib.toId(market), market.maturity.zeroFloorSub(block.timestamp)), 1e18
-        );
-        uint256 seed = assets + fee;
-        uint256 liquidity = IERC20(market.loanToken).balanceOf(MORPHO);
+        TokenLib.submitPermit(vault, sharesPermit);
+
+        address asset = IVaultV2(vault).asset();
+        uint256 remaining = exitAssets;
+        uint256 fees;
+        for (uint256 i; remaining > 0 && i < marketList.length; i++) {
+            Market memory market = marketList[i];
+            require(market.loanToken == asset, LoanAssetMismatch());
+            bytes32 marketId = IdLib.toId(market);
+            (uint128 credit, uint128 pendingFee,) = IMidnight(MIDNIGHT).updatePositionView(market, marketId, adapter);
+            uint256 marketAssets = uint256(credit) - pendingFee;
+            if (marketAssets == 0) continue;
+            uint256 assets = remaining < marketAssets ? remaining : marketAssets;
+            fees += assets.mulDivUp(
+                IMidnight(MIDNIGHT).settlementFee(marketId, market.maturity.zeroFloorSub(block.timestamp)), 1e18
+            );
+            remaining -= assets;
+        }
+        require(remaining == 0, InsufficientMarketCredit());
+
+        uint256 seed = exitAssets + fees;
+        uint256 liquidity = IERC20(asset).balanceOf(MORPHO);
         if (seed > liquidity) seed = liquidity;
         if (maxSeed != 0 && seed > maxSeed) seed = maxSeed;
         require(seed > 0, ZeroSeed());
         // forge-lint: disable-next-item(reentrancy-no-eth) initiator locks entry until the flash loan is repaid.
-        IMorpho(MORPHO).flashLoan(market.loanToken, seed, abi.encode(vault, adapter, market, assets));
-        TokenLib.safeApprove(market.loanToken, MORPHO, 0);
+        IMorpho(MORPHO).flashLoan(asset, seed, abi.encode(vault, adapter, marketList, exitAssets));
+        TokenLib.safeApprove(asset, MORPHO, 0);
         initiator = address(0);
     }
 
     function onMorphoFlashLoan(uint256 seed, bytes calldata data) external {
         require(msg.sender == MORPHO && initiator != address(0), UnauthorizedCallback());
-        (address vault, address adapter, Market memory market, uint256 assets) =
-            abi.decode(data, (address, address, Market, uint256));
-        uint256 feeRate =
-            IMidnight(MIDNIGHT).settlementFee(IdLib.toId(market), market.maturity.zeroFloorSub(block.timestamp));
-        uint256 maxChunk = seed.mulDivDown(1e18, 1e18 + feeRate);
-        require(maxChunk > 0, ZeroSeed());
-        TokenLib.forceApproveMax(market.loanToken, adapter);
-        uint256 remaining = assets;
-        while (remaining > 0) {
-            uint256 chunk = remaining < maxChunk ? remaining : maxChunk;
-            uint256 fee = chunk.mulDivUp(feeRate, 1e18);
-            IVaultV2(vault).forceDeallocate(adapter, abi.encode(market, initiator), chunk, initiator);
-            uint256 funding = chunk + fee;
-            uint256 idle = IERC20(market.loanToken).balanceOf(vault);
-            uint256 withdrawn = funding < idle ? funding : idle;
-            IVaultV2(vault).withdraw(withdrawn, address(this), initiator);
-            if (funding > withdrawn) {
-                SafeTransferLib.safeTransferFrom(market.loanToken, initiator, address(this), funding - withdrawn);
+        (address vault, address adapter, Market[] memory marketList, uint256 exitAssets) =
+            abi.decode(data, (address, address, Market[], uint256));
+        address asset = IVaultV2(vault).asset();
+        TokenLib.forceApproveMax(asset, adapter);
+
+        uint256 remaining = exitAssets;
+        for (uint256 i; remaining > 0 && i < marketList.length; i++) {
+            Market memory market = marketList[i];
+            require(market.loanToken == asset, LoanAssetMismatch());
+            bytes32 marketId = IdLib.toId(market);
+            (uint128 credit, uint128 pendingFee,) = IMidnight(MIDNIGHT).updatePositionView(market, marketId, adapter);
+            uint256 marketAssets = uint256(credit) - pendingFee;
+            if (marketAssets == 0) continue;
+            if (marketAssets > remaining) marketAssets = remaining;
+
+            uint256 feeRate = IMidnight(MIDNIGHT).settlementFee(marketId, market.maturity.zeroFloorSub(block.timestamp));
+            uint256 maxChunk = seed.mulDivDown(1e18, 1e18 + feeRate);
+            require(maxChunk > 0, ZeroSeed());
+
+            while (marketAssets > 0) {
+                uint256 chunk = marketAssets < maxChunk ? marketAssets : maxChunk;
+                uint256 fee = chunk.mulDivUp(feeRate, 1e18);
+                IVaultV2(vault).forceDeallocate(adapter, abi.encode(market, initiator), chunk, initiator);
+                uint256 funding = chunk + fee;
+                uint256 idle = IERC20(asset).balanceOf(vault);
+                uint256 withdrawn = funding < idle ? funding : idle;
+                IVaultV2(vault).withdraw(withdrawn, address(this), initiator);
+                if (funding > withdrawn) {
+                    SafeTransferLib.safeTransferFrom(asset, initiator, address(this), funding - withdrawn);
+                }
+                marketAssets -= chunk;
+                remaining -= chunk;
             }
-            remaining -= chunk;
         }
-        TokenLib.safeApprove(market.loanToken, adapter, 0);
-        TokenLib.safeApprove(market.loanToken, MORPHO, seed);
+        require(remaining == 0, InsufficientMarketCredit());
+
+        TokenLib.safeApprove(asset, adapter, 0);
+        TokenLib.safeApprove(asset, MORPHO, seed);
     }
 }

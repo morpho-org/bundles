@@ -5,6 +5,7 @@ pragma solidity 0.8.34;
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {Vm} from "../lib/forge-std/src/Vm.sol";
 import {MidnightVaultExitBundlesV1} from "../src/vault-exit/MidnightVaultExitBundlesV1.sol";
+import {Permit} from "../src/libraries/TokenLib.sol";
 import {IMorpho} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IMidnightAdapter, IMidnightAdapterBase} from "../lib/vault-v2/src/adapters/interfaces/IMidnightAdapter.sol";
@@ -26,6 +27,11 @@ import {
 } from "../lib/vault-v2/src/periphery/gates/interfaces/IVaultV2CompatibleEnterGate.sol";
 import {IWhitelistEnterSubGate} from "../lib/vault-v2/src/periphery/gates/interfaces/IWhitelistEnterSubGate.sol";
 
+interface IERC20PermitVault {
+    function nonces(address) external view returns (uint256);
+    function DOMAIN_SEPARATOR() external view returns (bytes32);
+}
+
 contract MidnightVaultExitBundlesTest is Test {
     using MathLib for uint256;
 
@@ -42,6 +48,8 @@ contract MidnightVaultExitBundlesTest is Test {
     uint256 internal constant RATE = 0.00001e18;
     uint256 internal constant FEE = ASSETS * RATE / 1e18;
     uint256 internal constant PENALTY = 0.02e18;
+    bytes32 internal constant PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
     function setUp() public virtual {
         setUpMarket(false);
@@ -152,9 +160,72 @@ contract MidnightVaultExitBundlesTest is Test {
         }
     }
 
+    function singleton(Market memory market_) internal pure returns (Market[] memory markets) {
+        markets = new Market[](1);
+        markets[0] = market_;
+    }
+
+    function noPermit() internal pure returns (Permit memory) {}
+
+    function signSharesPermit(uint256 privateKey, address owner, uint256 value) internal view returns (Permit memory) {
+        uint256 nonce = IERC20PermitVault(address(vault)).nonces(owner);
+        bytes32 structHash =
+            keccak256(abi.encode(PERMIT_TYPEHASH, owner, address(bundle), value, nonce, block.timestamp));
+        bytes32 digest =
+            keccak256(abi.encodePacked("\x19\x01", IERC20PermitVault(address(vault)).DOMAIN_SEPARATOR(), structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+        return Permit({value: value, nonce: nonce, deadline: block.timestamp, v: v, r: r, s: s});
+    }
+
+    function addMarket(uint256 assets) internal returns (Market memory otherMarket) {
+        ERC20 collateral = new ERC20("Other collateral", "OCOL");
+        CollateralParams[] memory collaterals = new CollateralParams[](1);
+        collaterals[0] = CollateralParams(address(collateral), 1e18, 0.25e18, address(new Oracle()));
+        otherMarket = Market(
+            block.chainid,
+            address(midnight),
+            address(usdc),
+            collaterals,
+            block.timestamp + 8 days,
+            0,
+            address(0),
+            address(0)
+        );
+        bytes[] memory ids = new bytes[](2);
+        ids[0] =
+            abi.encode("family", otherMarket.collateralParams, otherMarket.rcfThreshold, otherMarket.liquidatorGate);
+        ids[1] = abi.encode("collateralToken", address(collateral));
+        for (uint256 i; i < ids.length; i++) {
+            configureVault(abi.encodeCall(IVaultV2.increaseAbsoluteCap, (ids[i], type(uint128).max)));
+            configureVault(abi.encodeCall(IVaultV2.increaseRelativeCap, (ids[i], 1e18)));
+        }
+        deal(address(usdc), address(this), usdc.balanceOf(address(this)) + assets);
+        vault.deposit(assets, address(this));
+        address borrower = makeAddr("other borrower");
+        deal(address(collateral), borrower, assets);
+        vm.startPrank(borrower);
+        collateral.approve(address(midnight), type(uint256).max);
+        midnight.supplyCollateral(otherMarket, 0, assets, borrower);
+        Offer memory offer;
+        offer.market = otherMarket;
+        offer.maker = borrower;
+        offer.receiverIfMakerIsSeller = borrower;
+        offer.expiry = type(uint256).max;
+        offer.tick = MAX_TICK;
+        offer.maxUnits = uint128(assets);
+        offer.continuousFeeCap = type(uint256).max;
+        offer.ratifier = address(new DummyRatifier());
+        midnight.setIsAuthorized(offer.ratifier, true, borrower);
+        vm.stopPrank();
+        adapter.take(abi.decode(abi.encode(offer), (AdapterOffer)), "", assets, abi.encode(address(0), bytes("")));
+        for (uint256 i; i < 7; i++) {
+            midnight.setMarketSettlementFee(IdLib.toId(otherMarket), i, RATE);
+        }
+    }
+
     function exit(uint256 assets, uint256 maxSeed) internal {
         bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(adapter), market, assets, maxSeed, block.timestamp
+            address(vault), address(adapter), singleton(market), assets, maxSeed, noPermit(), block.timestamp
         );
     }
 
@@ -199,7 +270,8 @@ contract MidnightVaultExitBundlesTest is Test {
         vm.expectCall(
             address(morpho),
             abi.encodeCall(
-                morpho.flashLoan, (address(usdc), seed, abi.encode(address(vault), address(adapter), market, assets))
+                morpho.flashLoan,
+                (address(usdc), seed, abi.encode(address(vault), address(adapter), singleton(market), assets))
             ),
             1
         );
@@ -251,6 +323,70 @@ contract MidnightVaultExitBundlesTest is Test {
         checkExit(ASSETS, ASSETS / 2);
     }
 
+    function testMarketListSkipsEmptyMarketAndUsesMultipleMarkets() public {
+        Market memory otherMarket = addMarket(ASSETS / 2);
+        Market memory emptyMarket = abi.decode(abi.encode(otherMarket), (Market));
+        emptyMarket.maturity += 1 days;
+        Market[] memory markets = new Market[](3);
+        markets[0] = emptyMarket;
+        markets[1] = otherMarket;
+        markets[2] = market;
+
+        bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), markets, ASSETS, 0, noPermit(), block.timestamp
+        );
+
+        assertEq(midnight.credit(IdLib.toId(emptyMarket), address(this)), 0, "empty market skipped");
+        assertEq(midnight.credit(IdLib.toId(otherMarket), address(this)), ASSETS / 2, "other market credit");
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), ASSETS / 2, "first market credit");
+    }
+
+    function testInsufficientMarketCredit() public {
+        vm.expectRevert(MidnightVaultExitBundlesV1.InsufficientMarketCredit.selector);
+        exit(DEPOSIT + 1, 0);
+    }
+
+    function testSharesPermit() public {
+        (address user, uint256 privateKey) = makeAddrAndKey("permit user");
+        uint256 shares = vault.balanceOf(address(this));
+        vault.transfer(user, shares);
+        deal(address(usdc), user, 2 * FEE);
+        vm.startPrank(user);
+        midnight.setIsAuthorized(address(adapter), true, user);
+        midnight.setIsAuthorized(address(bundle), true, user);
+        usdc.approve(address(bundle), type(uint256).max);
+        vm.stopPrank();
+
+        Permit memory permit = signSharesPermit(privateKey, user, shares);
+        vm.prank(user);
+        bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), singleton(market), ASSETS, 0, permit, block.timestamp
+        );
+
+        assertEq(midnight.credit(IdLib.toId(market), user), ASSETS, "user credit");
+        assertGt(vault.allowance(user, address(bundle)), 0, "permit submitted");
+    }
+
+    function testSharesPermitBoundsBurnedShares() public {
+        (address user, uint256 privateKey) = makeAddrAndKey("limited permit user");
+        vault.transfer(user, vault.balanceOf(address(this)));
+        deal(address(usdc), user, 2 * FEE);
+        vm.startPrank(user);
+        midnight.setIsAuthorized(address(adapter), true, user);
+        midnight.setIsAuthorized(address(bundle), true, user);
+        usdc.approve(address(bundle), type(uint256).max);
+        vm.stopPrank();
+
+        Permit memory permit = signSharesPermit(privateKey, user, 1);
+        vm.prank(user);
+        vm.expectRevert();
+        bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
+            address(vault), address(adapter), singleton(market), ASSETS, 0, permit, block.timestamp
+        );
+
+        assertEq(midnight.credit(IdLib.toId(market), user), 0, "atomic exit");
+    }
+
     function testFeesCoveredByIdle() public {
         vault.deposit(2 * FEE, address(this));
         usdc.approve(address(bundle), 0);
@@ -281,7 +417,7 @@ contract MidnightVaultExitBundlesTest is Test {
     function testDeadlinePassed() public {
         vm.expectRevert(MidnightVaultExitBundlesV1.DeadlinePassed.selector);
         bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(adapter), market, ASSETS, 0, block.timestamp - 1
+            address(vault), address(adapter), singleton(market), ASSETS, 0, noPermit(), block.timestamp - 1
         );
     }
 
@@ -317,7 +453,7 @@ contract MidnightVaultExitBundlesTest is Test {
     function testAdapterNotPartOfVault() public {
         vm.expectRevert(MidnightVaultExitBundlesV1.AdapterNotPartOfVault.selector);
         bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(1), market, ASSETS, 0, block.timestamp
+            address(vault), address(1), singleton(market), ASSETS, 0, noPermit(), block.timestamp
         );
     }
 
@@ -354,7 +490,7 @@ contract MidnightVaultExitBundlesTest is Test {
         recordExitGas(
             abi.encodeCall(
                 MidnightVaultExitBundlesV1.midnightVaultExitBundlesV1InKindRedemptionVaultV2,
-                (address(vault), address(adapter), market, ASSETS, seed, block.timestamp)
+                (address(vault), address(adapter), singleton(market), ASSETS, seed, noPermit(), block.timestamp)
             )
         );
     }
