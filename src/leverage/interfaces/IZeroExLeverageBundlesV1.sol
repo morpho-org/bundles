@@ -8,6 +8,7 @@ import {PublicAllocations} from "../../blue/interfaces/IBlueBundlesV1.sol";
 interface IZeroExLeverageBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
+    error ExcessiveInput();
     error InconsistentTokens();
     error InsufficientOutput();
     error LtvExceeded();

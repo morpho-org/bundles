@@ -27,7 +27,7 @@ import {IBluePublicAllocator} from "../blue/interfaces/IBluePublicAllocator.sol"
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
-/// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder; neither the Settler nor its calldata is validated, so each swap is bounded only by the approval of the input cap and the balance-delta check on the output floor.
+/// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder; neither the Settler nor its calldata is validated, so each swap is bounded only by the input cap (approval and balance-delta check) and the output floor (balance-delta check).
 /// @dev The swap can make arbitrary calls, so entrypoints stay locked through Blue's callbacks.
 contract ZeroExLeverageBundlesV1 is
     IZeroExLeverageBundlesV1,
@@ -368,7 +368,7 @@ contract ZeroExLeverageBundlesV1 is
         }
     }
 
-    /// @dev Approves AllowanceHolder for at most maxIn, which caps the input whatever amount the quote encodes.
+    /// @dev Approves AllowanceHolder for at most maxIn, and checks the balance deltas against maxIn and minOut.
     function swap(address tokenIn, address tokenOut, uint256 maxIn, uint256 minOut, bytes memory swapData)
         internal
         returns (uint256 spent, uint256 received)
@@ -387,6 +387,7 @@ contract ZeroExLeverageBundlesV1 is
 
         uint256 inAfter = IERC20(tokenIn).balanceOf(address(this));
         spent = inBefore - inAfter;
+        require(spent <= maxIn, ExcessiveInput());
 
         uint256 outAfter = IERC20(tokenOut).balanceOf(address(this));
         received = outAfter - outBefore;
