@@ -312,6 +312,7 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     /// @dev Repays sender's debt with the surplus of loan assets, and sends what is left above the debt to sender.
+    /// @dev Assumes interest is already accrued in this block.
     function repaySurplus(MarketParams memory marketParams, address sender, uint256 surplus) internal {
         if (surplus > 0) {
             uint256 borrowShares = IMorpho(BLUE).position(marketParams.id(), sender).borrowShares;
