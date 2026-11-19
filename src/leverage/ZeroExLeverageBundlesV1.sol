@@ -151,14 +151,16 @@ contract ZeroExLeverageBundlesV1 is
         requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
-    /// @dev Repays all of msg.sender's borrow shares; in Blue's callback, withdraws all collateral and buys the debt through 0x, spending at most maxCollateralIn.
+    /// @dev Repays all of msg.sender's borrow shares; in Blue's callback, withdraws all collateral and buys at least max(minLoanOut, debt) through 0x, spending at most maxCollateralIn.
     /// @dev swapData is expected to be a 0x BUY quote with buyAmount = debt plus a buffer for the interest accrued until execution, and maxSellAmount <= maxCollateralIn.
+    /// @dev minLoanOut includes the loan assets used to repay the debt.
     /// @dev The unsold collateral and the loan assets received above the debt are sent to msg.sender.
     /// @dev Without debt, withdraws all collateral to msg.sender and ignores swapData.
     /// @dev The msg.sender must have authorized this contract on Blue.
     function zeroExLeverageBundlesV1CloseExactOut(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,
+        uint256 minLoanOut,
         bytes calldata swapData,
         uint256 deadline
     ) external nonReentrant {
@@ -180,7 +182,7 @@ contract ZeroExLeverageBundlesV1 is
                     abi.encode(
                         this.zeroExLeverageBundlesV1CloseExactOut.selector,
                         msg.sender,
-                        abi.encode(marketParams, position.collateral, maxCollateralIn, swapData)
+                        abi.encode(marketParams, position.collateral, maxCollateralIn, minLoanOut, swapData)
                     )
                 );
         }
@@ -359,12 +361,18 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     function executeCloseExactOut(uint256 assets, address sender, bytes memory operationData) internal {
-        (MarketParams memory marketParams, uint256 collateral, uint256 maxCollateralIn, bytes memory swapData) =
-            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
+        (
+            MarketParams memory marketParams,
+            uint256 collateral,
+            uint256 maxCollateralIn,
+            uint256 minLoanOut,
+            bytes memory swapData
+        ) = abi.decode(operationData, (MarketParams, uint256, uint256, uint256, bytes));
 
+        uint256 minOut = minLoanOut > assets ? minLoanOut : assets;
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, sender, address(this));
         (uint256 spent, uint256 received) =
-            swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, assets, swapData);
+            swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, minOut, swapData);
 
         if (collateral > spent) {
             SafeTransferLib.safeTransfer(marketParams.collateralToken, sender, collateral - spent);

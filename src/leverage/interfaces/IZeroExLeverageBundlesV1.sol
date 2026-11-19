@@ -46,6 +46,7 @@ interface IZeroExLeverageBundlesV1 {
     function zeroExLeverageBundlesV1CloseExactOut(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,
+        uint256 minLoanOut,
         bytes calldata swapData,
         uint256 deadline
     ) external;

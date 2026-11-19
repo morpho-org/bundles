@@ -69,7 +69,7 @@ Swaps go through 0x AllowanceHolder (`0x0000000000001fF3684f28c67538d4D072C22734
 
 - Lever: BUY quote with `buyAmount = collateralToBuy` and `maxSellAmount <= loanAssets + maxBorrowAssets` minus the aggregate penalty of the reallocations, which is paid from the borrowed assets.
 - Delever: SELL quote with `sellAmount = collateralToSell` and `minBuyAmount >= minRepayAssets`.
-- CloseExactOut: BUY quote with `buyAmount` = debt plus a buffer for accrued interest and `maxSellAmount <= maxCollateralIn`; the buffer returns as loan assets.
+- CloseExactOut: BUY quote with `buyAmount` = debt plus a buffer for accrued interest, `maxSellAmount <= maxCollateralIn`, and `minLoanOut <= buyAmount`; the buffer returns as loan assets.
 - CloseExactIn: SELL quote with `sellAmount` = the position's collateral and `minBuyAmount >= minLoanOut`, which must cover the debt.
 
 Quotes are not resized on-chain: a stale quote reverts or executes within the entrypoint's input cap and output floor. The Settler and its calldata are not validated, so the approval of the input cap and the balance-delta check on the output floor are the bundle's only swap limits.
