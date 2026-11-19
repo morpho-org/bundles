@@ -65,8 +65,9 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev Pulls collateralAssets and loanAssets from msg.sender, executes the public reallocations and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
     /// @dev The aggregate penalty P of the reallocations is paid to the public allocator upfront from loanAssets, or flash loaned if P > loanAssets and repaid from loanAssets + maxBorrowAssets; at most loanAssets + maxBorrowAssets - P is swapped.
     /// @dev All public reallocations execute unconditionally.
-    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount <= loanAssets + maxBorrowAssets - P.
+    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - P.
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
+    /// @dev If the swap would spend more than loanAssets + maxBorrowAssets - P or buys less than collateralToBuy, the call reverts.
     /// @dev Blue's health check is performed with maxBorrowAssets borrowed, before the surplus is repaid.
     /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
