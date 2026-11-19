@@ -10,6 +10,9 @@ optimizer_runs = 4294967295
 evm_version = "osaka"
 bytecode_hash = "none"
 
+[profile.default.fuzz]
+runs = 2048
+
 [lint]
 exclude_lints = [
     "asm-keccak256",
