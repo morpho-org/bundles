@@ -350,12 +350,17 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).
-    /// @dev Assumes interest is already accrued in this block (lever borrows and delever repays before calling it), then mirrors Blue's health check against maxLtv.
-    function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal view {
+    /// @dev Accrues interest when needed, then mirrors Blue's health check against maxLtv.
+    function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal {
         if (maxLtv != type(uint256).max) {
             Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
             if (position.borrowShares != 0) {
                 Market memory market = IMorpho(BLUE).market(marketParams.id());
+                if (market.lastUpdate != block.timestamp) {
+                    // forge-lint: disable-next-line(reentrancy-no-eth) The helper is only called from locked entrypoints.
+                    IMorpho(BLUE).accrueInterest(marketParams);
+                    market = IMorpho(BLUE).market(marketParams.id());
+                }
                 uint256 borrowed =
                     uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
                 uint256 price = IOracle(marketParams.oracle).price();
