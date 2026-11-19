@@ -45,10 +45,7 @@ jobs:
           version: nightly
 
       - name: Run forge lint
-        run: forge lint src certora --deny notes
-
-      - name: Run forge lint on tests
-        run: forge lint test --deny notes
+        run: forge lint src certora test --deny notes
 
   build:
     name: sizes-and-locked # Required by the main ruleset; update it before renaming.
