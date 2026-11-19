@@ -604,7 +604,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
-    function testLeverFromLoanAssetsPaysPenaltyFromBorrow() public {
+    function testLeverFromLoanAssetsPaysPenaltyWithoutFlashLoan() public {
         setUpIlliquidMarket();
         uint256 loanAssets = 10e18;
         uint256 collateralToBuy = 20e18;
@@ -615,6 +615,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             address(loanToken), address(collateralToken), loanAssets + maxBorrowAssets - penaltyAssets, collateralToBuy
         );
 
+        vm.expectCall(address(morpho), abi.encodeWithSelector(IMorphoBase.flashLoan.selector), 0);
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
