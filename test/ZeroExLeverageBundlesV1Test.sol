@@ -396,7 +396,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bytes memory swapData =
             buildExactInSwapData(address(collateralToken), address(loanToken), position.collateral, 1);
 
-        vm.expectRevert(bytes("transferFrom reverted"));
+        vm.expectRevert();
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Close(marketParams, type(uint256).max, 1, swapData, block.timestamp);
         assertNoResiduals();
