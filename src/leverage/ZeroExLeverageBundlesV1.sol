@@ -319,11 +319,12 @@ contract ZeroExLeverageBundlesV1 is
             Market memory market = IMorpho(BLUE).market(marketParams.id());
             uint256 debt = borrowShares.toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
 
-            if (borrowShares > 0) {
-                if (surplus >= debt) IMorpho(BLUE).repay(marketParams, 0, borrowShares, sender, "");
-                else IMorpho(BLUE).repay(marketParams, surplus, 0, sender, "");
+            if (surplus < debt) {
+                IMorpho(BLUE).repay(marketParams, surplus, 0, sender, "");
+            } else {
+                if (borrowShares > 0) IMorpho(BLUE).repay(marketParams, 0, borrowShares, sender, "");
+                SafeTransferLib.safeTransfer(marketParams.loanToken, sender, surplus - debt);
             }
-            if (surplus > debt) SafeTransferLib.safeTransfer(marketParams.loanToken, sender, surplus - debt);
         }
     }
 
