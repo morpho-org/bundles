@@ -61,7 +61,7 @@ contract ZeroExLeverageBundlesV1 is
     /// ENTRYPOINT ///
 
     /// @dev Pulls collateralAssets and loanAssets from msg.sender, executes the public reallocations and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
-    /// @dev The aggregate penalty P of the reallocations is flash loaned to pay the public allocator upfront, and is repaid from the borrowed assets: at most loanAssets + maxBorrowAssets - P is swapped.
+    /// @dev The aggregate penalty P of the reallocations is flash loaned to pay the public allocator upfront, and is repaid from loanAssets + maxBorrowAssets; at most loanAssets + maxBorrowAssets - P is swapped.
     /// @dev All public reallocations execute unconditionally.
     /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount <= loanAssets + maxBorrowAssets - P.
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
@@ -119,7 +119,7 @@ contract ZeroExLeverageBundlesV1 is
 
     /// @dev Repays minRepayAssets of msg.sender's debt; in Blue's callback, withdraws collateralToSell and sells it through 0x for at least minRepayAssets.
     /// @dev swapData is expected to be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount >= minRepayAssets.
-    /// @dev minRepayAssets must not exceed msg.sender's debt, or else Blue reverts.
+    /// @dev minRepayAssets must be non-zero and must not exceed msg.sender's debt, or else Blue reverts.
     /// @dev Unsold collateral is supplied back; the loan assets received above minRepayAssets repay the remaining debt, and the rest is sent to msg.sender.
     /// @dev Blue's health check on the withdrawal is performed with minRepayAssets repaid, before the surplus is repaid.
     /// @dev The msg.sender must have authorized this contract on Blue.
@@ -152,11 +152,12 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     /// @dev Repays all of msg.sender's borrow shares; in Blue's callback, withdraws all collateral and swaps at most maxCollateralIn of it through 0x for at least minLoanOut.
-    /// @dev To keep the collateral left after the repay, swapData is expected to be a 0x BUY quote with buyAmount = debt plus a buffer for the interest accrued until execution, and maxSellAmount <= maxCollateralIn.
-    /// @dev To exit into loan assets, swapData is expected to be a 0x SELL quote with sellAmount = msg.sender's collateral <= maxCollateralIn and minBuyAmount >= minLoanOut.
+    /// @dev The quote type is not enforced: maxCollateralIn and minLoanOut are expected to be the quote's input cap and output floor.
+    /// @dev To keep the collateral left after the repay, swapData is expected to be a 0x BUY quote with buyAmount = debt plus a buffer for the interest accrued until execution, maxSellAmount <= maxCollateralIn, and buyAmount >= minLoanOut.
+    /// @dev To exit fully into loan assets, swapData is expected to be a 0x SELL quote with sellAmount = msg.sender's collateral <= maxCollateralIn and minBuyAmount >= minLoanOut.
     /// @dev minLoanOut includes the loan assets used to repay the debt; if the swap returns less than the debt, the repayment reverts on Blue.
     /// @dev The unsold collateral and the loan assets received above the debt are sent to msg.sender.
-    /// @dev Without debt, withdraws all collateral to msg.sender and ignores swapData.
+    /// @dev Without debt, withdraws all collateral to msg.sender and ignores maxCollateralIn, minLoanOut and swapData.
     /// @dev The msg.sender must have authorized this contract on Blue.
     function zeroExLeverageBundlesV1Close(
         MarketParams memory marketParams,
@@ -210,7 +211,6 @@ contract ZeroExLeverageBundlesV1 is
         }
     }
 
-    /// @dev The flash loaned assets pay the penalties of the public reallocations, and are repaid from the assets borrowed in the supply collateral callback.
     function onMorphoFlashLoan(uint256, bytes calldata data) external {
         require(msg.sender == BLUE, UnauthorizedCallback());
 
