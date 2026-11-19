@@ -2,7 +2,11 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {IZeroExLeverageBundlesV1} from "./interfaces/IZeroExLeverageBundlesV1.sol";
+import {
+    IZeroExLeverageBundlesV1,
+    PublicAllocations,
+    IBluePublicAllocator
+} from "./interfaces/IZeroExLeverageBundlesV1.sol";
 import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {
     IMorphoFlashLoanCallback,
@@ -18,8 +22,6 @@ import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
-import {PublicAllocations} from "../blue/interfaces/IBlueBundlesV1.sol";
-import {IBluePublicAllocator} from "../blue/interfaces/IBluePublicAllocator.sol";
 
 /// @dev Leverage bundle for Morpho Blue that swaps through 0x AllowanceHolder and Settler, using Blue's callbacks instead of flash loans (a flash loan is only taken to pay the public allocator's penalties when loanAssets doesn't cover them).
 /// @dev Prototype: not audited.
