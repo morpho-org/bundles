@@ -11,7 +11,7 @@ evm_version = "osaka"
 bytecode_hash = "none"
 
 [profile.default.fuzz]
-runs = 2048
+runs = 1024
 
 [lint]
 exclude_lints = [

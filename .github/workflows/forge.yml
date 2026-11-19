@@ -51,7 +51,7 @@ jobs:
         run: forge lint test --deny notes
 
   build:
-    name: sizes-and-locked
+    name: sizes
     permissions:
       contents: read
     runs-on: ubuntu-latest
