@@ -376,8 +376,9 @@ contract ZeroExLeverageBundlesV1 is
         }
         Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
         uint256 borrowed = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+        uint256 price = IOracle(marketParams.oracle).price();
         uint256 maxBorrow = (position.collateral + addedCollateral)
-            .mulDivDown(IOracle(marketParams.oracle).price(), ORACLE_PRICE_SCALE)
+            .mulDivDown(price, ORACLE_PRICE_SCALE)
             .mulDivDown(marketParams.lltv, WAD);
         uint256 margin = uint256(1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
         return maxBorrow.zeroFloorSub(borrowed + margin);
@@ -397,9 +398,9 @@ contract ZeroExLeverageBundlesV1 is
                 }
                 uint256 borrowed =
                     uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
-                uint256 maxBorrow = uint256(position.collateral)
-                    .mulDivDown(IOracle(marketParams.oracle).price(), ORACLE_PRICE_SCALE)
-                    .mulDivDown(maxLtv, WAD);
+                uint256 price = IOracle(marketParams.oracle).price();
+                uint256 maxBorrow =
+                    uint256(position.collateral).mulDivDown(price, ORACLE_PRICE_SCALE).mulDivDown(maxLtv, WAD);
                 require(borrowed <= maxBorrow, LtvExceeded());
             }
         }
