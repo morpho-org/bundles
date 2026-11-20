@@ -277,6 +277,74 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testLeverWithoutBorrow() public {
+        uint256 collateralAssets = 5e18;
+        uint256 loanAssets = 12e18;
+        uint256 collateralToBuy = 10e18;
+        fundUser(address(bundle), collateralAssets);
+        fundUserWithLoanAssets(loanAssets);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), loanAssets, collateralToBuy);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            loanAssets,
+            collateralToBuy,
+            0,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, collateralAssets + collateralToBuy);
+        assertEq(position.borrowShares, 0);
+        assertEq(loanToken.balanceOf(user), loanAssets - collateralToBuy);
+        assertNoResiduals();
+    }
+
+    function testLeverWithoutBorrowRepaysAccruedDebt() public {
+        // Another borrower brings utilization up, so that interest accrues on the user's first position.
+        address whale = makeAddr("whale");
+        deal(address(collateralToken), whale, 1e32);
+        vm.startPrank(whale);
+        safeApprove(collateralToken, address(morpho), 1e32);
+        morpho.supplyCollateral(marketParams, 1e32, whale, "");
+        morpho.borrow(marketParams, 0.5e32, 0, whale, whale);
+        vm.stopPrank();
+
+        openPosition();
+        vm.warp(vm.getBlockTimestamp() + 30 days);
+
+        uint256 loanAssets = 15e18;
+        uint256 collateralToBuy = 1e18;
+        fundUserWithLoanAssets(loanAssets);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), loanAssets, collateralToBuy);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            0,
+            loanAssets,
+            collateralToBuy,
+            0,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            vm.getBlockTimestamp()
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.borrowShares, 0);
+        assertEq(position.collateral, 21e18);
+        // The debt of 10e18 has accrued interest, and what is left of the 14e18 unspent is sent to the user.
+        assertGt(loanToken.balanceOf(user), 3e18);
+        assertLt(loanToken.balanceOf(user), 4e18);
+        assertNoResiduals();
+    }
+
     function testLeverFromBothAssets() public {
         uint256 collateralAssets = 5e18;
         uint256 loanAssets = 5e18;

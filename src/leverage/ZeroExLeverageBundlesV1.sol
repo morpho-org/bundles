@@ -246,7 +246,7 @@ contract ZeroExLeverageBundlesV1 is
 
         uint256 borrowAssets = UtilsLib.min(maxBorrowAssets, maxHealthyBorrow(marketParams, sender));
         maxSwapIn -= maxBorrowAssets - borrowAssets;
-        IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
+        if (borrowAssets > 0) IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
         (uint256 spent, uint256 received) =
             swap(marketParams.loanToken, marketParams.collateralToken, maxSwapIn, collateralToBuy, swapData);
 
@@ -316,11 +316,15 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     /// @dev Repays sender's debt with the surplus of loan assets, and sends what is left above the debt to sender.
-    /// @dev Assumes interest is already accrued in this block.
+    /// @dev Accrues interest when needed.
     function repaySurplus(MarketParams memory marketParams, address sender, uint256 surplus) internal {
         if (surplus > 0) {
             uint256 borrowShares = IMorpho(BLUE).position(marketParams.id(), sender).borrowShares;
             Market memory market = IMorpho(BLUE).market(marketParams.id());
+            if (market.lastUpdate != block.timestamp) {
+                IMorpho(BLUE).accrueInterest(marketParams);
+                market = IMorpho(BLUE).market(marketParams.id());
+            }
             uint256 debt = borrowShares.toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
 
             if (surplus < debt) {
