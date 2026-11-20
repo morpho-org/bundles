@@ -152,7 +152,8 @@ rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams
     assert token == marketParams.loanToken => borrowed == received + penalties + fees;
     assert token == marketParams.collateralToken => sent == supplied;
     assert token != marketParams.loanToken && token != marketParams.collateralToken => received == 0;
-    assert token != marketParams.loanToken => fees == 0;
+    assert token != marketParams.loanToken => borrowed == 0 && penalties == 0 && fees == 0;
+    assert token != marketParams.collateralToken => supplied == 0;
 }
 
 rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint256 repayAssets, uint256 repayShares, uint256 maxRepayAssets, uint256 collateralAssets, uint256 maxLtv, TokenLib.TokenPermit loanTokenPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
@@ -176,7 +177,7 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
 
     assert wrappedAssets[token] == sent;
     assert spent == repaid + unwrapped + fees;
-    assert token != marketParams.loanToken => fees == 0;
+    assert token != marketParams.loanToken => repaid == 0 && unwrapped == 0 && fees == 0;
 }
 
 rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, TokenLib.TokenPermit loanTokenPermit, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
@@ -198,7 +199,7 @@ rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint
 
     assert wrappedAssets[token] == (token == marketParams.loanToken ? e.msg.value : 0);
     assert spent == supplied + fees;
-    assert token != marketParams.loanToken => spent == 0 && fees == 0;
+    assert token != marketParams.loanToken => spent == 0 && supplied == 0 && fees == 0;
 }
 
 rule withdrawDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint256 withdrawAssets, uint256 withdrawShares, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
@@ -219,7 +220,7 @@ rule withdrawDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, ui
     mathint penalties = penaltyAssets[token];
 
     assert withdrawn == received + penalties + fees;
-    assert token != marketParams.loanToken => received == 0 && fees == 0;
+    assert token != marketParams.loanToken => withdrawn == 0 && received == 0 && penalties == 0 && fees == 0;
 }
 
 rule migrateBorrowPositionDoesntLoseTokens(env e, BlueBundlesV1.MarketParams sourceMarketParams, BlueBundlesV1.MarketParams destMarketParams, uint256 maxLtv, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
@@ -242,5 +243,6 @@ rule migrateBorrowPositionDoesntLoseTokens(env e, BlueBundlesV1.MarketParams sou
     assert transferBalanceChange[token][e.msg.sender] == 0;
     assert borrowed == repaid + penalties + fees;
     assert suppliedCollateral[token] == withdrawnCollateral[token];
-    assert token != destMarketParams.loanToken => fees == 0;
+    assert token != destMarketParams.loanToken => borrowed == 0 && repaid == 0 && penalties == 0 && fees == 0;
+    assert token != destMarketParams.collateralToken => suppliedCollateral[token] == 0;
 }
