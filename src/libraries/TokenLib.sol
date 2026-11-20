@@ -67,6 +67,7 @@ library TokenLib {
         } else if (permit.kind == PermitKind.Permit2) {
             (uint256 nonce, uint256 deadline, bytes memory signature) =
                 abi.decode(permit.data, (uint256, uint256, bytes));
+            // forge-lint: disable-next-item(named-struct-fields) ack.
             IPermit2(PERMIT2)
                 .permitTransferFrom(
                     ISignatureTransfer.PermitTransferFrom(
