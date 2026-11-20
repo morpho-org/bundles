@@ -65,7 +65,7 @@ rule inKindRedemptionVaultV1DoesntLoseTokens(env e, address vault, VaultExitBund
 
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since VaultExitBundlesV1 only compares addresses to BLUE, whose balance is not tracked.
     require e.msg.sender == 11, "ack";
-    require currentContract == 13, "ack";
+    require currentContract == 12, "ack";
 
     // Markets of a vault have the vault asset as loan token, as verified by enabledHasConsistentAsset in https://github.com/morpho-org/metamorpho/blob/ae732258e55be466b959705ad2e6bc6c66e1819d/certora/specs/ConsistentState.spec.
     require forall uint256 i. i < marketParamsList.length => marketParamsList[i].loanToken == asset, "vault market";
@@ -85,7 +85,7 @@ rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapt
 
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since VaultExitBundlesV1 only compares addresses to BLUE, whose balance is not tracked.
     require e.msg.sender == 11, "ack";
-    require currentContract == 13, "ack";
+    require currentContract == 12, "ack";
 
     // Markets of the adapter have the vault asset as loan token.
     require forall uint256 i. i < marketParamsList.length => marketParamsList[i].loanToken == asset, "adapter market";
