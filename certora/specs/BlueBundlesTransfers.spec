@@ -72,8 +72,8 @@ function summaryUnwrapNative(uint256 amount) {
 function summarySupply(uint256 assets, uint256 shares) returns (uint256, uint256) {
     assert shares == 0;
     suppliedAssets = suppliedAssets + assets;
-    uint256 shares;
-    return (assets, shares);
+    uint256 suppliedShares;
+    return (assets, suppliedShares);
 }
 
 function summaryWithdraw(uint256 assets) returns (uint256, uint256) {
@@ -87,8 +87,8 @@ function summaryWithdraw(uint256 assets) returns (uint256, uint256) {
 function summaryBorrow(uint256 assets, uint256 shares) returns (uint256, uint256) {
     assert shares == 0;
     borrowedAssets = borrowedAssets + assets;
-    uint256 shares;
-    return (assets, shares);
+    uint256 borrowedShares;
+    return (assets, borrowedShares);
 }
 
 function summaryRepay(address blue, uint256 assets, bytes data) returns (uint256, uint256) {
