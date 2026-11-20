@@ -8,13 +8,13 @@ methods {
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransferFrom(token, currentContract, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
     function _.permitTransferFrom(ISignatureTransfer.PermitTransferFrom permit, ISignatureTransfer.SignatureTransferDetails transferDetails, address owner, bytes signature) external => summarySafeTransferFrom(permit.permitted.token, owner, transferDetails.to, transferDetails.requestedAmount) expect void;
-    function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
 
     // Sound since the asset of a vault is immutable.
     function _.asset() external => assetOf[calledContract] expect(address);
-    function _.deposit(uint256 assets, address) external => summaryDeposit(assets) expect(uint256);
     function _.withdraw(uint256 assets, address, address) external => summaryWithdraw(assets) expect(uint256);
     function _.redeem(uint256, address, address) external => summaryRedeem() expect(uint256);
+    function _.deposit() external with(env e) => summaryWrapNative(e.msg.value) expect void;
+    function _.deposit(uint256 assets, address) external => summaryDeposit(assets) expect(uint256);
 }
 
 /// HELPERS ///
@@ -29,8 +29,7 @@ function summarySafeTransferFrom(address token, address from, address to, uint25
 
 persistent ghost mathint wrappedAssets;
 
-function summaryWrapNative(address token, uint256 value) {
-    transferBalanceChange[token][currentContract] = transferBalanceChange[token][currentContract] + value;
+function summaryWrapNative(uint256 value) {
     wrappedAssets = wrappedAssets + value;
 }
 
@@ -74,10 +73,12 @@ rule depositDoesntLoseTokens(env e, address vault, uint256 assets, uint256 maxSh
     depositedAssets = 0;
     vaultBundlesV1Deposit(e, vault, assets, maxSharePriceE27, assetPermit, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint spent = -transferBalanceChange[token][e.msg.sender];
+    // The native value sent is spent in the vault asset, which it is wrapped into.
+    mathint spent = (token == asset ? e.msg.value : 0) - transferBalanceChange[token][e.msg.sender];
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
-    assert token == asset => spent + wrappedAssets == depositedAssets + fees;
+    assert wrappedAssets == e.msg.value;
+    assert token == asset => spent == depositedAssets + fees;
     assert token != asset => spent == 0 && fees == 0;
 }
 
