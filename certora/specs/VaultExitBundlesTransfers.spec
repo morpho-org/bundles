@@ -67,7 +67,6 @@ rule inKindRedemptionVaultV1DoesntLoseTokens(env e, address vault, VaultExitBund
     require e.msg.sender == 11, "ack";
     require currentContract == 12, "ack";
 
-
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     suppliedAssets = 0;
     withdrawnAssets = 0;
@@ -84,7 +83,6 @@ rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapt
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since VaultExitBundlesV1 only compares addresses to BLUE, whose balance is not tracked.
     require e.msg.sender == 11, "ack";
     require currentContract == 12, "ack";
-
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     suppliedAssets = 0;
