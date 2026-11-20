@@ -11,6 +11,7 @@ methods {
 
     // Sound since the asset of a vault is immutable.
     function _.asset() external => assetOf[calledContract] expect(address);
+
     function _.withdraw(uint256 assets, address, address) external => summaryWithdraw(assets) expect(uint256);
     function _.redeem(uint256, address, address) external => summaryRedeem() expect(uint256);
     function _.deposit() external with(env e) => summaryWrapNative(e.msg.value) expect void;
