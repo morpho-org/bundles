@@ -3,9 +3,11 @@
 pragma solidity ^0.8.34;
 
 import {LeverageTest} from "./helpers/LeverageTest.sol";
+import {stdError} from "../lib/forge-std/src/StdError.sol";
 import {MarketParams, Market, Position} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SharesMathLib} from "../lib/morpho-blue/src/libraries/SharesMathLib.sol";
+import {IOracle} from "../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {IAllowanceHolder} from "./helpers/IAllowanceHolder.sol";
 import {ISettlerTakerSubmitted} from "./helpers/ISettlerTakerSubmitted.sol";
 import {IZeroExLeverageBundlesV1} from "../src/leverage/interfaces/IZeroExLeverageBundlesV1.sol";
@@ -154,6 +156,162 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testLeverCapsBorrowAtHealthyMaximum() public {
+        uint256 collateralAssets = 10e18;
+        uint256 collateralToBuy = 10e18;
+        // Above the 16e18 that keeps 20e18 of collateral healthy at an 80% LLTV.
+        uint256 maxBorrowAssets = 18e18;
+        fundUser(address(bundle), collateralAssets);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 12e18, collateralToBuy);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            0,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, collateralAssets + collateralToBuy);
+        assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy);
+        assertNoResiduals();
+    }
+
+    function testLeverFlashLoansWhatIsNotBorrowed() public {
+        uint256 collateralAssets = 10e18;
+        uint256 collateralToBuy = 10e18;
+        // Above the 16e18 that keeps 20e18 of collateral healthy at an 80% LLTV.
+        uint256 maxBorrowAssets = 18e18;
+        fundUser(address(bundle), collateralAssets);
+        // The quote pulls the full maxBorrowAssets and refunds what it does not spend.
+        bytes memory swapData =
+            buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, collateralToBuy);
+
+        vm.expectCall(address(morpho), abi.encodeWithSelector(IMorphoBase.flashLoan.selector), 1);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            0,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, collateralAssets + collateralToBuy);
+        assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy);
+        assertNoResiduals();
+    }
+
+    function testLeverRevertsWhenSwapSpendsMoreThanHealthyBorrow() public {
+        uint256 collateralAssets = 2e18;
+        uint256 collateralToBuy = 10e18;
+        // 12e18 of collateral only keeps 9.6e18 of debt healthy at an 80% LLTV, less than the 10e18 that the swap spends.
+        uint256 maxBorrowAssets = 18e18;
+        fundUser(address(bundle), collateralAssets);
+        bytes memory swapData =
+            buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, collateralToBuy);
+
+        vm.expectRevert(stdError.arithmeticError);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            0,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+    }
+
+    function testLeverSkipsBorrowWhenHealthyMaximumIsZero() public {
+        // 20e18 of collateral and 10e18 of debt, which is above the 80% LLTV once the price halves.
+        openPosition();
+        oracle.setPrice(0.5e36);
+
+        uint256 loanAssets = 2e18;
+        uint256 collateralToBuy = 1e18;
+        uint256 maxBorrowAssets = 5e18;
+        fundUserWithLoanAssets(loanAssets);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), loanAssets, collateralToBuy);
+
+        vm.expectCall(address(morpho), abi.encodeWithSelector(IMorphoBase.borrow.selector), 0);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            0,
+            loanAssets,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, 21e18);
+        // The 1e18 of loan assets left unswapped repays part of the debt.
+        assertApproxEqAbs(_debt(position, morpho.market(marketParams.id())), 9e18, 2);
+        assertNoResiduals();
+    }
+
+    function testLeverBorrowAtHealthyMaximumStaysHealthy(uint256 collateralAssets, uint256 elapsed, uint256 price)
+        public
+    {
+        collateralAssets = bound(collateralAssets, 1e18, 1e24);
+        elapsed = bound(elapsed, 0, 365 days);
+        // High enough that the first position stays healthy after a year of interest.
+        price = bound(price, 1.5e36, 3e36);
+
+        // Another borrower brings utilization up, so that interest accrues on the user's first position.
+        address whale = makeAddr("whale");
+        deal(address(collateralToken), whale, 1e32);
+        vm.startPrank(whale);
+        safeApprove(collateralToken, address(morpho), 1e32);
+        morpho.supplyCollateral(marketParams, 1e32, whale, "");
+        morpho.borrow(marketParams, 0.5e32, 0, whale, whale);
+        vm.stopPrank();
+
+        openPosition();
+        vm.warp(vm.getBlockTimestamp() + elapsed);
+        oracle.setPrice(price);
+
+        uint256 collateralToBuy = 1e18;
+        deal(address(collateralToken), user, collateralAssets);
+        vm.prank(user);
+        safeApprove(collateralToken, address(bundle), collateralAssets);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 2e18, collateralToBuy);
+
+        // The cap is far above the healthy maximum, so the borrow is exactly the healthy maximum.
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            0,
+            collateralToBuy,
+            1e30,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            vm.getBlockTimestamp()
+        );
+        assertNoResiduals();
+    }
+
     function testLeverFromLoanAssetsExactOutput() public {
         uint256 loanAssets = 10e18;
         uint256 collateralToBuy = 20e18;
@@ -189,6 +347,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         fundUser(address(bundle), collateralAssets);
         fundUserWithLoanAssets(loanAssets);
         bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), loanAssets, collateralToBuy);
+        vm.mockCallRevert(address(oracle), abi.encodeWithSelector(IOracle.price.selector), "oracle down");
 
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
@@ -676,6 +835,56 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy + penaltyAssets - loanAssets);
         assertEq(loanToken.balanceOf(user), 0);
         assertEq(collateralToken.balanceOf(user), 0);
+        assertEq(loanToken.balanceOf(vault), penaltyAssets);
+        assertNoResiduals();
+    }
+
+    function testLeverCappedBorrowWithSmallerPenalty() public {
+        // The flash loan is the penalty of 0.18e18 plus the 2e18 + 1 of maxBorrowAssets above the healthy maximum.
+        _testLeverCappedBorrowWithPenalty(18e18, 18e18, 0.18e18, 2.18e18 + 1);
+    }
+
+    function testLeverCappedBorrowWithLargerPenalty() public {
+        // The flash loan is the penalty of 0.6e18 plus the 0.5e18 + 1 of maxBorrowAssets above the healthy maximum.
+        _testLeverCappedBorrowWithPenalty(16.5e18, 60e18, 0.6e18, 1.1e18 + 1);
+    }
+
+    /// @dev 20e18 of collateral keeps 16e18 - 1 of debt healthy at an 80% LLTV.
+    function _testLeverCappedBorrowWithPenalty(
+        uint256 maxBorrowAssets,
+        uint128 reallocatedAssets,
+        uint256 penaltyAssets,
+        uint256 flashLoanAssets
+    ) internal {
+        setUpIlliquidMarket();
+        uint256 collateralAssets = 10e18;
+        uint256 collateralToBuy = 10e18;
+        fundUser(address(bundle), collateralAssets);
+        bytes memory swapData = buildSwapData(
+            address(loanToken), address(collateralToken), maxBorrowAssets - penaltyAssets, collateralToBuy
+        );
+
+        vm.expectCall(
+            address(morpho),
+            abi.encodeWithSelector(IMorphoBase.flashLoan.selector, address(loanToken), flashLoanAssets),
+            1
+        );
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            0,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            idleReallocation(reallocatedAssets, PENALTY),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, collateralAssets + collateralToBuy);
+        assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy + penaltyAssets);
         assertEq(loanToken.balanceOf(vault), penaltyAssets);
         assertNoResiduals();
     }
