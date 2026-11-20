@@ -62,7 +62,8 @@ contract ZeroExLeverageBundlesV1 is
     /// ENTRYPOINT ///
 
     /// @dev Pulls collateralAssets and loanAssets from msg.sender, executes the public reallocations and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
-    /// @dev The aggregate penalty P of the reallocations is paid to the public allocator upfront from loanAssets, with P - loanAssets flash loaned if P > loanAssets and repaid from maxBorrowAssets; at most loanAssets + maxBorrowAssets - P is swapped.
+    /// @dev penaltyAssets must be the aggregate penalty P of the reallocations, so that it can be verified from the calldata.
+    /// @dev P is paid to the public allocator upfront from loanAssets, with P - loanAssets flash loaned if P > loanAssets and repaid from maxBorrowAssets; at most loanAssets + maxBorrowAssets - P is swapped.
     /// @dev All public reallocations execute unconditionally.
     /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - P.
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
@@ -79,10 +80,12 @@ contract ZeroExLeverageBundlesV1 is
         bytes calldata swapData,
         uint256 maxLtv,
         PublicAllocations[] calldata reallocations,
+        uint256 penaltyAssets,
         uint256 deadline
     ) external nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
         require(collateralToBuy != 0, ZeroCollateralToBuy());
+        require(penaltyAssets == totalPenaltyAssets(reallocations), InconsistentPenaltyAssets());
 
         if (collateralAssets > 0) {
             SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
@@ -93,7 +96,6 @@ contract ZeroExLeverageBundlesV1 is
         TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
-        uint256 penaltyAssets = totalPenaltyAssets(reallocations);
         bytes memory leverData = abi.encode(
             marketParams,
             msg.sender,
