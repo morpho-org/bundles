@@ -365,6 +365,41 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testDeleverRepaysWhatHealthRequires() public {
+        openPositionNearLltv();
+        // Repaying only minRepayAssets before withdrawing 20e18 would leave 22e18 of debt for 27e18 of collateral.
+        uint256 collateralToSell = 20e18;
+        uint256 minRepayAssets = 15e18;
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Delever(
+            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, 27e18);
+        assertApproxEqAbs(_debt(position, morpho.market(marketParams.id())), 17e18, 2);
+        assertNoResiduals();
+    }
+
+    function testDeleverRevertsWhenSwapReturnsLessThanHealthRequires() public {
+        openPositionNearLltv();
+        // 27e18 of collateral keeps 21.6e18 of debt healthy, so 15.4e18 must be repaid: more than the 15.2e18 received.
+        uint256 collateralToSell = 20e18;
+        uint256 minRepayAssets = 15e18;
+        settler.setRate(15.2e18, collateralToSell);
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
+
+        vm.expectRevert(IZeroExLeverageBundlesV1.InsufficientOutput.selector);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Delever(
+            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, block.timestamp
+        );
+    }
+
     function testDeleverEnforcesMaxLtv() public {
         uint256 debt = openPosition();
         uint256 collateralToSell = debt / 2;
@@ -899,6 +934,16 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         safeApprove(loanToken, address(bundle), loanAssets);
         if (!morpho.isAuthorized(user, address(bundle))) morpho.setAuthorization(address(bundle), true);
         vm.stopPrank();
+    }
+
+    /// @dev Opens a position with 47e18 of collateral and 37e18 of debt, close to the 80% LLTV.
+    function openPositionNearLltv() internal {
+        fundUser(address(bundle), 10e18);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 37e18, 37e18);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 10e18, 0, 37e18, 37e18, swapData, type(uint256).max, noReallocations(), block.timestamp
+        );
     }
 
     function openPosition() internal returns (uint256 debt) {
