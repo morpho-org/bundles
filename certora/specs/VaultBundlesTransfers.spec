@@ -5,11 +5,12 @@ methods {
     function TokenLib.forceApproveMax(address token, address spender) internal => NONDET;
 
     // Token modeling.
-    function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
+    function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransferFrom(token, currentContract, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
     function _.permitTransferFrom(ISignatureTransfer.PermitTransferFrom permit, ISignatureTransfer.SignatureTransferDetails transferDetails, address owner, bytes signature) external => summarySafeTransferFrom(permit.permitted.token, owner, transferDetails.to, transferDetails.requestedAmount) expect void;
     function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
 
+    // Sound since the asset of a vault is immutable.
     function _.asset() external => assetOf[calledContract] expect(address);
     function _.deposit(uint256 assets, address) external => summaryDeposit(assets) expect(uint256);
     function _.withdraw(uint256 assets, address, address) external => summaryWithdraw(assets) expect(uint256);
@@ -20,10 +21,6 @@ methods {
 
 // Net amount transferred to each account during the interaction, per token, which is not the token balance.
 persistent ghost mapping(address => mapping(address => mathint)) transferBalanceChange;
-
-function summarySafeTransfer(address token, address to, uint256 amount) {
-    summarySafeTransferFrom(token, currentContract, to, amount);
-}
 
 function summarySafeTransferFrom(address token, address from, address to, uint256 amount) {
     transferBalanceChange[token][from] = transferBalanceChange[token][from] - amount;
@@ -100,7 +97,7 @@ rule withdrawDoesntLoseTokens(env e, address vault, uint256 assets, uint256 shar
     mathint received = transferBalanceChange[token][e.msg.sender];
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
-    assert token == asset => received == withdrawnAssets - fees;
+    assert token == asset => withdrawnAssets == received + fees;
     assert token != asset => received == 0 && fees == 0;
 }
 
