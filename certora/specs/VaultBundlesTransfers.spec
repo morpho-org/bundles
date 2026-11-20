@@ -61,7 +61,6 @@ function summaryRedeem() returns uint256 {
 /// RULES ///
 
 rule depositDoesntLoseTokens(env e, address vault, uint256 assets, uint256 maxSharePriceE27, TokenLib.TokenPermit assetPermit, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
-    address token;
     address asset = assetOf[vault];
 
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since VaultBundlesV1 never compares these addresses.
@@ -75,16 +74,14 @@ rule depositDoesntLoseTokens(env e, address vault, uint256 assets, uint256 maxSh
     vaultBundlesV1Deposit(e, vault, assets, maxSharePriceE27, assetPermit, referralFeePct, referralFeeRecipient, deadline);
 
     // The native value sent is spent in the vault asset, which it is wrapped into.
-    mathint spent = (token == asset ? e.msg.value : 0) - transferBalanceChange[token][e.msg.sender];
-    mathint fees = transferBalanceChange[token][referralFeeRecipient];
+    mathint spent = e.msg.value - transferBalanceChange[asset][e.msg.sender];
+    mathint fees = transferBalanceChange[asset][referralFeeRecipient];
 
     assert wrappedAssets == e.msg.value;
-    assert token == asset => spent == depositedAssets + fees;
-    assert token != asset => spent == 0 && fees == 0;
+    assert spent == depositedAssets + fees;
 }
 
 rule withdrawDoesntLoseTokens(env e, address vault, uint256 assets, uint256 shares, TokenLib.Permit sharesPermit, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
-    address token;
     address asset = assetOf[vault];
 
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since VaultBundlesV1 never compares these addresses.
@@ -96,15 +93,13 @@ rule withdrawDoesntLoseTokens(env e, address vault, uint256 assets, uint256 shar
     withdrawnAssets = 0;
     vaultBundlesV1Withdraw(e, vault, assets, shares, sharesPermit, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint received = transferBalanceChange[token][e.msg.sender];
-    mathint fees = transferBalanceChange[token][referralFeeRecipient];
+    mathint received = transferBalanceChange[asset][e.msg.sender];
+    mathint fees = transferBalanceChange[asset][referralFeeRecipient];
 
-    assert token == asset => withdrawnAssets == received + fees;
-    assert token != asset => received == 0 && fees == 0;
+    assert withdrawnAssets == received + fees;
 }
 
 rule migrateDoesntLoseTokens(env e, address sourceVault, address destVault, uint256 assetsWithdrawn, uint256 sharesRedeemed, uint256 destMaxSharePriceE27, TokenLib.Permit sharesPermit, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
-    address token;
     address asset = assetOf[sourceVault];
 
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since VaultBundlesV1 never compares these addresses.
@@ -117,9 +112,8 @@ rule migrateDoesntLoseTokens(env e, address sourceVault, address destVault, uint
     depositedAssets = 0;
     vaultBundlesV1Migrate(e, sourceVault, destVault, assetsWithdrawn, sharesRedeemed, destMaxSharePriceE27, sharesPermit, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint fees = transferBalanceChange[token][referralFeeRecipient];
+    mathint fees = transferBalanceChange[asset][referralFeeRecipient];
 
-    assert transferBalanceChange[token][e.msg.sender] == 0;
-    assert token == asset => withdrawnAssets == depositedAssets + fees;
-    assert token != asset => fees == 0;
+    assert transferBalanceChange[asset][e.msg.sender] == 0;
+    assert withdrawnAssets == depositedAssets + fees;
 }
