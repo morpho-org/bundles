@@ -21,13 +21,13 @@ methods {
     function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
     function _.withdraw(uint256 amount) external => summaryUnwrapNative(calledContract, amount) expect void;
 
-    // Blue modeling.
+    // Blue modeling, where only callbacks and amounts are modeled, since Blue's transfers are not in the body of the bundle functions.
     function _.supply(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(marketParams.loanToken, assets) expect(uint256, uint256);
-    function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryWithdraw(marketParams.loanToken, assets, receiver) expect(uint256, uint256);
-    function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address receiver) external => summaryBorrow(marketParams.loanToken, assets, receiver) expect(uint256, uint256);
+    function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address) external => summaryWithdraw(marketParams.loanToken, assets) expect(uint256, uint256);
+    function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address) external => summaryBorrow(marketParams.loanToken, assets) expect(uint256, uint256);
     function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(calledContract, marketParams.loanToken, assets, data) expect(uint256, uint256);
     function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(marketParams.collateralToken, assets) expect void;
-    function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address receiver) external => summaryWithdrawCollateral(marketParams.collateralToken, assets, receiver) expect void;
+    function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address) external => summaryWithdrawCollateral(marketParams.collateralToken, assets) expect void;
     function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(calledContract, token, assets, data) expect void;
 }
 
@@ -54,17 +54,9 @@ persistent ghost mapping(address => mathint) withdrawnCollateral;
 
 persistent ghost mapping(address => mathint) flashLoanedAssets;
 
-function increaseBalance(address token, address account, uint256 amount) {
-    transferBalanceChange[token][account] = transferBalanceChange[token][account] + amount;
-}
-
-function decreaseBalance(address token, address account, uint256 amount) {
-    transferBalanceChange[token][account] = transferBalanceChange[token][account] - amount;
-}
-
 function summarySafeTransferFrom(address token, address from, address to, uint256 amount) {
-    decreaseBalance(token, from, amount);
-    increaseBalance(token, to, amount);
+    transferBalanceChange[token][from] = transferBalanceChange[token][from] - amount;
+    transferBalanceChange[token][to] = transferBalanceChange[token][to] + amount;
 }
 
 function summaryWrapNative(address token, uint256 value) {
@@ -72,28 +64,24 @@ function summaryWrapNative(address token, uint256 value) {
 }
 
 function summaryUnwrapNative(address token, uint256 amount) {
-    decreaseBalance(token, currentContract, amount);
     unwrappedAssets[token] = unwrappedAssets[token] + amount;
 }
 
 function summarySupply(address loanToken, uint256 assets) returns (uint256, uint256) {
-    decreaseBalance(loanToken, currentContract, assets);
     suppliedAssets[loanToken] = suppliedAssets[loanToken] + assets;
     uint256 shares;
     return (assets, shares);
 }
 
-function summaryWithdraw(address loanToken, uint256 assets, address receiver) returns (uint256, uint256) {
+function summaryWithdraw(address loanToken, uint256 assets) returns (uint256, uint256) {
     uint256 withdrawn;
     require assets > 0 => withdrawn == assets, "withdraw exact assets";
-    increaseBalance(loanToken, receiver, withdrawn);
     withdrawnAssets[loanToken] = withdrawnAssets[loanToken] + withdrawn;
     uint256 shares;
     return (withdrawn, shares);
 }
 
-function summaryBorrow(address loanToken, uint256 assets, address receiver) returns (uint256, uint256) {
-    increaseBalance(loanToken, receiver, assets);
+function summaryBorrow(address loanToken, uint256 assets) returns (uint256, uint256) {
     borrowedAssets[loanToken] = borrowedAssets[loanToken] + assets;
     uint256 shares;
     return (assets, shares);
@@ -107,28 +95,23 @@ function summaryRepay(address blue, address loanToken, uint256 assets, bytes dat
         require callbackEnv.msg.sender == blue, "Blue calls back";
         onMorphoRepay(callbackEnv, repaid, data);
     }
-    decreaseBalance(loanToken, currentContract, repaid);
     repaidAssets[loanToken] = repaidAssets[loanToken] + repaid;
     uint256 shares;
     return (repaid, shares);
 }
 
 function summarySupplyCollateral(address collateralToken, uint256 assets) {
-    decreaseBalance(collateralToken, currentContract, assets);
     suppliedCollateral[collateralToken] = suppliedCollateral[collateralToken] + assets;
 }
 
-function summaryWithdrawCollateral(address collateralToken, uint256 assets, address receiver) {
-    increaseBalance(collateralToken, receiver, assets);
+function summaryWithdrawCollateral(address collateralToken, uint256 assets) {
     withdrawnCollateral[collateralToken] = withdrawnCollateral[collateralToken] + assets;
 }
 
 function summaryFlashLoan(address blue, address token, uint256 assets, bytes data) {
-    increaseBalance(token, currentContract, assets);
     env callbackEnv;
     require callbackEnv.msg.sender == blue, "Blue calls back";
     onMorphoFlashLoan(callbackEnv, assets, data);
-    decreaseBalance(token, currentContract, assets);
     flashLoanedAssets[token] = flashLoanedAssets[token] + assets;
 }
 
@@ -168,19 +151,18 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
     require currentContract == 13, "ack";
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
-    require wrappedAssets[token] == 0 && unwrappedAssets[token] == 0 && repaidAssets[token] == 0 && withdrawnCollateral[token] == 0, "only count operations of the interaction";
+    require wrappedAssets[token] == 0 && unwrappedAssets[token] == 0 && repaidAssets[token] == 0, "only count operations of the interaction";
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, repayAssets, repayShares, maxRepayAssets, collateralAssets, maxLtv, loanTokenPermit, signedAuthorization, referralFeePct, referralFeeRecipient, deadline);
 
     // The native value sent is spent in the loan token, which it is wrapped into.
     mathint sent = token == marketParams.loanToken ? e.msg.value : 0;
-    mathint received = transferBalanceChange[token][e.msg.sender] - sent;
+    mathint spent = sent - transferBalanceChange[token][e.msg.sender];
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
     mathint unwrapped = unwrappedAssets[token];
     mathint repaid = repaidAssets[token];
-    mathint withdrawn = withdrawnCollateral[token];
 
     assert wrappedAssets[token] == sent;
-    assert withdrawn == received + repaid + unwrapped + fees;
+    assert spent == repaid + unwrapped + fees;
     assert token != marketParams.loanToken => fees == 0;
 }
 
