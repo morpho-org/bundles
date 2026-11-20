@@ -7,14 +7,12 @@ methods {
     // Token modeling.
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
 
-    // Blue modeling, where only callbacks and amounts are modeled, since Blue's transfers are not in the body of the bundle functions.
-    function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(calledContract, assets, data) expect void;
-    function _.supply(VaultExitBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(calledContract, assets, data) expect(uint256, uint256);
-
     // Sound since the asset of a vault is immutable.
     function _.asset() external => assetOf[calledContract] expect(address);
 
-    // Vault modeling, where only amounts are modeled, since the vault's transfers are not in the body of the bundle functions.
+    // Calls accounting for transfers.
+    function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(calledContract, assets, data) expect void;
+    function _.supply(VaultExitBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(calledContract, assets, data) expect(uint256, uint256);
     function _.withdraw(uint256 assets, address, address) external => summaryWithdraw(assets) expect(uint256);
 }
 
