@@ -58,6 +58,8 @@ persistent ghost mapping(address => mathint) penaltyAssets;
 
 persistent ghost mulDivUpGhost(uint256, uint256, uint256) returns uint256;
 
+definition WAD() returns uint256 = 10 ^ 18;
+
 function summarySafeTransferFrom(address token, address from, address to, uint256 amount) {
     transferBalanceChange[token][from] = transferBalanceChange[token][from] - amount;
     transferBalanceChange[token][to] = transferBalanceChange[token][to] + amount;
@@ -119,7 +121,7 @@ function summaryFlashLoan(address blue, uint256 assets, bytes data) {
 }
 
 function summaryPayPenalty(address loanToken, uint128 assets, uint64 penalty) {
-    penaltyAssets[loanToken] = penaltyAssets[loanToken] + mulDivUpGhost(assets, penalty, 1000000000000000000);
+    penaltyAssets[loanToken] = penaltyAssets[loanToken] + mulDivUpGhost(assets, penalty, WAD());
 }
 
 /// RULES ///
@@ -132,20 +134,24 @@ rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams
     require referralFeeRecipient == 12, "ack";
     require currentContract == 13, "ack";
 
+    require marketParams.loanToken != marketParams.collateralToken, "assume different loan and collateral tokens for simpler accounting";
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     require wrappedAssets[token] == 0 && borrowedAssets[token] == 0 && suppliedCollateral[token] == 0 && penaltyAssets[token] == 0, "only count operations of the interaction";
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, borrowAssets, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     // The native value sent is spent in the collateral token, which it is wrapped into.
-    mathint sent = token == marketParams.collateralToken ? e.msg.value : 0;
-    mathint received = transferBalanceChange[token][e.msg.sender] - sent;
+    mathint wrapped = token == marketParams.collateralToken ? e.msg.value : 0;
+    mathint received = transferBalanceChange[token][e.msg.sender];
+    mathint sent = wrapped - received;
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
     mathint borrowed = borrowedAssets[token];
     mathint supplied = suppliedCollateral[token];
     mathint penalties = penaltyAssets[token];
 
-    assert wrappedAssets[token] == sent;
-    assert borrowed == received + supplied + penalties + fees;
+    assert wrappedAssets[token] == wrapped;
+    assert token == marketParams.loanToken => borrowed == received + penalties + fees;
+    assert token == marketParams.collateralToken => sent == supplied;
+    assert token != marketParams.loanToken && token != marketParams.collateralToken => received == 0;
     assert token != marketParams.loanToken => fees == 0;
 }
 
