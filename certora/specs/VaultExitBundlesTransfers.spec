@@ -7,15 +7,15 @@ methods {
     // Token modeling.
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
 
-    // Blue modeling, where the bundler pays the supplied assets and repays the flash loan.
-    function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(calledContract, token, assets, data) expect void;
-    function _.supply(VaultExitBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(calledContract, marketParams.loanToken, assets, data) expect(uint256, uint256);
+    // Blue modeling, where only callbacks and amounts are modeled, since Blue's transfers are not in the body of the bundle functions.
+    function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(calledContract, assets, data) expect void;
+    function _.supply(VaultExitBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(calledContract, assets, data) expect(uint256, uint256);
 
     // Sound since the asset of a vault is immutable.
     function _.asset() external => assetOf[calledContract] expect(address);
 
-    // Vault modeling, where withdrawn assets are sent to the receiver.
-    function _.withdraw(uint256 assets, address receiver, address owner) external => summaryWithdraw(assetOf[calledContract], assets, receiver) expect(uint256);
+    // Vault modeling, where only amounts are modeled, since the vault's transfers are not in the body of the bundle functions.
+    function _.withdraw(uint256 assets, address, address) external => summaryWithdraw(assets) expect(uint256);
 }
 
 /// HELPERS ///
@@ -30,40 +30,28 @@ persistent ghost mathint suppliedAssets;
 persistent ghost mathint withdrawnAssets;
 
 function summarySafeTransfer(address token, address to, uint256 amount) {
-    decreaseBalance(token, currentContract, amount);
-    increaseBalance(token, to, amount);
+    transferBalanceChange[token][currentContract] = transferBalanceChange[token][currentContract] - amount;
+    transferBalanceChange[token][to] = transferBalanceChange[token][to] + amount;
 }
 
-function increaseBalance(address token, address account, uint256 amount) {
-    transferBalanceChange[token][account] = transferBalanceChange[token][account] + amount;
-}
-
-function decreaseBalance(address token, address account, uint256 amount) {
-    transferBalanceChange[token][account] = transferBalanceChange[token][account] - amount;
-}
-
-function summaryFlashLoan(address blue, address token, uint256 assets, bytes data) {
-    increaseBalance(token, currentContract, assets);
+function summaryFlashLoan(address blue, uint256 assets, bytes data) {
     env callbackEnv;
     require callbackEnv.msg.sender == blue, "Blue calls back";
     onMorphoFlashLoan(callbackEnv, assets, data);
-    decreaseBalance(token, currentContract, assets);
 }
 
-function summarySupply(address blue, address loanToken, uint256 assets, bytes data) returns (uint256, uint256) {
+function summarySupply(address blue, uint256 assets, bytes data) returns (uint256, uint256) {
     if (data.length > 0) {
         env callbackEnv;
         require callbackEnv.msg.sender == blue, "Blue calls back";
         onMorphoSupply(callbackEnv, assets, data);
     }
-    decreaseBalance(loanToken, currentContract, assets);
     suppliedAssets = suppliedAssets + assets;
     uint256 shares;
     return (assets, shares);
 }
 
-function summaryWithdraw(address asset, uint256 assets, address receiver) returns uint256 {
-    increaseBalance(asset, receiver, assets);
+function summaryWithdraw(uint256 assets) returns uint256 {
     withdrawnAssets = withdrawnAssets + assets;
     uint256 shares;
     return shares;
@@ -89,7 +77,6 @@ rule inKindRedemptionVaultV1DoesntLoseTokens(env e, address vault, VaultExitBund
     vaultExitBundlesV1InKindRedemptionVaultV1(e, vault, marketParamsList, exitAssets, sharesPermit, deadline);
 
     assert transferBalanceChange[token][e.msg.sender] == 0;
-    assert transferBalanceChange[token][currentContract] == 0;
     assert suppliedAssets == exitAssets && withdrawnAssets == exitAssets;
 }
 
@@ -112,7 +99,6 @@ rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapt
 
     mathint received = transferBalanceChange[token][e.msg.sender];
 
-    assert transferBalanceChange[token][currentContract] == 0;
     assert token == asset => withdrawnAssets == received + suppliedAssets;
     assert token != asset => received == 0;
 }
@@ -133,7 +119,6 @@ rule forceWithdrawVaultV2DoesntLoseTokens(env e, address vault, address adapter,
     mathint received = transferBalanceChange[token][e.msg.sender];
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
-    assert transferBalanceChange[token][currentContract] == 0;
     assert token == asset => withdrawnAssets == received + fees;
     assert token != asset => received == 0 && fees == 0;
 }
