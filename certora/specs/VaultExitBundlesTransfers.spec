@@ -61,7 +61,6 @@ function summaryWithdraw(uint256 assets) returns uint256 {
 
 rule inKindRedemptionVaultV1DoesntLoseTokens(env e, address vault, VaultExitBundlesV1.MarketParams[] marketParamsList, uint256 exitAssets, TokenLib.Permit sharesPermit, uint256 deadline) {
     address token;
-    address asset = assetOf[vault];
 
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since VaultExitBundlesV1 only compares addresses to BLUE, whose balance is not tracked.
     require e.msg.sender == 11, "ack";
