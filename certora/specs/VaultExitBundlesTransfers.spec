@@ -9,7 +9,7 @@ methods {
 
     // Blue modeling, where only callbacks and amounts are modeled, since Blue's transfers are not in the body of the bundle functions.
     function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(calledContract, assets, data) expect void;
-    function _.supply(VaultExitBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(calledContract, assets, data) expect(uint256, uint256);
+    function _.supply(VaultExitBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(calledContract, marketParams.loanToken, assets, data) expect(uint256, uint256);
 
     // Sound since the asset of a vault is immutable.
     function _.asset() external => assetOf[calledContract] expect(address);
@@ -25,7 +25,7 @@ persistent ghost mapping(address => mapping(address => mathint)) transferBalance
 
 persistent ghost mapping(address => address) assetOf;
 
-persistent ghost mathint suppliedAssets;
+persistent ghost mapping(address => mathint) suppliedAssets;
 
 persistent ghost mathint withdrawnAssets;
 
@@ -40,13 +40,13 @@ function summaryFlashLoan(address blue, uint256 assets, bytes data) {
     onMorphoFlashLoan(callbackEnv, assets, data);
 }
 
-function summarySupply(address blue, uint256 assets, bytes data) returns (uint256, uint256) {
+function summarySupply(address blue, address loanToken, uint256 assets, bytes data) returns (uint256, uint256) {
     if (data.length > 0) {
         env callbackEnv;
         require callbackEnv.msg.sender == blue, "Blue calls back";
         onMorphoSupply(callbackEnv, assets, data);
     }
-    suppliedAssets = suppliedAssets + assets;
+    suppliedAssets[loanToken] = suppliedAssets[loanToken] + assets;
     uint256 shares;
     return (assets, shares);
 }
@@ -61,18 +61,21 @@ function summaryWithdraw(uint256 assets) returns uint256 {
 
 rule inKindRedemptionVaultV1DoesntLoseTokens(env e, address vault, VaultExitBundlesV1.MarketParams[] marketParamsList, uint256 exitAssets, TokenLib.Permit sharesPermit, uint256 deadline) {
     address token;
+    address asset = assetOf[vault];
 
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since VaultExitBundlesV1 only compares addresses to BLUE, whose balance is not tracked.
     require e.msg.sender == 11, "ack";
     require currentContract == 12, "ack";
 
+    require forall uint256 i. i < marketParamsList.length => marketParamsList[i].loanToken == asset, "markets of a vault have the vault asset as loan token, as verified by enabledHasConsistentAsset in https://github.com/morpho-org/metamorpho/blob/ae732258e55be466b959705ad2e6bc6c66e1819d/certora/specs/ConsistentState.spec";
+
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
-    suppliedAssets = 0;
+    require forall address t. suppliedAssets[t] == 0, "only count operations of the interaction";
     withdrawnAssets = 0;
     vaultExitBundlesV1InKindRedemptionVaultV1(e, vault, marketParamsList, exitAssets, sharesPermit, deadline);
 
     assert transferBalanceChange[token][e.msg.sender] == 0;
-    assert suppliedAssets == exitAssets && withdrawnAssets == exitAssets;
+    assert suppliedAssets[asset] == exitAssets && withdrawnAssets == exitAssets;
 }
 
 rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapter, VaultExitBundlesV1.MarketParams[] marketParamsList, uint256 exitAssets, TokenLib.Permit sharesPermit, uint256 deadline) {
@@ -83,14 +86,16 @@ rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapt
     require e.msg.sender == 11, "ack";
     require currentContract == 12, "ack";
 
+    require forall uint256 i. i < marketParamsList.length => marketParamsList[i].loanToken == asset, "markets of the adapter have the vault asset as loan token, as checked in https://github.com/morpho-org/vault-v2/blob/2b139002feaf4631f1c63d880380ca2278df7aec/src/adapters/MorphoMarketV1AdapterV2.sol";
+
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
-    suppliedAssets = 0;
+    require forall address t. suppliedAssets[t] == 0, "only count operations of the interaction";
     withdrawnAssets = 0;
     vaultExitBundlesV1InKindRedemptionVaultV2(e, vault, adapter, marketParamsList, exitAssets, sharesPermit, deadline);
 
     mathint received = transferBalanceChange[token][e.msg.sender];
 
-    assert token == asset => withdrawnAssets == received + suppliedAssets;
+    assert token == asset => withdrawnAssets == received + suppliedAssets[asset];
     assert token != asset => received == 0;
 }
 
