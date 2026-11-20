@@ -15,7 +15,7 @@ methods {
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization, BlueBundlesV1.Signature) external => NONDET;
 
     // Token modeling.
-    function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransfer(token, receiver, amount);
+    function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransferFrom(token, currentContract, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
     function _.permitTransferFrom(ISignatureTransfer.PermitTransferFrom permit, ISignatureTransfer.SignatureTransferDetails transferDetails, address owner, bytes signature) external => summarySafeTransferFrom(permit.permitted.token, owner, transferDetails.to, transferDetails.requestedAmount) expect void;
     function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
@@ -60,10 +60,6 @@ function increaseBalance(address token, address account, uint256 amount) {
 
 function decreaseBalance(address token, address account, uint256 amount) {
     transferBalanceChange[token][account] = transferBalanceChange[token][account] - amount;
-}
-
-function summarySafeTransfer(address token, address to, uint256 amount) {
-    summarySafeTransferFrom(token, currentContract, to, amount);
 }
 
 function summarySafeTransferFrom(address token, address from, address to, uint256 amount) {
@@ -158,7 +154,7 @@ rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams
     mathint supplied = suppliedCollateral[token];
     mathint flashLoaned = flashLoanedAssets[token];
 
-    assert received == borrowed - flashLoaned - fees + wrapped - supplied;
+    assert borrowed + wrapped == received + supplied + flashLoaned + fees;
     assert token != marketParams.loanToken => fees == 0;
 }
 
@@ -181,7 +177,7 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
     mathint repaid = repaidAssets[token];
     mathint withdrawn = withdrawnCollateral[token];
 
-    assert received == withdrawn - repaid - fees + wrapped - unwrapped;
+    assert withdrawn + wrapped == received + repaid + unwrapped + fees;
     assert token != marketParams.loanToken => fees == 0;
 }
 
@@ -223,7 +219,7 @@ rule withdrawDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, ui
     mathint withdrawn = withdrawnAssets[token];
     mathint flashLoaned = flashLoanedAssets[token];
 
-    assert received == withdrawn - flashLoaned - fees;
+    assert withdrawn == received + flashLoaned + fees;
     assert token != marketParams.loanToken => received == 0 && fees == 0;
 }
 
@@ -245,7 +241,7 @@ rule migrateBorrowPositionDoesntLoseTokens(env e, BlueBundlesV1.MarketParams sou
     mathint flashLoaned = flashLoanedAssets[token];
 
     assert transferBalanceChange[token][e.msg.sender] == 0;
-    assert fees == borrowed - repaid - flashLoaned;
+    assert borrowed == repaid + flashLoaned + fees;
     assert suppliedCollateral[token] == withdrawnCollateral[token];
     assert token != destMarketParams.loanToken => fees == 0;
 }
