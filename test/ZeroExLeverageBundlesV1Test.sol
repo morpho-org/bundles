@@ -631,22 +631,28 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
     function testLeverAllocatesFromIdleAndPaysPenaltyFromBorrow() public {
         setUpIlliquidMarket();
-        _testLeverWithPenalty(idleReallocation(12e18, PENALTY));
+        _testLeverWithPenalty(idleReallocation(12e18, PENALTY), 0);
     }
 
     function testLeverReallocatesFromMarketAndPaysPenaltyFromBorrow() public {
         setUpIlliquidMarket();
-        _testLeverWithPenalty(marketReallocation(12e18, PENALTY));
+        _testLeverWithPenalty(marketReallocation(12e18, PENALTY), 0);
     }
 
-    function _testLeverWithPenalty(PublicAllocations[] memory reallocations) internal {
+    function testLeverPaysPenaltyFromLoanAssetsAndBorrow() public {
+        setUpIlliquidMarket();
+        _testLeverWithPenalty(idleReallocation(12e18, PENALTY), 0.05e18);
+    }
+
+    function _testLeverWithPenalty(PublicAllocations[] memory reallocations, uint256 loanAssets) internal {
         uint256 collateralAssets = 10e18;
         uint256 collateralToBuy = 10e18;
         uint256 maxBorrowAssets = 12e18;
         uint256 penaltyAssets = 0.12e18;
         fundUser(address(bundle), collateralAssets);
+        fundUserWithLoanAssets(loanAssets);
         bytes memory swapData = buildSwapData(
-            address(loanToken), address(collateralToken), maxBorrowAssets - penaltyAssets, collateralToBuy
+            address(loanToken), address(collateralToken), loanAssets + maxBorrowAssets - penaltyAssets, collateralToBuy
         );
 
         vm.expectCall(
@@ -658,7 +664,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bundle.zeroExLeverageBundlesV1Lever(
             marketParams,
             collateralAssets,
-            0,
+            loanAssets,
             collateralToBuy,
             maxBorrowAssets,
             swapData,
@@ -669,7 +675,9 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
         Position memory position = morpho.position(marketParams.id(), user);
         assertEq(position.collateral, collateralAssets + collateralToBuy);
-        assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy + penaltyAssets);
+        assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy + penaltyAssets - loanAssets);
+        assertEq(loanToken.balanceOf(user), 0);
+        assertEq(collateralToken.balanceOf(user), 0);
         assertEq(loanToken.balanceOf(vault), penaltyAssets);
         assertNoResiduals();
     }
