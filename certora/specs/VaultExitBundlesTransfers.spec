@@ -12,6 +12,7 @@ methods {
     function _.supply(VaultExitBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(calledContract, marketParams.loanToken, assets, data) expect(uint256, uint256);
 
     // Vault modeling, where withdrawn assets are sent to the receiver.
+    // Sound since the asset of a vault is immutable.
     function _.asset() external => assetOf[calledContract] expect(address);
     function _.withdraw(uint256 assets, address receiver, address owner) external => summaryWithdraw(assetOf[calledContract], assets, receiver) expect(uint256);
 }
@@ -111,7 +112,7 @@ rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapt
     mathint received = transferBalanceChange[token][e.msg.sender];
 
     assert transferBalanceChange[token][currentContract] == 0;
-    assert token == asset => received == withdrawnAssets - suppliedAssets;
+    assert token == asset => withdrawnAssets == received + suppliedAssets;
     assert token != asset => received == 0;
 }
 
@@ -132,6 +133,6 @@ rule forceWithdrawVaultV2DoesntLoseTokens(env e, address vault, address adapter,
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
 
     assert transferBalanceChange[token][currentContract] == 0;
-    assert token == asset => received == withdrawnAssets - fees;
+    assert token == asset => withdrawnAssets == received + fees;
     assert token != asset => received == 0 && fees == 0;
 }
