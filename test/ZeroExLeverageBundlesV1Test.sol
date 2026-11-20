@@ -57,6 +57,101 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertEq(bundle.PUBLIC_ALLOCATOR(), address(publicAllocator));
     }
 
+    function testSwapAndSupplyFromBothAssets() public {
+        fundUser(address(bundle), 5e18);
+        fundUserWithLoanAssets(10e18);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 10e18, 10e18);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1SwapAndSupply(marketParams, 5e18, 10e18, 10e18, swapData, block.timestamp);
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, 15e18);
+        assertEq(position.borrowShares, 0);
+        assertEq(collateralToken.balanceOf(user), 0);
+        assertEq(loanToken.balanceOf(user), 0);
+        assertNoResiduals();
+    }
+
+    function testSwapAndSupplyOverdeliveryIsSupplied() public {
+        fundUserWithLoanAssets(10e18);
+        bytes memory swapData = buildExactInSwapData(address(loanToken), address(collateralToken), 10e18, 8e18);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1SwapAndSupply(marketParams, 0, 10e18, 8e18, swapData, block.timestamp);
+
+        assertEq(morpho.position(marketParams.id(), user).collateral, 10e18);
+        assertEq(morpho.position(marketParams.id(), user).borrowShares, 0);
+        assertNoResiduals();
+    }
+
+    function testSwapAndSupplyUnspentLoanReturnedWithoutRepayingDebt() public {
+        openPosition();
+        Position memory beforePosition = morpho.position(marketParams.id(), user);
+        fundUserWithLoanAssets(10e18);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 10e18, 8e18);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1SwapAndSupply(marketParams, 0, 10e18, 8e18, swapData, block.timestamp);
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, beforePosition.collateral + 8e18);
+        assertEq(position.borrowShares, beforePosition.borrowShares);
+        assertEq(loanToken.balanceOf(user), 2e18);
+        assertNoResiduals();
+    }
+
+    function testSwapAndSupplyShortfallReverts() public {
+        fundUser(address(bundle), 5e18);
+        fundUserWithLoanAssets(10e18);
+        bytes memory swapData = buildExactInSwapData(address(loanToken), address(collateralToken), 10e18, 1);
+
+        vm.expectRevert(IZeroExLeverageBundlesV1.InsufficientOutput.selector);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1SwapAndSupply(marketParams, 5e18, 10e18, 11e18, swapData, block.timestamp);
+
+        assertEq(morpho.position(marketParams.id(), user).collateral, 0);
+        assertEq(collateralToken.balanceOf(user), 5e18);
+        assertEq(loanToken.balanceOf(user), 10e18);
+        assertNoResiduals();
+    }
+
+    function testSwapAndSupplyDeadlineReverts() public {
+        vm.warp(100);
+        vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1SwapAndSupply(marketParams, 0, 0, 1, "", block.timestamp - 1);
+        assertNoResiduals();
+    }
+
+    function testSwapAndSupplyRejectsZeroCollateralToBuy() public {
+        vm.expectRevert(IZeroExLeverageBundlesV1.ZeroCollateralToBuy.selector);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1SwapAndSupply(marketParams, 0, 0, 0, "", block.timestamp);
+        assertNoResiduals();
+    }
+
+    function testSwapAndSupplyDoesNotNeedBlueAuthorization() public {
+        deal(address(collateralToken), user, 5e18);
+        deal(address(loanToken), user, 10e18);
+        vm.startPrank(user);
+        safeApprove(collateralToken, address(bundle), 5e18);
+        safeApprove(loanToken, address(bundle), 10e18);
+        vm.stopPrank();
+        assertFalse(morpho.isAuthorized(user, address(bundle)));
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 10e18, 8e18);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1SwapAndSupply(marketParams, 5e18, 10e18, 8e18, swapData, block.timestamp);
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, 13e18);
+        assertEq(position.borrowShares, 0);
+        assertEq(loanToken.balanceOf(user), 2e18);
+        assertFalse(morpho.isAuthorized(user, address(bundle)));
+        assertNoResiduals();
+    }
+
     function testLeverExactOutput() public {
         uint256 collateralAssets = 10e18;
         uint256 collateralToBuy = 10e18;

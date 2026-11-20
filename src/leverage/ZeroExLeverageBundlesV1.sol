@@ -59,6 +59,39 @@ contract ZeroExLeverageBundlesV1 is
 
     /// ENTRYPOINT ///
 
+    /// @dev Pulls collateralAssets and loanAssets from msg.sender, buys collateralToBuy through 0x and supplies collateralAssets plus all collateral received for msg.sender, without borrowing.
+    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets.
+    /// @dev If the swap would spend more than loanAssets or buys less than collateralToBuy, the call reverts.
+    /// @dev The collateral bought above collateralToBuy is supplied for msg.sender; unspent loan assets are sent to msg.sender without repaying debt.
+    /// @dev The msg.sender must have approved this contract for collateralAssets and loanAssets; no Blue authorization is needed.
+    function zeroExLeverageBundlesV1SwapAndSupply(
+        MarketParams memory marketParams,
+        uint256 collateralAssets,
+        uint256 loanAssets,
+        uint256 collateralToBuy,
+        bytes calldata swapData,
+        uint256 deadline
+    ) external nonReentrant {
+        require(block.timestamp <= deadline, DeadlinePassed());
+        require(collateralToBuy != 0, ZeroCollateralToBuy());
+
+        if (collateralAssets > 0) {
+            SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
+        }
+        if (loanAssets > 0) {
+            SafeTransferLib.safeTransferFrom(marketParams.loanToken, msg.sender, address(this), loanAssets);
+        }
+        (uint256 spent, uint256 received) =
+            swap(marketParams.loanToken, marketParams.collateralToken, loanAssets, collateralToBuy, swapData);
+
+        TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
+        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active.
+        IMorpho(BLUE).supplyCollateral(marketParams, collateralAssets + received, msg.sender, "");
+        if (loanAssets > spent) {
+            SafeTransferLib.safeTransfer(marketParams.loanToken, msg.sender, loanAssets - spent);
+        }
+    }
+
     /// @dev Pulls collateralAssets and loanAssets from msg.sender, executes the public reallocations and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
     /// @dev penaltyAssets must be the aggregate penalty P of the reallocations, so that it can be verified from the calldata.
     /// @dev P is paid to the public allocator upfront from loanAssets, with P - loanAssets flash loaned if P > loanAssets and repaid from maxBorrowAssets; at most loanAssets + maxBorrowAssets - P is swapped.
@@ -386,6 +419,7 @@ contract ZeroExLeverageBundlesV1 is
         uint256 outBefore = IERC20(tokenOut).balanceOf(address(this));
 
         TokenLib.safeApprove(tokenIn, ALLOWANCE_HOLDER, maxIn);
+        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the swap.
         (bool success, bytes memory returnData) = ALLOWANCE_HOLDER.call(swapData);
         if (!success) {
             assembly ("memory-safe") {

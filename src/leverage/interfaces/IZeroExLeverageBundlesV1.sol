@@ -23,6 +23,15 @@ interface IZeroExLeverageBundlesV1 {
     function PUBLIC_ALLOCATOR() external view returns (address);
 
     /// FUNCTIONS ///
+    function zeroExLeverageBundlesV1SwapAndSupply(
+        MarketParams memory marketParams,
+        uint256 collateralAssets,
+        uint256 loanAssets,
+        uint256 collateralToBuy,
+        bytes calldata swapData,
+        uint256 deadline
+    ) external;
+
     function zeroExLeverageBundlesV1Lever(
         MarketParams memory marketParams,
         uint256 collateralAssets,
