@@ -14,6 +14,7 @@ methods {
     // Vault modeling, where withdrawn assets are sent to the receiver.
     // Sound since the asset of a vault is immutable.
     function _.asset() external => assetOf[calledContract] expect(address);
+
     function _.withdraw(uint256 assets, address receiver, address owner) external => summaryWithdraw(assetOf[calledContract], assets, receiver) expect(uint256);
 }
 
