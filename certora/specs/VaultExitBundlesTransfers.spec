@@ -76,6 +76,7 @@ rule inKindRedemptionVaultV1DoesntLoseTokens(env e, address vault, VaultExitBund
 
     assert transferBalanceChange[token][e.msg.sender] == 0;
     assert suppliedAssets[asset] == exitAssets && withdrawnAssets == exitAssets;
+    assert token != asset => suppliedAssets[token] == 0;
 }
 
 rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapter, VaultExitBundlesV1.MarketParams[] marketParamsList, uint256 exitAssets, TokenLib.Permit sharesPermit, uint256 deadline) {
@@ -96,7 +97,7 @@ rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapt
     mathint received = transferBalanceChange[token][e.msg.sender];
 
     assert token == asset => withdrawnAssets == received + suppliedAssets[asset];
-    assert token != asset => received == 0;
+    assert token != asset => received == 0 && suppliedAssets[token] == 0;
 }
 
 rule forceWithdrawVaultV2DoesntLoseTokens(env e, address vault, address adapter, uint256 exitAssets, uint256 minSharePriceE27, TokenLib.Permit sharesPermit, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
