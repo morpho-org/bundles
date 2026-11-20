@@ -23,7 +23,7 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 
-/// @dev Leverage bundle for Morpho Blue that swaps through 0x AllowanceHolder and Settler, using Blue's callbacks instead of flash loans (a flash loan is only taken to pay the public allocator's penalties when loanAssets doesn't cover them).
+/// @dev Leverage bundle for Morpho Blue that swaps through 0x AllowanceHolder and Settler, using Blue's callbacks instead of flash loans (a flash loan is only taken for the public allocator's penalties that loanAssets doesn't cover, and for the part of maxBorrowAssets that cannot be borrowed while staying healthy).
 /// @dev Prototype: not audited.
 /// @dev Inherits the token safety requirements of Morpho Blue (see Morpho.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
@@ -68,8 +68,8 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - P.
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
     /// @dev If the swap would spend more than loanAssets + maxBorrowAssets - P or buys less than collateralToBuy, the call reverts.
-    /// @dev The assets borrowed are maxBorrowAssets, capped at the most that keeps msg.sender healthy at the oracle price; the surplus is repaid after the swap.
-    /// @dev If the borrow is capped, the swap reverts if it pulls more than loanAssets + the borrowed assets - P.
+    /// @dev The assets borrowed are maxBorrowAssets, capped at the most that keeps msg.sender healthy at the oracle price; what is not borrowed is flash loaned, such that loanAssets + maxBorrowAssets - P is still available to the swap.
+    /// @dev If the borrow is capped, the call reverts if the swap spends more than loanAssets + the borrowed assets - P.
     /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function zeroExLeverageBundlesV1Lever(
@@ -96,21 +96,26 @@ contract ZeroExLeverageBundlesV1 is
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         uint256 penaltyAssets = totalPenaltyAssets(reallocations);
+        uint256 borrowAssets = UtilsLib.min(
+            maxBorrowAssets, maxHealthyBorrow(marketParams, msg.sender, collateralAssets + collateralToBuy)
+        );
+        uint256 flashLoanAssets = penaltyAssets.zeroFloorSub(loanAssets) + maxBorrowAssets - borrowAssets;
         bytes memory leverData = abi.encode(
             marketParams,
             msg.sender,
             collateralToBuy,
-            maxBorrowAssets,
+            borrowAssets,
             loanAssets + maxBorrowAssets - penaltyAssets,
+            maxBorrowAssets - borrowAssets,
             swapData
         );
 
-        if (penaltyAssets > loanAssets) {
+        if (flashLoanAssets > 0) {
             // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
             IMorpho(BLUE)
                 .flashLoan(
                     marketParams.loanToken,
-                    penaltyAssets - loanAssets,
+                    flashLoanAssets,
                     abi.encode(marketParams, msg.sender, collateralAssets + collateralToBuy, reallocations, leverData)
                 );
         } else {
@@ -233,24 +238,23 @@ contract ZeroExLeverageBundlesV1 is
     /// INTERNAL ///
 
     /// @dev maxSwapIn is loanAssets + maxBorrowAssets minus the penalties of the public reallocations, which are paid from loanAssets or stay in this contract to repay the flash loan.
-    /// @dev maxSwapIn is reduced by what is not borrowed when the borrow is capped at the healthy maximum.
+    /// @dev borrowShortfall is the part of maxBorrowAssets that is flash loaned instead of borrowed, which must be left unswapped to repay the flash loan.
     function executeLever(bytes calldata leverData) internal {
         (
             MarketParams memory marketParams,
             address sender,
             uint256 collateralToBuy,
-            uint256 maxBorrowAssets,
+            uint256 borrowAssets,
             uint256 maxSwapIn,
+            uint256 borrowShortfall,
             bytes memory swapData
-        ) = abi.decode(leverData, (MarketParams, address, uint256, uint256, uint256, bytes));
+        ) = abi.decode(leverData, (MarketParams, address, uint256, uint256, uint256, uint256, bytes));
 
-        uint256 borrowAssets = UtilsLib.min(maxBorrowAssets, maxHealthyBorrow(marketParams, sender));
-        maxSwapIn -= maxBorrowAssets - borrowAssets;
         if (borrowAssets > 0) IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
         (uint256 spent, uint256 received) =
             swap(marketParams.loanToken, marketParams.collateralToken, maxSwapIn, collateralToBuy, swapData);
 
-        repaySurplus(marketParams, sender, maxSwapIn - spent);
+        repaySurplus(marketParams, sender, maxSwapIn - spent - borrowShortfall);
         if (received > collateralToBuy) {
             IMorpho(BLUE).supplyCollateral(marketParams, received - collateralToBuy, sender, "");
         }
@@ -357,18 +361,22 @@ contract ZeroExLeverageBundlesV1 is
         }
     }
 
-    /// @dev Returns the most assets that sender can borrow while staying healthy on Blue, at the current oracle price.
+    /// @dev Returns the most assets that sender can borrow while staying healthy on Blue once addedCollateral is supplied, at the current oracle price.
     /// @dev Accrues interest when needed, then inverts Blue's health check to calculate the maximum assets to borrow.
     /// @dev Borrowing rounds the debt up by at most the value of one share, which is left as a margin.
-    function maxHealthyBorrow(MarketParams memory marketParams, address sender) internal returns (uint256) {
+    function maxHealthyBorrow(MarketParams memory marketParams, address sender, uint256 addedCollateral)
+        internal
+        returns (uint256)
+    {
         Market memory market = IMorpho(BLUE).market(marketParams.id());
         if (market.lastUpdate != block.timestamp) {
+            // forge-lint: disable-next-line(reentrancy-no-eth) The helper is only called from locked entrypoints.
             IMorpho(BLUE).accrueInterest(marketParams);
             market = IMorpho(BLUE).market(marketParams.id());
         }
         Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
         uint256 borrowed = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
-        uint256 maxBorrow = uint256(position.collateral)
+        uint256 maxBorrow = (position.collateral + addedCollateral)
             .mulDivDown(IOracle(marketParams.oracle).price(), ORACLE_PRICE_SCALE)
             .mulDivDown(marketParams.lltv, WAD);
         uint256 margin = uint256(1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
