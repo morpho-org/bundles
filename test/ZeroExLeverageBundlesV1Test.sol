@@ -206,6 +206,38 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testLeverSkipsBorrowWhenHealthyMaximumIsZero() public {
+        // 20e18 of collateral and 10e18 of debt, which is above the 80% LLTV once the price halves.
+        openPosition();
+        oracle.setPrice(0.5e36);
+
+        uint256 loanAssets = 2e18;
+        uint256 collateralToBuy = 1e18;
+        uint256 maxBorrowAssets = 5e18;
+        fundUserWithLoanAssets(loanAssets);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), loanAssets, collateralToBuy);
+
+        vm.expectCall(address(morpho), abi.encodeWithSelector(IMorphoBase.borrow.selector), 0);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            0,
+            loanAssets,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, 21e18);
+        // The 1e18 of loan assets left unswapped repays part of the debt.
+        assertApproxEqAbs(_debt(position, morpho.market(marketParams.id())), 9e18, 2);
+        assertNoResiduals();
+    }
+
     function testLeverBorrowAtHealthyMaximumStaysHealthy(uint256 collateralAssets, uint256 elapsed, uint256 price)
         public
     {
