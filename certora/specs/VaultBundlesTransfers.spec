@@ -8,13 +8,14 @@ methods {
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransferFrom(token, currentContract, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
     function _.permitTransferFrom(ISignatureTransfer.PermitTransferFrom permit, ISignatureTransfer.SignatureTransferDetails transferDetails, address owner, bytes signature) external => summarySafeTransferFrom(permit.permitted.token, owner, transferDetails.to, transferDetails.requestedAmount) expect void;
+    function _.deposit() external with(env e) => summaryWrapNative(e.msg.value) expect void;
 
     // Sound since the asset of a vault is immutable.
     function _.asset() external => assetOf[calledContract] expect(address);
 
+    // Calls accounting for transfers.
     function _.withdraw(uint256 assets, address, address) external => summaryWithdraw(assets) expect(uint256);
     function _.redeem(uint256, address, address) external => summaryRedeem() expect(uint256);
-    function _.deposit() external with(env e) => summaryWrapNative(e.msg.value) expect void;
     function _.deposit(uint256 assets, address) external => summaryDeposit(assets) expect(uint256);
 }
 
