@@ -67,8 +67,7 @@ rule inKindRedemptionVaultV1DoesntLoseTokens(env e, address vault, VaultExitBund
     require e.msg.sender == 11, "ack";
     require currentContract == 12, "ack";
 
-    // Markets of a vault have the vault asset as loan token, as verified by enabledHasConsistentAsset in https://github.com/morpho-org/metamorpho/blob/ae732258e55be466b959705ad2e6bc6c66e1819d/certora/specs/ConsistentState.spec.
-    require forall uint256 i. i < marketParamsList.length => marketParamsList[i].loanToken == asset, "vault market";
+    require forall uint256 i. i < marketParamsList.length => marketParamsList[i].loanToken == asset, "markets of a vault have the vault asset as loan token, as verified by enabledHasConsistentAsset in https://github.com/morpho-org/metamorpho/blob/ae732258e55be466b959705ad2e6bc6c66e1819d/certora/specs/ConsistentState.spec";
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     suppliedAssets = 0;
@@ -87,8 +86,7 @@ rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapt
     require e.msg.sender == 11, "ack";
     require currentContract == 12, "ack";
 
-    // Markets of the adapter have the vault asset as loan token.
-    require forall uint256 i. i < marketParamsList.length => marketParamsList[i].loanToken == asset, "adapter market";
+    require forall uint256 i. i < marketParamsList.length => marketParamsList[i].loanToken == asset, "markets of the adapter have the vault asset as loan token, as checked in https://github.com/morpho-org/vault-v2/blob/2b139002feaf4631f1c63d880380ca2278df7aec/src/adapters/MorphoMarketV1AdapterV2.sol";
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     suppliedAssets = 0;
