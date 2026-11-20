@@ -95,9 +95,11 @@ contract ZeroExLeverageBundlesV1 is
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         uint256 penaltyAssets = totalPenaltyAssets(reallocations);
-        uint256 borrowAssets = UtilsLib.min(
-            maxBorrowAssets, maxHealthyBorrow(marketParams, msg.sender, collateralAssets + collateralToBuy)
-        );
+        uint256 borrowAssets = maxBorrowAssets > 0
+            ? UtilsLib.min(
+                maxBorrowAssets, maxHealthyBorrow(marketParams, msg.sender, collateralAssets + collateralToBuy)
+            )
+            : 0;
         uint256 flashLoanAssets = penaltyAssets.zeroFloorSub(loanAssets) + maxBorrowAssets - borrowAssets;
         bytes memory leverData = abi.encode(
             marketParams,

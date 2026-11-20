@@ -7,6 +7,7 @@ import {stdError} from "../lib/forge-std/src/StdError.sol";
 import {MarketParams, Market, Position} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SharesMathLib} from "../lib/morpho-blue/src/libraries/SharesMathLib.sol";
+import {IOracle} from "../lib/morpho-blue/src/interfaces/IOracle.sol";
 import {IAllowanceHolder} from "./helpers/IAllowanceHolder.sol";
 import {ISettlerTakerSubmitted} from "./helpers/ISettlerTakerSubmitted.sol";
 import {IZeroExLeverageBundlesV1} from "../src/leverage/interfaces/IZeroExLeverageBundlesV1.sol";
@@ -346,6 +347,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         fundUser(address(bundle), collateralAssets);
         fundUserWithLoanAssets(loanAssets);
         bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), loanAssets, collateralToBuy);
+        vm.mockCallRevert(address(oracle), abi.encodeWithSelector(IOracle.price.selector), "oracle down");
 
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
