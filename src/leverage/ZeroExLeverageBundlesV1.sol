@@ -119,11 +119,11 @@ contract ZeroExLeverageBundlesV1 is
         requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
-    /// @dev Repays minRepayAssets of msg.sender's debt; in Blue's callback, withdraws collateralToSell and sells it through 0x for at least minRepayAssets.
+    /// @dev Repays msg.sender's debt; in Blue's callback, withdraws collateralToSell and sells it through 0x for at least the assets repaid.
+    /// @dev The assets repaid are minRepayAssets, raised to the least that keeps msg.sender healthy at the oracle price once collateralToSell is withdrawn.
     /// @dev swapData is expected to be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount >= minRepayAssets.
-    /// @dev minRepayAssets must be non-zero and must not exceed msg.sender's debt, or else Blue reverts.
-    /// @dev Unsold collateral is supplied back; the loan assets received above minRepayAssets repay the remaining debt, and the rest is sent to msg.sender.
-    /// @dev Blue's health check on the withdrawal is performed with minRepayAssets repaid, before the surplus is repaid.
+    /// @dev The assets repaid must be non-zero and must not exceed msg.sender's debt, or else Blue reverts.
+    /// @dev Unsold collateral is supplied back; the loan assets received above the assets repaid repay the remaining debt, and the rest is sent to msg.sender.
     /// @dev The msg.sender must have authorized this contract on Blue.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function zeroExLeverageBundlesV1Delever(
@@ -137,11 +137,12 @@ contract ZeroExLeverageBundlesV1 is
         require(block.timestamp <= deadline, DeadlinePassed());
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
+        uint256 minHealthyRepayAssets = minHealthyRepay(marketParams, msg.sender, collateralToSell);
         // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
         IMorpho(BLUE)
             .repay(
                 marketParams,
-                minRepayAssets,
+                minRepayAssets > minHealthyRepayAssets ? minRepayAssets : minHealthyRepayAssets,
                 0,
                 msg.sender,
                 abi.encode(
@@ -350,6 +351,29 @@ contract ZeroExLeverageBundlesV1 is
         if (received > assets) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, sender, received - assets);
         }
+    }
+
+    /// @dev Returns the least assets that sender must repay to stay healthy on Blue once withdrawnCollateral is withdrawn, at the current oracle price.
+    /// @dev Accrues interest when needed, then inverts Blue's health check to calculate the minimum assets to repay.
+    /// @dev Repaying rounds the debt up by at most the value of one share, which is added as a margin.
+    function minHealthyRepay(MarketParams memory marketParams, address sender, uint256 withdrawnCollateral)
+        internal
+        returns (uint256)
+    {
+        Market memory market = IMorpho(BLUE).market(marketParams.id());
+        if (market.lastUpdate != block.timestamp) {
+            // forge-lint: disable-next-line(reentrancy-no-eth) The helper is only called from locked entrypoints.
+            IMorpho(BLUE).accrueInterest(marketParams);
+            market = IMorpho(BLUE).market(marketParams.id());
+        }
+        Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
+        uint256 borrowed = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+        uint256 price = IOracle(marketParams.oracle).price();
+        uint256 maxBorrow = (position.collateral - withdrawnCollateral)
+            .mulDivDown(price, ORACLE_PRICE_SCALE)
+            .mulDivDown(marketParams.lltv, WAD);
+        uint256 margin = uint256(1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+        return (borrowed + margin).zeroFloorSub(maxBorrow);
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).
