@@ -11,24 +11,24 @@ methods {
     // Functional summary, so that the penalties computed by the bundler are the ones paid to the public allocator.
     function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpGhost(x, y, d);
 
-    // Public allocator modeling, where the penalty is paid in the loan token of the allocated market.
-    function _.allocateFromIdle(address, address, BlueBundlesV1.MarketParams marketParams, uint128 assets, uint64 penalty) external => summaryPayPenalty(marketParams.loanToken, assets, penalty) expect void;
-    function _.reallocate(address, address, BlueBundlesV1.MarketParams, address, BlueBundlesV1.MarketParams marketParams, uint128 assets, uint64 penalty) external => summaryPayPenalty(marketParams.loanToken, assets, penalty) expect void;
+    // Public allocator modeling, where only the penalty amount is modeled.
+    function _.allocateFromIdle(address, address, BlueBundlesV1.MarketParams, uint128 assets, uint64 penalty) external => summaryPayPenalty(assets, penalty) expect void;
+    function _.reallocate(address, address, BlueBundlesV1.MarketParams, address, BlueBundlesV1.MarketParams, uint128 assets, uint64 penalty) external => summaryPayPenalty(assets, penalty) expect void;
 
     // Token modeling.
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransferFrom(token, currentContract, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
     function _.permitTransferFrom(ISignatureTransfer.PermitTransferFrom permit, ISignatureTransfer.SignatureTransferDetails transferDetails, address owner, bytes signature) external => summarySafeTransferFrom(permit.permitted.token, owner, transferDetails.to, transferDetails.requestedAmount) expect void;
-    function _.deposit() external with(env e) => summaryWrapNative(calledContract, e.msg.value) expect void;
-    function _.withdraw(uint256 amount) external => summaryUnwrapNative(calledContract, amount) expect void;
+    function _.deposit() external with(env e) => summaryWrapNative(e.msg.value) expect void;
+    function _.withdraw(uint256 amount) external => summaryUnwrapNative(amount) expect void;
 
     // Blue modeling, where only callbacks and amounts are modeled, since Blue's transfers are not in the body of the bundle functions.
-    function _.supply(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(marketParams.loanToken, assets) expect(uint256, uint256);
-    function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address) external => summaryWithdraw(marketParams.loanToken, assets) expect(uint256, uint256);
-    function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address) external => summaryBorrow(marketParams.loanToken, assets) expect(uint256, uint256);
-    function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(calledContract, marketParams.loanToken, assets, data) expect(uint256, uint256);
-    function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(marketParams.collateralToken, assets) expect void;
-    function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address) external => summaryWithdrawCollateral(marketParams.collateralToken, assets) expect void;
+    function _.supply(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(assets) expect(uint256, uint256);
+    function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address) external => summaryWithdraw(assets) expect(uint256, uint256);
+    function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address) external => summaryBorrow(assets) expect(uint256, uint256);
+    function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(calledContract, assets, data) expect(uint256, uint256);
+    function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(assets) expect void;
+    function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address) external => summaryWithdrawCollateral(assets) expect void;
     function _.flashLoan(address, uint256 assets, bytes data) external => summaryFlashLoan(calledContract, assets, data) expect void;
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization, BlueBundlesV1.Signature) external => NONDET;
 }
@@ -38,23 +38,23 @@ methods {
 // Net amount transferred to each account during the interaction, per token, which is not the token balance.
 persistent ghost mapping(address => mapping(address => mathint)) transferBalanceChange;
 
-persistent ghost mapping(address => mathint) wrappedAssets;
+persistent ghost mathint wrappedAssets;
 
-persistent ghost mapping(address => mathint) unwrappedAssets;
+persistent ghost mathint unwrappedAssets;
 
-persistent ghost mapping(address => mathint) suppliedAssets;
+persistent ghost mathint suppliedAssets;
 
-persistent ghost mapping(address => mathint) withdrawnAssets;
+persistent ghost mathint withdrawnAssets;
 
-persistent ghost mapping(address => mathint) borrowedAssets;
+persistent ghost mathint borrowedAssets;
 
-persistent ghost mapping(address => mathint) repaidAssets;
+persistent ghost mathint repaidAssets;
 
-persistent ghost mapping(address => mathint) suppliedCollateral;
+persistent ghost mathint suppliedCollateral;
 
-persistent ghost mapping(address => mathint) withdrawnCollateral;
+persistent ghost mathint withdrawnCollateral;
 
-persistent ghost mapping(address => mathint) penaltyAssets;
+persistent ghost mathint penaltyAssets;
 
 persistent ghost mulDivUpGhost(uint256, uint256, uint256) returns uint256;
 
@@ -65,35 +65,35 @@ function summarySafeTransferFrom(address token, address from, address to, uint25
     transferBalanceChange[token][to] = transferBalanceChange[token][to] + amount;
 }
 
-function summaryWrapNative(address token, uint256 value) {
-    wrappedAssets[token] = wrappedAssets[token] + value;
+function summaryWrapNative(uint256 value) {
+    wrappedAssets = wrappedAssets + value;
 }
 
-function summaryUnwrapNative(address token, uint256 amount) {
-    unwrappedAssets[token] = unwrappedAssets[token] + amount;
+function summaryUnwrapNative(uint256 amount) {
+    unwrappedAssets = unwrappedAssets + amount;
 }
 
-function summarySupply(address loanToken, uint256 assets) returns (uint256, uint256) {
-    suppliedAssets[loanToken] = suppliedAssets[loanToken] + assets;
+function summarySupply(uint256 assets) returns (uint256, uint256) {
+    suppliedAssets = suppliedAssets + assets;
     uint256 shares;
     return (assets, shares);
 }
 
-function summaryWithdraw(address loanToken, uint256 assets) returns (uint256, uint256) {
+function summaryWithdraw(uint256 assets) returns (uint256, uint256) {
     uint256 withdrawn;
     require assets > 0 => withdrawn == assets, "withdraw exact assets";
-    withdrawnAssets[loanToken] = withdrawnAssets[loanToken] + withdrawn;
+    withdrawnAssets = withdrawnAssets + withdrawn;
     uint256 shares;
     return (withdrawn, shares);
 }
 
-function summaryBorrow(address loanToken, uint256 assets) returns (uint256, uint256) {
-    borrowedAssets[loanToken] = borrowedAssets[loanToken] + assets;
+function summaryBorrow(uint256 assets) returns (uint256, uint256) {
+    borrowedAssets = borrowedAssets + assets;
     uint256 shares;
     return (assets, shares);
 }
 
-function summaryRepay(address blue, address loanToken, uint256 assets, bytes data) returns (uint256, uint256) {
+function summaryRepay(address blue, uint256 assets, bytes data) returns (uint256, uint256) {
     uint256 repaid;
     require assets > 0 => repaid == assets, "repay exact assets";
     if (data.length > 0) {
@@ -101,17 +101,17 @@ function summaryRepay(address blue, address loanToken, uint256 assets, bytes dat
         require callbackEnv.msg.sender == blue, "Blue calls back";
         onMorphoRepay(callbackEnv, repaid, data);
     }
-    repaidAssets[loanToken] = repaidAssets[loanToken] + repaid;
+    repaidAssets = repaidAssets + repaid;
     uint256 shares;
     return (repaid, shares);
 }
 
-function summarySupplyCollateral(address collateralToken, uint256 assets) {
-    suppliedCollateral[collateralToken] = suppliedCollateral[collateralToken] + assets;
+function summarySupplyCollateral(uint256 assets) {
+    suppliedCollateral = suppliedCollateral + assets;
 }
 
-function summaryWithdrawCollateral(address collateralToken, uint256 assets) {
-    withdrawnCollateral[collateralToken] = withdrawnCollateral[collateralToken] + assets;
+function summaryWithdrawCollateral(uint256 assets) {
+    withdrawnCollateral = withdrawnCollateral + assets;
 }
 
 function summaryFlashLoan(address blue, uint256 assets, bytes data) {
@@ -120,8 +120,8 @@ function summaryFlashLoan(address blue, uint256 assets, bytes data) {
     onMorphoFlashLoan(callbackEnv, assets, data);
 }
 
-function summaryPayPenalty(address loanToken, uint128 assets, uint64 penalty) {
-    penaltyAssets[loanToken] = penaltyAssets[loanToken] + mulDivUpGhost(assets, penalty, WAD());
+function summaryPayPenalty(uint128 assets, uint64 penalty) {
+    penaltyAssets = penaltyAssets + mulDivUpGhost(assets, penalty, WAD());
 }
 
 /// RULES ///
@@ -136,7 +136,7 @@ rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams
 
     require marketParams.loanToken != marketParams.collateralToken, "assume different loan and collateral tokens for simpler accounting";
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
-    require wrappedAssets[token] == 0 && borrowedAssets[token] == 0 && suppliedCollateral[token] == 0 && penaltyAssets[token] == 0, "only count operations of the interaction";
+    require wrappedAssets == 0 && borrowedAssets == 0 && suppliedCollateral == 0 && penaltyAssets == 0, "only count operations of the interaction";
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, borrowAssets, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     // The native value sent is spent in the collateral token, which it is wrapped into.
@@ -144,16 +144,15 @@ rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams
     mathint received = transferBalanceChange[token][e.msg.sender];
     mathint sent = wrapped - received;
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint borrowed = borrowedAssets[token];
-    mathint supplied = suppliedCollateral[token];
-    mathint penalties = penaltyAssets[token];
+    mathint borrowed = borrowedAssets;
+    mathint supplied = suppliedCollateral;
+    mathint penalties = penaltyAssets;
 
-    assert wrappedAssets[token] == wrapped;
+    assert wrappedAssets == e.msg.value;
     assert token == marketParams.loanToken => borrowed == received + penalties + fees;
     assert token == marketParams.collateralToken => sent == supplied;
     assert token != marketParams.loanToken && token != marketParams.collateralToken => received == 0;
-    assert token != marketParams.loanToken => borrowed == 0 && penalties == 0 && fees == 0;
-    assert token != marketParams.collateralToken => supplied == 0;
+    assert token != marketParams.loanToken => fees == 0;
 }
 
 rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint256 repayAssets, uint256 repayShares, uint256 maxRepayAssets, uint256 collateralAssets, uint256 maxLtv, TokenLib.TokenPermit loanTokenPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
@@ -165,19 +164,19 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
     require currentContract == 13, "ack";
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
-    require wrappedAssets[token] == 0 && unwrappedAssets[token] == 0 && repaidAssets[token] == 0, "only count operations of the interaction";
+    require wrappedAssets == 0 && unwrappedAssets == 0 && repaidAssets == 0, "only count operations of the interaction";
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, repayAssets, repayShares, maxRepayAssets, collateralAssets, maxLtv, loanTokenPermit, signedAuthorization, referralFeePct, referralFeeRecipient, deadline);
 
     // The native value sent is spent in the loan token, which it is wrapped into.
     mathint sent = token == marketParams.loanToken ? e.msg.value : 0;
     mathint spent = sent - transferBalanceChange[token][e.msg.sender];
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint unwrapped = unwrappedAssets[token];
-    mathint repaid = repaidAssets[token];
+    mathint unwrapped = unwrappedAssets;
+    mathint repaid = repaidAssets;
 
-    assert wrappedAssets[token] == sent;
-    assert spent == repaid + unwrapped + fees;
-    assert token != marketParams.loanToken => repaid == 0 && unwrapped == 0 && fees == 0;
+    assert wrappedAssets == e.msg.value;
+    assert token == marketParams.loanToken => spent == repaid + unwrapped + fees;
+    assert token != marketParams.loanToken => spent == 0 && fees == 0;
 }
 
 rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, TokenLib.TokenPermit loanTokenPermit, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
@@ -189,17 +188,17 @@ rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint
     require currentContract == 13, "ack";
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
-    require wrappedAssets[token] == 0 && suppliedAssets[token] == 0, "only count operations of the interaction";
+    require wrappedAssets == 0 && suppliedAssets == 0, "only count operations of the interaction";
     blueBundlesV1Supply(e, marketParams, assets, loanTokenPermit, referralFeePct, referralFeeRecipient, deadline);
 
     // The native value sent is spent in the loan token, which it is wrapped into.
     mathint spent = (token == marketParams.loanToken ? e.msg.value : 0) - transferBalanceChange[token][e.msg.sender];
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint supplied = suppliedAssets[token];
+    mathint supplied = suppliedAssets;
 
-    assert wrappedAssets[token] == (token == marketParams.loanToken ? e.msg.value : 0);
-    assert spent == supplied + fees;
-    assert token != marketParams.loanToken => spent == 0 && supplied == 0 && fees == 0;
+    assert wrappedAssets == e.msg.value;
+    assert token == marketParams.loanToken => spent == supplied + fees;
+    assert token != marketParams.loanToken => spent == 0 && fees == 0;
 }
 
 rule withdrawDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint256 withdrawAssets, uint256 withdrawShares, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
@@ -211,16 +210,16 @@ rule withdrawDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, ui
     require currentContract == 13, "ack";
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
-    require withdrawnAssets[token] == 0 && penaltyAssets[token] == 0, "only count operations of the interaction";
+    require withdrawnAssets == 0 && penaltyAssets == 0, "only count operations of the interaction";
     blueBundlesV1Withdraw(e, marketParams, withdrawAssets, withdrawShares, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     mathint received = transferBalanceChange[token][e.msg.sender];
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint withdrawn = withdrawnAssets[token];
-    mathint penalties = penaltyAssets[token];
+    mathint withdrawn = withdrawnAssets;
+    mathint penalties = penaltyAssets;
 
-    assert withdrawn == received + penalties + fees;
-    assert token != marketParams.loanToken => withdrawn == 0 && received == 0 && penalties == 0 && fees == 0;
+    assert token == marketParams.loanToken => withdrawn == received + penalties + fees;
+    assert token != marketParams.loanToken => received == 0 && fees == 0;
 }
 
 rule migrateBorrowPositionDoesntLoseTokens(env e, BlueBundlesV1.MarketParams sourceMarketParams, BlueBundlesV1.MarketParams destMarketParams, uint256 maxLtv, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
@@ -232,17 +231,16 @@ rule migrateBorrowPositionDoesntLoseTokens(env e, BlueBundlesV1.MarketParams sou
     require currentContract == 13, "ack";
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
-    require borrowedAssets[token] == 0 && repaidAssets[token] == 0 && suppliedCollateral[token] == 0 && withdrawnCollateral[token] == 0 && penaltyAssets[token] == 0, "only count operations of the interaction";
+    require borrowedAssets == 0 && repaidAssets == 0 && suppliedCollateral == 0 && withdrawnCollateral == 0 && penaltyAssets == 0, "only count operations of the interaction";
     blueBundlesV1MigrateBorrowPosition(e, sourceMarketParams, destMarketParams, maxLtv, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint borrowed = borrowedAssets[token];
-    mathint repaid = repaidAssets[token];
-    mathint penalties = penaltyAssets[token];
+    mathint borrowed = borrowedAssets;
+    mathint repaid = repaidAssets;
+    mathint penalties = penaltyAssets;
 
     assert transferBalanceChange[token][e.msg.sender] == 0;
-    assert borrowed == repaid + penalties + fees;
-    assert suppliedCollateral[token] == withdrawnCollateral[token];
-    assert token != destMarketParams.loanToken => borrowed == 0 && repaid == 0 && penalties == 0 && fees == 0;
-    assert token != destMarketParams.collateralToken => suppliedCollateral[token] == 0;
+    assert token == destMarketParams.loanToken => borrowed == repaid + penalties + fees;
+    assert suppliedCollateral == withdrawnCollateral;
+    assert token != destMarketParams.loanToken => fees == 0;
 }
