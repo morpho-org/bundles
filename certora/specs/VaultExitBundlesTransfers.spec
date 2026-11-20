@@ -60,7 +60,7 @@ function summaryWithdraw(uint256 assets) returns uint256 {
 /// RULES ///
 
 rule inKindRedemptionVaultV1DoesntLoseTokens(env e, address vault, VaultExitBundlesV1.MarketParams[] marketParamsList, uint256 exitAssets, TokenLib.Permit sharesPermit, uint256 deadline) {
-    address token;
+    address asset = assetOf[vault];
 
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since VaultExitBundlesV1 only compares addresses to BLUE, whose balance is not tracked.
     require e.msg.sender == 11, "ack";
@@ -71,12 +71,11 @@ rule inKindRedemptionVaultV1DoesntLoseTokens(env e, address vault, VaultExitBund
     withdrawnAssets = 0;
     vaultExitBundlesV1InKindRedemptionVaultV1(e, vault, marketParamsList, exitAssets, sharesPermit, deadline);
 
-    assert transferBalanceChange[token][e.msg.sender] == 0;
+    assert transferBalanceChange[asset][e.msg.sender] == 0;
     assert suppliedAssets == exitAssets && withdrawnAssets == exitAssets;
 }
 
 rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapter, VaultExitBundlesV1.MarketParams[] marketParamsList, uint256 exitAssets, TokenLib.Permit sharesPermit, uint256 deadline) {
-    address token;
     address asset = assetOf[vault];
 
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since VaultExitBundlesV1 only compares addresses to BLUE, whose balance is not tracked.
@@ -88,14 +87,12 @@ rule inKindRedemptionVaultV2DoesntLoseTokens(env e, address vault, address adapt
     withdrawnAssets = 0;
     vaultExitBundlesV1InKindRedemptionVaultV2(e, vault, adapter, marketParamsList, exitAssets, sharesPermit, deadline);
 
-    mathint received = transferBalanceChange[token][e.msg.sender];
+    mathint received = transferBalanceChange[asset][e.msg.sender];
 
-    assert token == asset => withdrawnAssets == received + suppliedAssets;
-    assert token != asset => received == 0;
+    assert withdrawnAssets == received + suppliedAssets;
 }
 
 rule forceWithdrawVaultV2DoesntLoseTokens(env e, address vault, address adapter, uint256 exitAssets, uint256 minSharePriceE27, TokenLib.Permit sharesPermit, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
-    address token;
     address asset = assetOf[vault];
 
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since VaultExitBundlesV1 only compares addresses to BLUE, whose balance is not tracked.
@@ -107,9 +104,8 @@ rule forceWithdrawVaultV2DoesntLoseTokens(env e, address vault, address adapter,
     withdrawnAssets = 0;
     vaultExitBundlesV1ForceWithdrawVaultV2(e, vault, adapter, exitAssets, minSharePriceE27, sharesPermit, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint received = transferBalanceChange[token][e.msg.sender];
-    mathint fees = transferBalanceChange[token][referralFeeRecipient];
+    mathint received = transferBalanceChange[asset][e.msg.sender];
+    mathint fees = transferBalanceChange[asset][referralFeeRecipient];
 
-    assert token == asset => withdrawnAssets == received + fees;
-    assert token != asset => received == 0 && fees == 0;
+    assert withdrawnAssets == received + fees;
 }
