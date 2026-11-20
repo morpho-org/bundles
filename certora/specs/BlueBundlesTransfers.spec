@@ -1,19 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 methods {
-    // Allowances are not modeled, so ignore this side-effect.
+    // Allowances and authorizations are not modeled, so ignore these side-effects.
     function TokenLib.forceApproveMax(address token, address spender) internal => NONDET;
+    function _.setAuthorizationWithSig(BlueBundlesV1.Authorization, BlueBundlesV1.Signature) external => NONDET;
 
-    // Over-approximate checks and arithmetic, since amounts are tracked through their effects.
+    // Over-approximate checks and arithmetic, since we don't check for reverts in this file.
     function BlueBundlesV1.requireMaxLtv(BlueBundlesV1.MarketParams memory, address, uint256) internal => NONDET;
     function UtilsLib.mulDivDown(uint256, uint256, uint256) internal returns (uint256) => NONDET;
-
-    // Functional summary, so that the penalties computed by the bundler are the ones paid to the public allocator.
     function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpGhost(x, y, d);
-
-    // Public allocator modeling, where only the penalty amount is modeled.
-    function _.allocateFromIdle(address, address, BlueBundlesV1.MarketParams, uint128 assets, uint64 penalty) external => summaryPayPenalty(assets, penalty) expect void;
-    function _.reallocate(address, address, BlueBundlesV1.MarketParams, address, BlueBundlesV1.MarketParams, uint128 assets, uint64 penalty) external => summaryPayPenalty(assets, penalty) expect void;
 
     // Token modeling.
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransferFrom(token, currentContract, receiver, amount);
@@ -22,15 +17,16 @@ methods {
     function _.deposit() external with(env e) => summaryWrapNative(e.msg.value) expect void;
     function _.withdraw(uint256 amount) external => summaryUnwrapNative(amount) expect void;
 
-    // Blue modeling, where only callbacks and amounts are modeled, since Blue's transfers are not in the body of the bundle functions.
-    function _.supply(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(assets) expect(uint256, uint256);
+    // Calls accounting for transfers.
+    function _.allocateFromIdle(address, address, BlueBundlesV1.MarketParams, uint128 assets, uint64 penalty) external => summaryPayPenalty(assets, penalty) expect void;
+    function _.reallocate(address, address, BlueBundlesV1.MarketParams, address, BlueBundlesV1.MarketParams, uint128 assets, uint64 penalty) external => summaryPayPenalty(assets, penalty) expect void;
+    function _.supply(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(assets, shares) expect(uint256, uint256);
     function _.withdraw(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address) external => summaryWithdraw(assets) expect(uint256, uint256);
-    function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address) external => summaryBorrow(assets) expect(uint256, uint256);
+    function _.borrow(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, address) external => summaryBorrow(assets, shares) expect(uint256, uint256);
     function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(calledContract, assets, data) expect(uint256, uint256);
     function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(assets) expect void;
     function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address) external => summaryWithdrawCollateral(assets) expect void;
     function _.flashLoan(address, uint256 assets, bytes data) external => summaryFlashLoan(calledContract, assets, data) expect void;
-    function _.setAuthorizationWithSig(BlueBundlesV1.Authorization, BlueBundlesV1.Signature) external => NONDET;
 }
 
 /// HELPERS ///
@@ -73,7 +69,8 @@ function summaryUnwrapNative(uint256 amount) {
     unwrappedAssets = unwrappedAssets + amount;
 }
 
-function summarySupply(uint256 assets) returns (uint256, uint256) {
+function summarySupply(uint256 assets, uint256 shares) returns (uint256, uint256) {
+    assert shares == 0;
     suppliedAssets = suppliedAssets + assets;
     uint256 shares;
     return (assets, shares);
@@ -87,7 +84,8 @@ function summaryWithdraw(uint256 assets) returns (uint256, uint256) {
     return (withdrawn, shares);
 }
 
-function summaryBorrow(uint256 assets) returns (uint256, uint256) {
+function summaryBorrow(uint256 assets, uint256 shares) returns (uint256, uint256) {
+    assert shares == 0;
     borrowedAssets = borrowedAssets + assets;
     uint256 shares;
     return (assets, shares);
@@ -127,8 +125,6 @@ function summaryPayPenalty(uint128 assets, uint64 penalty) {
 /// RULES ///
 
 rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint256 collateralAssets, uint256 borrowAssets, uint256 maxLtv, TokenLib.TokenPermit collateralPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
-    address token;
-
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since BlueBundlesV1 never compares these addresses, except to BLUE whose balance is not tracked.
     require e.msg.sender == 11, "ack";
     require referralFeeRecipient == 12, "ack";
@@ -140,24 +136,16 @@ rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, borrowAssets, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     // The native value sent is spent in the collateral token, which it is wrapped into.
-    mathint wrapped = token == marketParams.collateralToken ? e.msg.value : 0;
-    mathint received = transferBalanceChange[token][e.msg.sender];
-    mathint sent = wrapped - received;
-    mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint borrowed = borrowedAssets;
-    mathint supplied = suppliedCollateral;
-    mathint penalties = penaltyAssets;
+    mathint sent = e.msg.value - transferBalanceChange[marketParams.collateralToken][e.msg.sender];
+    mathint received = transferBalanceChange[marketParams.loanToken][e.msg.sender];
+    mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
 
     assert wrappedAssets == e.msg.value;
-    assert token == marketParams.loanToken => borrowed == received + penalties + fees;
-    assert token == marketParams.collateralToken => sent == supplied;
-    assert token != marketParams.loanToken && token != marketParams.collateralToken => received == 0;
-    assert token != marketParams.loanToken => fees == 0;
+    assert borrowedAssets == received + penaltyAssets + fees;
+    assert sent == suppliedCollateral;
 }
 
 rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint256 repayAssets, uint256 repayShares, uint256 maxRepayAssets, uint256 collateralAssets, uint256 maxLtv, TokenLib.TokenPermit loanTokenPermit, BlueBundlesV1.SignedAuthorization signedAuthorization, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
-    address token;
-
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since BlueBundlesV1 never compares these addresses, except to BLUE whose balance is not tracked.
     require e.msg.sender == 11, "ack";
     require referralFeeRecipient == 12, "ack";
@@ -168,20 +156,14 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, repayAssets, repayShares, maxRepayAssets, collateralAssets, maxLtv, loanTokenPermit, signedAuthorization, referralFeePct, referralFeeRecipient, deadline);
 
     // The native value sent is spent in the loan token, which it is wrapped into.
-    mathint sent = token == marketParams.loanToken ? e.msg.value : 0;
-    mathint spent = sent - transferBalanceChange[token][e.msg.sender];
-    mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint unwrapped = unwrappedAssets;
-    mathint repaid = repaidAssets;
+    mathint spent = e.msg.value - transferBalanceChange[marketParams.loanToken][e.msg.sender];
+    mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
 
     assert wrappedAssets == e.msg.value;
-    assert token == marketParams.loanToken => spent == repaid + unwrapped + fees;
-    assert token != marketParams.loanToken => spent == 0 && fees == 0;
+    assert spent == repaidAssets + unwrappedAssets + fees;
 }
 
 rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, TokenLib.TokenPermit loanTokenPermit, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
-    address token;
-
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since BlueBundlesV1 never compares these addresses, except to BLUE whose balance is not tracked.
     require e.msg.sender == 11, "ack";
     require referralFeeRecipient == 12, "ack";
@@ -192,18 +174,14 @@ rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint
     blueBundlesV1Supply(e, marketParams, assets, loanTokenPermit, referralFeePct, referralFeeRecipient, deadline);
 
     // The native value sent is spent in the loan token, which it is wrapped into.
-    mathint spent = (token == marketParams.loanToken ? e.msg.value : 0) - transferBalanceChange[token][e.msg.sender];
-    mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint supplied = suppliedAssets;
+    mathint spent = e.msg.value - transferBalanceChange[marketParams.loanToken][e.msg.sender];
+    mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
 
     assert wrappedAssets == e.msg.value;
-    assert token == marketParams.loanToken => spent == supplied + fees;
-    assert token != marketParams.loanToken => spent == 0 && fees == 0;
+    assert spent == suppliedAssets + fees;
 }
 
 rule withdrawDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint256 withdrawAssets, uint256 withdrawShares, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
-    address token;
-
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since BlueBundlesV1 never compares these addresses, except to BLUE whose balance is not tracked.
     require e.msg.sender == 11, "ack";
     require referralFeeRecipient == 12, "ack";
@@ -213,18 +191,13 @@ rule withdrawDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, ui
     require withdrawnAssets == 0 && penaltyAssets == 0, "only count operations of the interaction";
     blueBundlesV1Withdraw(e, marketParams, withdrawAssets, withdrawShares, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint received = transferBalanceChange[token][e.msg.sender];
-    mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint withdrawn = withdrawnAssets;
-    mathint penalties = penaltyAssets;
+    mathint received = transferBalanceChange[marketParams.loanToken][e.msg.sender];
+    mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
 
-    assert token == marketParams.loanToken => withdrawn == received + penalties + fees;
-    assert token != marketParams.loanToken => received == 0 && fees == 0;
+    assert withdrawnAssets == received + penaltyAssets + fees;
 }
 
 rule migrateBorrowPositionDoesntLoseTokens(env e, BlueBundlesV1.MarketParams sourceMarketParams, BlueBundlesV1.MarketParams destMarketParams, uint256 maxLtv, BlueBundlesV1.SignedAuthorization signedAuthorization, BlueBundlesV1.PublicAllocations[] reallocations, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
-    address token;
-
     // Assume different addresses to have simpler accounting, using hardcoded addresses as a trick. Sound since BlueBundlesV1 never compares these addresses, except to BLUE whose balance is not tracked.
     require e.msg.sender == 11, "ack";
     require referralFeeRecipient == 12, "ack";
@@ -234,13 +207,9 @@ rule migrateBorrowPositionDoesntLoseTokens(env e, BlueBundlesV1.MarketParams sou
     require borrowedAssets == 0 && repaidAssets == 0 && suppliedCollateral == 0 && withdrawnCollateral == 0 && penaltyAssets == 0, "only count operations of the interaction";
     blueBundlesV1MigrateBorrowPosition(e, sourceMarketParams, destMarketParams, maxLtv, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint borrowed = borrowedAssets;
-    mathint repaid = repaidAssets;
-    mathint penalties = penaltyAssets;
+    mathint fees = transferBalanceChange[destMarketParams.loanToken][referralFeeRecipient];
 
-    assert transferBalanceChange[token][e.msg.sender] == 0;
-    assert token == destMarketParams.loanToken => borrowed == repaid + penalties + fees;
+    assert transferBalanceChange[destMarketParams.loanToken][e.msg.sender] == 0 && transferBalanceChange[destMarketParams.collateralToken][e.msg.sender] == 0;
+    assert borrowedAssets == repaidAssets + penaltyAssets + fees;
     assert suppliedCollateral == withdrawnCollateral;
-    assert token != destMarketParams.loanToken => fees == 0;
 }
