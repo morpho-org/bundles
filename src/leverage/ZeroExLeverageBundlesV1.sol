@@ -62,13 +62,14 @@ contract ZeroExLeverageBundlesV1 is
 
     /// ENTRYPOINT ///
 
-    /// @dev Pulls collateralAssets and loanAssets from msg.sender, executes the public reallocations and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
+    /// @dev Pulls collateralAssets and loanAssets from msg.sender, executes the public reallocations and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows at most maxBorrowAssets and buys collateralToBuy through 0x.
     /// @dev The aggregate penalty P of the reallocations is paid to the public allocator upfront from loanAssets, or flash loaned if P > loanAssets and repaid from loanAssets + maxBorrowAssets; at most loanAssets + maxBorrowAssets - P is swapped.
     /// @dev All public reallocations execute unconditionally.
     /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - P.
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
     /// @dev If the swap would spend more than loanAssets + maxBorrowAssets - P or buys less than collateralToBuy, the call reverts.
-    /// @dev Blue's health check is performed with maxBorrowAssets borrowed, before the surplus is repaid.
+    /// @dev The assets borrowed are maxBorrowAssets, capped at the most that keeps msg.sender healthy at the oracle price; the surplus is repaid after the swap.
+    /// @dev If the borrow is capped, the swap reverts if it pulls more than loanAssets + the borrowed assets - P.
     /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function zeroExLeverageBundlesV1Lever(
@@ -232,6 +233,7 @@ contract ZeroExLeverageBundlesV1 is
     /// INTERNAL ///
 
     /// @dev maxSwapIn is loanAssets + maxBorrowAssets minus the penalties of the public reallocations, which are paid from loanAssets or stay in this contract to repay the flash loan.
+    /// @dev maxSwapIn is reduced by what is not borrowed when the borrow is capped at the healthy maximum.
     function executeLever(bytes calldata leverData) internal {
         (
             MarketParams memory marketParams,
@@ -242,7 +244,9 @@ contract ZeroExLeverageBundlesV1 is
             bytes memory swapData
         ) = abi.decode(leverData, (MarketParams, address, uint256, uint256, uint256, bytes));
 
-        IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, sender, address(this));
+        uint256 borrowAssets = UtilsLib.min(maxBorrowAssets, maxHealthyBorrow(marketParams, sender));
+        maxSwapIn -= maxBorrowAssets - borrowAssets;
+        IMorpho(BLUE).borrow(marketParams, borrowAssets, 0, sender, address(this));
         (uint256 spent, uint256 received) =
             swap(marketParams.loanToken, marketParams.collateralToken, maxSwapIn, collateralToBuy, swapData);
 
@@ -347,6 +351,24 @@ contract ZeroExLeverageBundlesV1 is
         if (received > assets) {
             SafeTransferLib.safeTransfer(marketParams.loanToken, sender, received - assets);
         }
+    }
+
+    /// @dev Returns the most assets that sender can borrow while staying healthy on Blue, at the current oracle price.
+    /// @dev Accrues interest when needed, then mirrors Blue's health check.
+    /// @dev Borrowing rounds the debt up by at most the value of one share, which is left as a margin.
+    function maxHealthyBorrow(MarketParams memory marketParams, address sender) internal returns (uint256) {
+        Market memory market = IMorpho(BLUE).market(marketParams.id());
+        if (market.lastUpdate != block.timestamp) {
+            IMorpho(BLUE).accrueInterest(marketParams);
+            market = IMorpho(BLUE).market(marketParams.id());
+        }
+        Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
+        uint256 borrowed = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+        uint256 maxBorrow = uint256(position.collateral)
+            .mulDivDown(IOracle(marketParams.oracle).price(), ORACLE_PRICE_SCALE)
+            .mulDivDown(marketParams.lltv, WAD);
+        uint256 margin = uint256(1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+        return maxBorrow.zeroFloorSub(borrowed + margin);
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).

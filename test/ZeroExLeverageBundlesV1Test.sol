@@ -154,6 +154,101 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testLeverCapsBorrowAtHealthyMaximum() public {
+        uint256 collateralAssets = 10e18;
+        uint256 collateralToBuy = 10e18;
+        // Above the 16e18 that keeps 20e18 of collateral healthy at an 80% LLTV.
+        uint256 maxBorrowAssets = 18e18;
+        fundUser(address(bundle), collateralAssets);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 12e18, collateralToBuy);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            0,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, collateralAssets + collateralToBuy);
+        assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy);
+        assertNoResiduals();
+    }
+
+    function testLeverRevertsWhenSwapPullsMoreThanCappedBorrow() public {
+        uint256 collateralAssets = 10e18;
+        uint256 collateralToBuy = 10e18;
+        uint256 maxBorrowAssets = 18e18;
+        fundUser(address(bundle), collateralAssets);
+        // The quote pulls maxBorrowAssets, which is more than the capped borrow.
+        bytes memory swapData =
+            buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, collateralToBuy);
+
+        vm.expectRevert();
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            0,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            block.timestamp
+        );
+        assertNoResiduals();
+    }
+
+    function testLeverBorrowAtHealthyMaximumStaysHealthy(uint256 collateralAssets, uint256 elapsed, uint256 price)
+        public
+    {
+        collateralAssets = bound(collateralAssets, 1e18, 1e24);
+        elapsed = bound(elapsed, 0, 365 days);
+        // High enough that the first position stays healthy after a year of interest.
+        price = bound(price, 1.5e36, 3e36);
+
+        // Another borrower brings utilization up, so that interest accrues on the user's first position.
+        address whale = makeAddr("whale");
+        deal(address(collateralToken), whale, 1e32);
+        vm.startPrank(whale);
+        safeApprove(collateralToken, address(morpho), 1e32);
+        morpho.supplyCollateral(marketParams, 1e32, whale, "");
+        morpho.borrow(marketParams, 0.5e32, 0, whale, whale);
+        vm.stopPrank();
+
+        openPosition();
+        vm.warp(vm.getBlockTimestamp() + elapsed);
+        oracle.setPrice(price);
+
+        uint256 collateralToBuy = 1e18;
+        deal(address(collateralToken), user, collateralAssets);
+        vm.prank(user);
+        safeApprove(collateralToken, address(bundle), collateralAssets);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 2e18, collateralToBuy);
+
+        // The cap is far above the healthy maximum, so the borrow is exactly the healthy maximum.
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            0,
+            collateralToBuy,
+            1e30,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            vm.getBlockTimestamp()
+        );
+        assertNoResiduals();
+    }
+
     function testLeverFromLoanAssetsExactOutput() public {
         uint256 loanAssets = 10e18;
         uint256 collateralToBuy = 20e18;
@@ -841,7 +936,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             noReallocations(),
-            block.timestamp
+            vm.getBlockTimestamp()
         );
         Position memory position = morpho.position(marketParams.id(), user);
         debt = _debt(position, morpho.market(marketParams.id()));
