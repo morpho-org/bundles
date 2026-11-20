@@ -68,7 +68,6 @@ function summarySafeTransferFrom(address token, address from, address to, uint25
 }
 
 function summaryWrapNative(address token, uint256 value) {
-    increaseBalance(token, currentContract, value);
     wrappedAssets[token] = wrappedAssets[token] + value;
 }
 
@@ -147,14 +146,16 @@ rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams
     require wrappedAssets[token] == 0 && borrowedAssets[token] == 0 && suppliedCollateral[token] == 0 && flashLoanedAssets[token] == 0, "only count operations of the interaction";
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, borrowAssets, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint received = transferBalanceChange[token][e.msg.sender];
+    // The native value sent is spent in the collateral token, which it is wrapped into.
+    mathint sent = token == marketParams.collateralToken ? e.msg.value : 0;
+    mathint received = transferBalanceChange[token][e.msg.sender] - sent;
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint wrapped = wrappedAssets[token];
     mathint borrowed = borrowedAssets[token];
     mathint supplied = suppliedCollateral[token];
     mathint flashLoaned = flashLoanedAssets[token];
 
-    assert borrowed + wrapped == received + supplied + flashLoaned + fees;
+    assert wrappedAssets[token] == sent;
+    assert borrowed == received + supplied + flashLoaned + fees;
     assert token != marketParams.loanToken => fees == 0;
 }
 
@@ -170,14 +171,16 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
     require wrappedAssets[token] == 0 && unwrappedAssets[token] == 0 && repaidAssets[token] == 0 && withdrawnCollateral[token] == 0, "only count operations of the interaction";
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, repayAssets, repayShares, maxRepayAssets, collateralAssets, maxLtv, loanTokenPermit, signedAuthorization, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint received = transferBalanceChange[token][e.msg.sender];
+    // The native value sent is spent in the loan token, which it is wrapped into.
+    mathint sent = token == marketParams.loanToken ? e.msg.value : 0;
+    mathint received = transferBalanceChange[token][e.msg.sender] - sent;
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint wrapped = wrappedAssets[token];
     mathint unwrapped = unwrappedAssets[token];
     mathint repaid = repaidAssets[token];
     mathint withdrawn = withdrawnCollateral[token];
 
-    assert withdrawn + wrapped == received + repaid + unwrapped + fees;
+    assert wrappedAssets[token] == sent;
+    assert withdrawn == received + repaid + unwrapped + fees;
     assert token != marketParams.loanToken => fees == 0;
 }
 
@@ -193,12 +196,13 @@ rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint
     require wrappedAssets[token] == 0 && suppliedAssets[token] == 0, "only count operations of the interaction";
     blueBundlesV1Supply(e, marketParams, assets, loanTokenPermit, referralFeePct, referralFeeRecipient, deadline);
 
-    mathint spent = -transferBalanceChange[token][e.msg.sender];
+    // The native value sent is spent in the loan token, which it is wrapped into.
+    mathint spent = (token == marketParams.loanToken ? e.msg.value : 0) - transferBalanceChange[token][e.msg.sender];
     mathint fees = transferBalanceChange[token][referralFeeRecipient];
-    mathint wrapped = wrappedAssets[token];
     mathint supplied = suppliedAssets[token];
 
-    assert spent + wrapped == supplied + fees;
+    assert wrappedAssets[token] == (token == marketParams.loanToken ? e.msg.value : 0);
+    assert spent == supplied + fees;
     assert token != marketParams.loanToken => spent == 0 && fees == 0;
 }
 
