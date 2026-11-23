@@ -26,6 +26,7 @@ import {TokenLib} from "../libraries/TokenLib.sol";
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 /// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder; neither the Settler nor its calldata is validated, so each swap is bounded only by the input cap and the output floor.
+/// @dev ALLOWANCE_HOLDER is hardcoded to the address of 0x AllowanceHolder on the chains supporting the Cancun hardfork; this contract must not be deployed on a chain where AllowanceHolder is at another address.
 /// @dev Because the swap can make arbitrary calls, all entrypoints remain locked throughout the call to this contract.
 contract ZeroExLeverageBundlesV1 is
     IZeroExLeverageBundlesV1,
