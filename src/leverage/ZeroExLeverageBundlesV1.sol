@@ -263,7 +263,7 @@ contract ZeroExLeverageBundlesV1 is
         (uint256 spent, uint256 received) =
             swap(marketParams.loanToken, marketParams.collateralToken, maxSwapIn, collateralToBuy, swapData);
         uint256 collateralValue = received.mulDivDown(IOracle(marketParams.oracle).price(), ORACLE_PRICE_SCALE);
-        require(collateralValue >= spent.mulDivDown(WAD - maxDeviation, WAD), ExcessivePriceImpact());
+        require(collateralValue >= spent.mulDivUp(WAD - maxDeviation, WAD), ExcessivePriceImpact());
 
         repaySurplus(marketParams, sender, maxSwapIn - spent);
         if (received > collateralToBuy) {
@@ -384,8 +384,8 @@ contract ZeroExLeverageBundlesV1 is
         internal
         view
     {
-        uint256 collateralValue = spent.mulDivDown(IOracle(oracle).price(), ORACLE_PRICE_SCALE);
-        require(received >= collateralValue.mulDivDown(WAD - maxDeviation, WAD), ExcessivePriceImpact());
+        uint256 collateralValue = spent.mulDivUp(IOracle(oracle).price(), ORACLE_PRICE_SCALE);
+        require(received >= collateralValue.mulDivUp(WAD - maxDeviation, WAD), ExcessivePriceImpact());
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; only Delever accepts type(uint256).max to skip this LTV check.

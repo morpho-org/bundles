@@ -567,6 +567,20 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testLeverOracleDeviationRoundsProtectively() public {
+        uint256 spent = 1e18 + 1;
+        uint256 received = 0.98e18;
+        fundUserWithLoanAssets(spent);
+        settler.setRate(received, spent);
+        bytes memory swapData = buildExactInSwapData(address(loanToken), address(collateralToken), spent, 1);
+
+        vm.expectRevert(IZeroExLeverageBundlesV1.ExcessivePriceImpact.selector);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 0, spent, 1, 0, swapData, 0, 0.02e18, noReallocations(), 0, block.timestamp
+        );
+    }
+
     function testPoC1LeverBuysAtTwiceOraclePrice() public {
         fundUser(address(bundle), 10e18);
         settler.setRate(1, 2);
