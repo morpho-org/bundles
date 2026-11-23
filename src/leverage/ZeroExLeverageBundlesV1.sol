@@ -120,10 +120,10 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     /// @dev Repays msg.sender's debt; in Blue's callback, withdraws collateralToSell and sells it through 0x for at least the assets repaid.
-    /// @dev Repays the max assets between minRepayAssets and the min assets that keep msg.sender healthy after withdrawing collateralToSell.
+    /// @dev Repays minRepayAssets if it keeps msg.sender healthy after withdrawing collateralToSell, otherwise repays more to keep the position healthy.
+    /// @dev If the repayment reaches msg.sender's debt, repays all borrow shares instead. The repayment must be non-zero.
     /// @dev swapData is expected to be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount = minRepayAssets.
-    /// @dev If the swap spends more than collateralToSell or returns less than the assets repaid, the call reverts.
-    /// @dev The assets repaid must be non-zero and must not exceed msg.sender's debt, or else Blue reverts.
+    /// @dev If the swap spends more than collateralToSell or returns less than the greater of minRepayAssets and the assets repaid, the call reverts.
     /// @dev Unsold collateral is supplied back; the loan assets received above the assets repaid repay the remaining debt, and the rest is sent to msg.sender.
     /// @dev The msg.sender must have authorized this contract on Blue.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
@@ -138,17 +138,19 @@ contract ZeroExLeverageBundlesV1 is
         require(block.timestamp <= deadline, DeadlinePassed());
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
+        (uint256 repayAssets, uint256 repayShares) =
+            minHealthyRepay(marketParams, msg.sender, collateralToSell, minRepayAssets);
         // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
         IMorpho(BLUE)
             .repay(
                 marketParams,
-                minHealthyRepay(marketParams, msg.sender, collateralToSell, minRepayAssets),
-                0,
+                repayAssets,
+                repayShares,
                 msg.sender,
                 abi.encode(
                     this.zeroExLeverageBundlesV1Delever.selector,
                     msg.sender,
-                    abi.encode(marketParams, collateralToSell, swapData)
+                    abi.encode(marketParams, collateralToSell, minRepayAssets, swapData)
                 )
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
@@ -299,12 +301,17 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     function executeDelever(uint256 assets, address sender, bytes memory operationData) internal {
-        (MarketParams memory marketParams, uint256 collateralToSell, bytes memory swapData) =
-            abi.decode(operationData, (MarketParams, uint256, bytes));
+        (MarketParams memory marketParams, uint256 collateralToSell, uint256 minRepayAssets, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateralToSell, sender, address(this));
-        (uint256 spent, uint256 received) =
-            swap(marketParams.collateralToken, marketParams.loanToken, collateralToSell, assets, swapData);
+        (uint256 spent, uint256 received) = swap(
+            marketParams.collateralToken,
+            marketParams.loanToken,
+            collateralToSell,
+            assets > minRepayAssets ? assets : minRepayAssets,
+            swapData
+        );
 
         if (collateralToSell > spent) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
@@ -358,12 +365,13 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev Returns minRepayAssets if repaying it keeps sender healthy on Blue once withdrawnCollateral is withdrawn, at the current oracle price; otherwise returns a greater amount that does.
     /// @dev Accrues interest when needed, then mirrors Blue's repay and health check on minRepayAssets.
     /// @dev Repaying rounds the debt up by at most the value of one share, so the greater amount is calculated with one more share as a margin.
+    /// @dev Returns all borrow shares instead of an asset amount when the repayment reaches sender's debt.
     function minHealthyRepay(
         MarketParams memory marketParams,
         address sender,
         uint256 withdrawnCollateral,
         uint256 minRepayAssets
-    ) internal returns (uint256) {
+    ) internal returns (uint256 repayAssets, uint256 repayShares) {
         Market memory market = IMorpho(BLUE).market(marketParams.id());
         if (market.lastUpdate != block.timestamp) {
             // forge-lint: disable-next-line(reentrancy-no-eth) The helper is only called from locked entrypoints.
@@ -371,10 +379,13 @@ contract ZeroExLeverageBundlesV1 is
             market = IMorpho(BLUE).market(marketParams.id());
         }
         Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
+        uint256 borrowShares = position.borrowShares;
+        uint256 debt = borrowShares.toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
         uint256 price = IOracle(marketParams.oracle).price();
         uint256 maxBorrow = (position.collateral - withdrawnCollateral)
             .mulDivDown(price, ORACLE_PRICE_SCALE)
             .mulDivDown(marketParams.lltv, WAD);
+        if (minRepayAssets >= debt) return (0, borrowShares);
 
         uint256 repaidShares = minRepayAssets.toSharesDown(market.totalBorrowAssets, market.totalBorrowShares);
         uint256 borrowedAfter = (position.borrowShares - repaidShares)
@@ -382,10 +393,12 @@ contract ZeroExLeverageBundlesV1 is
             uint256(market.totalBorrowAssets).zeroFloorSub(minRepayAssets), market.totalBorrowShares - repaidShares
         );
         if (borrowedAfter <= maxBorrow) {
-            return minRepayAssets;
+            return (minRepayAssets, 0);
         } else {
-            return (uint256(position.borrowShares) + 1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares)
-                - maxBorrow;
+            uint256 healthRepay =
+                (borrowShares + 1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares) - maxBorrow;
+            if (healthRepay >= debt) return (0, borrowShares);
+            return (healthRepay, 0);
         }
     }
 

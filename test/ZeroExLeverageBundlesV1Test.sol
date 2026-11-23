@@ -527,6 +527,44 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         );
     }
 
+    function testDeleverAllCollateralRepaysAllBorrowShares() public {
+        openPosition();
+        vm.warp(vm.getBlockTimestamp() + 1 days);
+        morpho.accrueInterest(marketParams);
+        uint256 debt = _debt(morpho.position(marketParams.id(), user), morpho.market(marketParams.id()));
+        uint256 userLoanBefore = loanToken.balanceOf(user);
+        uint256 collateralToSell = 20e18;
+        uint256 minRepayAssets = 19e18;
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Delever(
+            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, vm.getBlockTimestamp()
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, 0);
+        assertEq(position.borrowShares, 0);
+        assertEq(loanToken.balanceOf(user), userLoanBefore + 20e18 - debt);
+        assertNoResiduals();
+    }
+
+    function testDeleverAllCollateralKeepsMinRepayAssetsAsSwapFloor() public {
+        openPosition();
+        uint256 collateralToSell = 20e18;
+        uint256 minRepayAssets = 19e18;
+        settler.setRate(18e18, collateralToSell);
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, 18e18);
+
+        vm.expectRevert(IZeroExLeverageBundlesV1.InsufficientOutput.selector);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Delever(
+            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, vm.getBlockTimestamp()
+        );
+    }
+
     function testDeleverEnforcesMaxLtv() public {
         uint256 debt = openPosition();
         uint256 collateralToSell = debt / 2;
