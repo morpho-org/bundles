@@ -46,7 +46,7 @@ jobs:
         run: forge lint src certora test --deny notes
 
   build:
-    name: sizes-and-locked # Required by the main ruleset; update it before renaming.
+    name: sizes-and-locked
     permissions:
       contents: read
     runs-on: ubuntu-latest
