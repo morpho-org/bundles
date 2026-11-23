@@ -48,11 +48,12 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
     function setUp() public {
         setUpLeverageMarket();
-        allowanceHolder = new AllowanceHolderMock();
+        allowanceHolder = AllowanceHolderMock(0x0000000000001fF3684f28c67538d4D072C22734);
+        vm.etch(address(allowanceHolder), address(new AllowanceHolderMock()).code);
         settler = new SettlerMock(allowanceHolder);
         publicAllocator = new PublicAllocatorMock(morpho);
         vault = makeAddr("vault");
-        bundle = new ZeroExLeverageBundlesV1(address(morpho), address(allowanceHolder), address(publicAllocator));
+        bundle = new ZeroExLeverageBundlesV1(address(morpho), address(publicAllocator));
         assertEq(bundle.PUBLIC_ALLOCATOR(), address(publicAllocator));
     }
 

@@ -37,15 +37,15 @@ contract ZeroExLeverageBundlesV1 is
     using SharesMathLib for uint256;
     using UtilsLib for uint256;
 
+    address public constant ALLOWANCE_HOLDER = 0x0000000000001fF3684f28c67538d4D072C22734;
+
     address public immutable BLUE;
-    address public immutable ALLOWANCE_HOLDER;
     address public immutable PUBLIC_ALLOCATOR;
 
     bool internal transient locked;
 
-    constructor(address _blue, address _allowanceHolder, address _publicAllocator) {
+    constructor(address _blue, address _publicAllocator) {
         BLUE = _blue;
-        ALLOWANCE_HOLDER = _allowanceHolder;
         PUBLIC_ALLOCATOR = _publicAllocator;
     }
 
