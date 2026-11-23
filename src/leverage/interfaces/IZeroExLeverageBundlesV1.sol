@@ -41,6 +41,7 @@ interface IZeroExLeverageBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
     error ExcessiveInput();
+    error InconsistentPenaltyAssets();
     error InconsistentTokens();
     error InsufficientOutput();
     error LtvExceeded();
@@ -63,6 +64,7 @@ interface IZeroExLeverageBundlesV1 {
         bytes calldata swapData,
         uint256 maxLtv,
         PublicAllocations[] calldata reallocations,
+        uint256 penaltyAssets,
         uint256 deadline
     ) external;
 

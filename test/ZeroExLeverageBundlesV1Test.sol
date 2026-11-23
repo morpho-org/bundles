@@ -74,6 +74,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             noReallocations(),
+            0,
             block.timestamp
         );
 
@@ -104,6 +105,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             noReallocations(),
+            0,
             block.timestamp
         );
         assertNoResiduals();
@@ -113,7 +115,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.expectRevert(IZeroExLeverageBundlesV1.ZeroCollateralToBuy.selector);
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, 0, 0, 0, 1e18, "", type(uint256).max, noReallocations(), block.timestamp
+            marketParams, 0, 0, 0, 1e18, "", type(uint256).max, noReallocations(), 0, block.timestamp
         );
         assertNoResiduals();
     }
@@ -135,6 +137,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             0.49e18,
             noReallocations(),
+            0,
             block.timestamp
         );
         assertNoResiduals();
@@ -149,6 +152,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             0.51e18,
             noReallocations(),
+            0,
             block.timestamp
         );
         assertNoResiduals();
@@ -172,6 +176,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             noReallocations(),
+            0,
             block.timestamp
         );
 
@@ -200,6 +205,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             noReallocations(),
+            0,
             block.timestamp
         );
 
@@ -238,6 +244,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             noReallocations(),
+            0,
             vm.getBlockTimestamp()
         );
 
@@ -270,6 +277,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             noReallocations(),
+            0,
             block.timestamp
         );
 
@@ -297,6 +305,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             noReallocations(),
+            0,
             block.timestamp
         );
 
@@ -556,6 +565,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             noReallocations(),
+            0,
             block.timestamp
         );
         deal(address(loanToken), address(bundle), 0);
@@ -578,6 +588,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
                 bytes(""),
                 type(uint256).max,
                 noReallocations(),
+                0,
                 block.timestamp
             )
         );
@@ -595,6 +606,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             noReallocations(),
+            0,
             block.timestamp
         );
 
@@ -613,7 +625,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, 0, 0, 1, 1, emptySwapData, type(uint256).max, noReallocations(), expired
+            marketParams, 0, 0, 1, 1, emptySwapData, type(uint256).max, noReallocations(), 0, expired
         );
 
         vm.expectRevert(IZeroExLeverageBundlesV1.DeadlinePassed.selector);
@@ -658,7 +670,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.expectRevert(bytes(BlueErrorsLib.INSUFFICIENT_LIQUIDITY));
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, 10e18, 0, 10e18, 12e18, swapData, type(uint256).max, noReallocations(), block.timestamp
+            marketParams, 10e18, 0, 10e18, 12e18, swapData, type(uint256).max, noReallocations(), 0, block.timestamp
         );
     }
 
@@ -703,6 +715,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             reallocations,
+            penaltyAssets,
             block.timestamp
         );
 
@@ -737,6 +750,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             idleReallocation(12e18, PENALTY),
+            penaltyAssets,
             block.timestamp
         );
 
@@ -769,6 +783,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             idleReallocation(12e18, 0),
+            0,
             block.timestamp
         );
 
@@ -776,6 +791,28 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertEq(_debt(position, morpho.market(marketParams.id())), collateralToBuy);
         assertEq(loanToken.balanceOf(vault), 0);
         assertNoResiduals();
+    }
+
+    function testLeverRevertsWhenPenaltyAssetsIsInconsistent(uint256 penaltyAssets) public {
+        vm.assume(penaltyAssets != 0.12e18);
+        fundUser(address(bundle), 10e18);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 11.88e18, 10e18);
+        PublicAllocations[] memory reallocations = idleReallocation(12e18, PENALTY);
+
+        vm.expectRevert(IZeroExLeverageBundlesV1.InconsistentPenaltyAssets.selector);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            10e18,
+            0,
+            10e18,
+            12e18,
+            swapData,
+            type(uint256).max,
+            reallocations,
+            penaltyAssets,
+            block.timestamp
+        );
     }
 
     function testLeverSwapInputIsCappedNetOfPenalty() public {
@@ -795,6 +832,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             idleReallocation(12e18, PENALTY),
+            0.12e18,
             block.timestamp
         );
     }
@@ -809,7 +847,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         vm.expectRevert(IZeroExLeverageBundlesV1.InconsistentTokens.selector);
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, 10e18, 0, 10e18, 12e18, swapData, type(uint256).max, reallocations, block.timestamp
+            marketParams, 10e18, 0, 10e18, 12e18, swapData, type(uint256).max, reallocations, 0.12e18, block.timestamp
         );
     }
 
@@ -962,6 +1000,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             swapData,
             type(uint256).max,
             noReallocations(),
+            0,
             vm.getBlockTimestamp()
         );
         Position memory position = morpho.position(marketParams.id(), user);

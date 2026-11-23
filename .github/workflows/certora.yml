@@ -1,4 +1,4 @@
-name: certora
+name: Certora
 
 on:
   push:
@@ -7,42 +7,70 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
-  format:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.15.2"
-
-      - name: Install certora
-        run: pip install certora-cli
-
-      - name: Run Certora Specs Linter
-        run: |
-          for file in certora/specs/*.spec; do
-            echo "Fix lint errors by applying the following diff to $file:"
-            diff -u "$file" <(certoraCVLFormatter "$file")
-          done
-
   matrix:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     outputs:
       confs: ${{ steps.list.outputs.confs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
+        with:
+          persist-credentials: false
       - id: list
-        run: echo "confs=$(ls certora/confs/*.conf | xargs -I{} basename {} .conf | jq -nRc '[inputs]')" >> "$GITHUB_OUTPUT"
+        run: echo "confs=$(find certora/confs -type f -name '*.conf' | sed 's|^certora/confs/||;s|\.conf$||' | sort | jq -nRc '[inputs]')" >> "$GITHUB_OUTPUT"
+
+  format:
+    permissions:
+      contents: read
+    name: Certora formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Java
+        run: |
+          java_dir="$RUNNER_TEMP/temurin-21.0.13+9"
+          curl -fsSL -o "$RUNNER_TEMP/java.tar.gz" "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_x64_linux_hotspot_21.0.13_9.tar.gz"
+          # setup-java has no hardcoded Java hash; this check is needed.
+          echo "d7f5d5cf865a2902b70ff549b97586a7d3f234e016f041ab447ea740c7d66d1c  $RUNNER_TEMP/java.tar.gz" | sha256sum --check --strict
+          mkdir -p "$java_dir"
+          tar -xzf "$RUNNER_TEMP/java.tar.gz" -C "$java_dir" --strip-components=1
+          echo "JAVA_HOME=$java_dir" >> "$GITHUB_ENV"
+          echo "$java_dir/bin" >> "$GITHUB_PATH"
+          "$java_dir/bin/java" -version
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Python
+        run: |
+          python_dir="$RUNNER_TEMP/python-3.15.2"
+          curl -fsSL -o "$RUNNER_TEMP/python.tar.gz" "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.15.2%2B20261110-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+          echo "ad23d1b73fac26440b0306ae06911031344c49a90ec19716c8362e7fa40cae43  $RUNNER_TEMP/python.tar.gz" | sha256sum --check --strict
+          mkdir -p "$python_dir"
+          tar -xzf "$RUNNER_TEMP/python.tar.gz" -C "$python_dir" --strip-components=1
+          echo "$python_dir/bin" >> "$GITHUB_PATH"
+          "$python_dir/bin/python" --version
+          "$python_dir/bin/python" -m pip --version
+
+      - run: pip install certora-cli
+      - name: Run Certora Config Linter
+        run: |
+          find certora/confs -type f -name '*.conf' | sort |
+          while read -r file; do
+            jq . "$file" | diff -u "$file" -
+          done
+      - name: Run Certora Specs Linter
+        run: |
+          find certora -type f -name '*.spec' | sort |
+          while read -r file; do
+            certoraCVLFormatter "$file" | diff -u "$file" -
+          done
 
   verify:
+    permissions:
+      contents: read
     needs: [matrix, format]
     runs-on: ubuntu-latest
     strategy:
@@ -51,52 +79,53 @@ jobs:
         conf: ${{ fromJson(needs.matrix.outputs.confs) }}
 
     steps:
+      - name: Install Java
+        run: |
+          java_dir="$RUNNER_TEMP/temurin-21.0.13+9"
+          curl -fsSL -o "$RUNNER_TEMP/java.tar.gz" "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_x64_linux_hotspot_21.0.13_9.tar.gz"
+          # setup-java has no hardcoded Java hash; this check is needed.
+          echo "d7f5d5cf865a2902b70ff549b97586a7d3f234e016f041ab447ea740c7d66d1c  $RUNNER_TEMP/java.tar.gz" | sha256sum --check --strict
+          mkdir -p "$java_dir"
+          tar -xzf "$RUNNER_TEMP/java.tar.gz" -C "$java_dir" --strip-components=1
+          echo "JAVA_HOME=$java_dir" >> "$GITHUB_ENV"
+          echo "$java_dir/bin" >> "$GITHUB_PATH"
+          "$java_dir/bin/java" -version
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           submodules: recursive
 
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
-
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Run Certora Config Linter
+      - name: Install Python
         run: |
-          file="certora/confs/${{ matrix.conf }}.conf"
-          echo "Fix lint errors by applying the following diff to $file:"
-          diff -u "$file" <(jq < "$file")
-
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.15.2"
+          python_dir="$RUNNER_TEMP/python-3.15.2"
+          curl -fsSL -o "$RUNNER_TEMP/python.tar.gz" "https://github.com/astral-sh/python-build-standalone/releases/download/20261110/cpython-3.15.2%2B20261110-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"
+          echo "ad23d1b73fac26440b0306ae06911031344c49a90ec19716c8362e7fa40cae43  $RUNNER_TEMP/python.tar.gz" | sha256sum --check --strict
+          mkdir -p "$python_dir"
+          tar -xzf "$RUNNER_TEMP/python.tar.gz" -C "$python_dir" --strip-components=1
+          echo "$python_dir/bin" >> "$GITHUB_PATH"
+          "$python_dir/bin/python" --version
+          "$python_dir/bin/python" -m pip --version
 
       - name: Install certora
         run: pip install certora-cli
 
       - name: Install solc (0.8.34)
-        env:
-          EXPECTED_SOLC_SHA256: d40adc6f9fdbb22a97d32a02fa05688bf2ee7886affc48c9851b0afd4a726b39
         run: |
           wget https://github.com/ethereum/solidity/releases/download/v0.8.34/solc-static-linux
-          actual="$(sha256sum solc-static-linux | awk '{print $1}')"
-          [ "$actual" = "$EXPECTED_SOLC_SHA256" ] || { echo "solc hash mismatch"; exit 1; }
+          echo "d40adc6f9fdbb22a97d32a02fa05688bf2ee7886affc48c9851b0afd4a726b39  solc-static-linux" | sha256sum --check --strict
           chmod +x solc-static-linux
           sudo mv solc-static-linux /usr/local/bin/solc-0.8.34
 
       - name: Install solc (0.8.28)
-        env:
-          EXPECTED_SOLC_SHA256: 9a0fb7e0db2c0641dbae1c5cc645dc686820c83af516226abb1c0a2f76636f25
         run: |
           wget https://github.com/ethereum/solidity/releases/download/v0.8.28/solc-static-linux
-          actual="$(sha256sum solc-static-linux | awk '{print $1}')"
-          [ "$actual" = "$EXPECTED_SOLC_SHA256" ] || { echo "solc hash mismatch"; exit 1; }
+          echo "9a0fb7e0db2c0641dbae1c5cc645dc686820c83af516226abb1c0a2f76636f25  solc-static-linux" | sha256sum --check --strict
           chmod +x solc-static-linux
           sudo mv solc-static-linux /usr/local/bin/solc-0.8.28
 
-      - name: Verify ${{ matrix.conf }}
-        run: certoraRun certora/confs/${{ matrix.conf }}.conf
+      - name: Verify ${{ matrix.conf }} specification
+        run: certoraRun "certora/confs/$CONF.conf"
         env:
+          CONF: ${{ matrix.conf }}
           CERTORAKEY: ${{ secrets.CERTORAKEY }}
