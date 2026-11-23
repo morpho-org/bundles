@@ -381,10 +381,9 @@ contract ZeroExLeverageBundlesV1 is
         .toAssetsUp(
             uint256(market.totalBorrowAssets).zeroFloorSub(minRepayAssets), market.totalBorrowShares - repaidShares
         );
-        if (borrowedAfter <= maxBorrow) return minRepayAssets;
-
-        return
-            (uint256(position.borrowShares) + 1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares)
+        return borrowedAfter <= maxBorrow
+            ? minRepayAssets
+            : (uint256(position.borrowShares) + 1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares)
                 - maxBorrow;
     }
 
