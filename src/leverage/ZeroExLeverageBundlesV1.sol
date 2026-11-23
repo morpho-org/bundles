@@ -122,8 +122,8 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     /// @dev Repays msg.sender's debt; in Blue's callback, withdraws collateralToSell and sells it through 0x for at least the assets repaid.
-    /// @dev The assets repaid are minRepayAssets, raised to the least that keeps msg.sender healthy at the oracle price once collateralToSell is withdrawn.
-    /// @dev swapData is expected to be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount >= minRepayAssets.
+    /// @dev The assets repaid are minRepayAssets, raised if needed to keep msg.sender healthy after withdrawing collateralToSell, using the debt and oracle price at execution.
+    /// @dev swapData is expected to be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount at least the assets repaid.
     /// @dev The assets repaid must be non-zero and must not exceed msg.sender's debt, or else Blue reverts.
     /// @dev Unsold collateral is supplied back; the loan assets received above the assets repaid repay the remaining debt, and the rest is sent to msg.sender.
     /// @dev The msg.sender must have authorized this contract on Blue.

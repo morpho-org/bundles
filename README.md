@@ -65,7 +65,7 @@ Swaps go through 0x AllowanceHolder (`0x0000000000001fF3684f28c67538d4D072C22734
 `swapData` is the `transaction.data` of a 0x Swap API quote with the bundle as taker, passed to AllowanceHolder unchanged. The quote type is not enforced on-chain, only the input cap and output floor are; the expected quotes are:
 
 - Lever: BUY quote with `buyAmount = collateralToBuy` and `maxSellAmount = loanAssets + maxBorrowAssets - penaltyAssets`, where `penaltyAssets` is the aggregate penalty of the reallocations.
-- Delever: SELL quote with `sellAmount = collateralToSell` and `minBuyAmount >= minRepayAssets`.
+- Delever: SELL quote with `sellAmount = collateralToSell` and `minBuyAmount` covering the actual repayment. This is `minRepayAssets`, raised if needed to keep the position healthy after withdrawal based on the debt and oracle price at execution.
 - Close, keeping the remaining collateral: BUY quote with `buyAmount` = debt plus a buffer for accrued interest, `maxSellAmount <= maxCollateralIn`, and `buyAmount >= minLoanOut`; the buffer returns as loan assets.
 - Close, exiting into loan assets: SELL quote with `sellAmount` = the position's collateral `<= maxCollateralIn` and `minBuyAmount >= minLoanOut`, which must cover the debt.
 
