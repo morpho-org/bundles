@@ -54,6 +54,16 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 - `vaultExitBundlesV1InKindRedemptionVaultV2` — withdraw idle assets and redeem the remainder in kind from an illiquid Vault V2.
 - `vaultExitBundlesV1ForceWithdrawVaultV2` — force withdraw from a liquid Vault V2.
 
+### [ZeroExLeverageBundlesV1](src/leverage/ZeroExLeverageBundlesV1.sol)
+
+- `zeroExLeverageBundlesV1Lever` — pull collateral and/or loan assets, borrow, and buy a chosen amount of collateral through 0x to open or increase a leveraged position.
+  Supports VaultV2's BluePublicAllocator to bring liquidity to the market before the borrow.
+  Any excess token is used in the position if possible.
+- `zeroExLeverageBundlesV1Delever` — sell a chosen amount of collateral through 0x and repay debt with the proceeds.
+  Any excess token is used in the position if possible.
+- `zeroExLeverageBundlesV1Close` — repay the full debt by swapping collateral through 0x; either a chosen amount of loan token is bought, or all of the collateral is sold.
+  Any excess token is transferred to the user.
+
 ## Changelog
 
 Changes between versions and source code of all versions are listed in the [CHANGELOG](./CHANGELOG.md).
