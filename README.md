@@ -60,8 +60,6 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 - `zeroExLeverageBundlesV1Delever` — sell a fixed amount of collateral through 0x and repay debt with the proceeds; any excess over the debt is sent to the user.
 - `zeroExLeverageBundlesV1Close` — repay the full debt by swapping collateral through 0x, and return the remaining collateral and excess loan assets; either only the collateral needed is sold, or all of it to exit into loan assets.
 
-The user must authorize the bundle on Blue and approve it to pull the collateral and loan assets used on lever.
-
 ## Changelog
 
 Changes between versions and source code of all versions are listed in the [CHANGELOG](./CHANGELOG.md).
