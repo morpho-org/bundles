@@ -13,6 +13,7 @@ interface IZeroExLeverageBundlesV1 {
     error InconsistentTokens();
     error InsufficientOutput();
     error LtvExceeded();
+    error MaxLtvTooHigh();
     error Reentrancy();
     error UnauthorizedCallback();
     error ZeroCollateralToBuy();

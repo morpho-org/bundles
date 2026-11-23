@@ -68,7 +68,7 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
     /// @dev Blue's health check is performed with maxBorrowAssets borrowed, before the surplus is repaid.
     /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
-    /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
+    /// @dev maxLtv caps msg.sender's resulting LTV and must be below the market's LLTV.
     function zeroExLeverageBundlesV1Lever(
         MarketParams memory marketParams,
         uint256 collateralAssets,
@@ -84,6 +84,7 @@ contract ZeroExLeverageBundlesV1 is
         require(block.timestamp <= deadline, DeadlinePassed());
         require(collateralToBuy != 0, ZeroCollateralToBuy());
         require(penaltyAssets == totalPenaltyAssets(reallocations), InconsistentPenaltyAssets());
+        require(maxLtv < marketParams.lltv, MaxLtvTooHigh());
 
         if (collateralAssets > 0) {
             SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
@@ -355,7 +356,7 @@ contract ZeroExLeverageBundlesV1 is
         }
     }
 
-    /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).
+    /// @dev Reverts unless sender's LTV is at or below maxLtv; only Delever accepts type(uint256).max to skip the check and its oracle call.
     /// @dev Accrues interest when needed, then mirrors Blue's health check against maxLtv.
     function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal {
         if (maxLtv != type(uint256).max) {

@@ -57,6 +57,7 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 ### [ZeroExLeverageBundlesV1](src/leverage/ZeroExLeverageBundlesV1.sol)
 
 - `zeroExLeverageBundlesV1Lever` — pull collateral and/or loan assets, borrow, and buy a chosen amount of collateral through 0x to open or increase a leveraged position.
+  Requires a maximum LTV below the market's liquidation LTV.
   Supports VaultV2's BluePublicAllocator to bring liquidity to the market before the borrow.
   Any excess token is used in the position if possible.
 - `zeroExLeverageBundlesV1Delever` — sell a chosen amount of collateral through 0x and repay debt with the proceeds.
