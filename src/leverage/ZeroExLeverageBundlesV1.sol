@@ -366,7 +366,7 @@ contract ZeroExLeverageBundlesV1 is
 
     /// @dev Returns the most assets that sender can borrow while staying healthy on Blue once addedCollateral is supplied, at the current oracle price.
     /// @dev Accrues interest when needed, then inverts Blue's health check to calculate the maximum assets to borrow.
-    /// @dev Borrowing rounds the debt up by at most the value of one share, which is left as a margin.
+    /// @dev Counts one extra borrow share in the debt to allow for rounding up the new borrow shares.
     function maxHealthyBorrow(MarketParams memory marketParams, address sender, uint256 addedCollateral)
         internal
         returns (uint256)
@@ -378,13 +378,13 @@ contract ZeroExLeverageBundlesV1 is
             market = IMorpho(BLUE).market(marketParams.id());
         }
         Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
-        uint256 borrowed = uint256(position.borrowShares).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
+        uint256 borrowed =
+            (uint256(position.borrowShares) + 1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
         uint256 price = IOracle(marketParams.oracle).price();
         uint256 maxBorrow = (position.collateral + addedCollateral)
             .mulDivDown(price, ORACLE_PRICE_SCALE)
             .mulDivDown(marketParams.lltv, WAD);
-        uint256 margin = uint256(1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
-        return maxBorrow.zeroFloorSub(borrowed + margin);
+        return maxBorrow.zeroFloorSub(borrowed);
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).

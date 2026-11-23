@@ -188,6 +188,39 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testLeverRoundsDebtAndMarginTogether() public {
+        openPosition();
+        address borrower = makeAddr("borrower");
+        deal(address(collateralToken), borrower, 1e18);
+        vm.startPrank(borrower);
+        safeApprove(collateralToken, address(morpho), 1e18);
+        morpho.supplyCollateral(marketParams, 1e18, borrower, "");
+        // Borrowing 1.5 million shares withdraws one asset unit, making the user's existing debt fractional.
+        morpho.borrow(marketParams, 0, 1_500_000, borrower, borrower);
+        vm.stopPrank();
+
+        uint256 collateralToBuy = 1e18;
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 2e18, collateralToBuy);
+        // With 21e18 collateral the debt limit is 16.8e18. The existing debt and margin round to 10e18 together.
+        vm.expectCall(
+            address(morpho), abi.encodeWithSelector(IMorphoBase.borrow.selector, marketParams, 6.8e18, 0, user), 1
+        );
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            0,
+            0,
+            collateralToBuy,
+            8e18,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            0,
+            block.timestamp
+        );
+        assertNoResiduals();
+    }
+
     function testLeverFlashLoansWhatIsNotBorrowed() public {
         uint256 collateralAssets = 10e18;
         uint256 collateralToBuy = 10e18;
