@@ -236,8 +236,9 @@ contract ZeroExLeverageBundlesV1 is
 
     /// INTERNAL ///
 
-    /// @dev maxSwapIn is loanAssets + maxBorrowAssets minus the penalties of the public reallocations, which are paid from loanAssets or stay in this contract to repay the flash loan.
-    /// @dev borrowShortfall is the part of maxBorrowAssets that is flash loaned instead of borrowed, which must be left unswapped to repay the flash loan.
+    /// @dev maxSwapIn is loanAssets + maxBorrowAssets minus the penalties of the public reallocations.
+    /// @dev borrowShortfall is the part of maxBorrowAssets that is flash loaned instead of borrowed.
+    /// @dev After the swap, the contract retains enough to repay the borrow shortfall and any flash-loaned penalties.
     function executeLever(bytes calldata leverData) internal {
         (
             MarketParams memory marketParams,
