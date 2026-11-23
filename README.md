@@ -56,8 +56,6 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 
 ### [ZeroExLeverageBundlesV1](src/leverage/ZeroExLeverageBundlesV1.sol)
 
-Prototype, not audited.
-
 - `zeroExLeverageBundlesV1Lever` — pull collateral and/or loan assets, borrow, and buy collateral through 0x to open or increase a leveraged position; supports VaultV2's BluePublicAllocator to bring liquidity to the market before the borrow.
 - `zeroExLeverageBundlesV1Delever` — sell a chosen amount of collateral through 0x and repay debt with the proceeds; any excess over the debt is sent to the user.
 - `zeroExLeverageBundlesV1Close` — repay the full debt by swapping collateral through 0x, and return the remaining collateral and excess loan assets; either only the collateral needed is sold, or all of it to exit into loan assets.
@@ -66,7 +64,7 @@ The user must authorize the bundle on Blue and approve it to pull the collateral
 Swaps go through 0x AllowanceHolder (`0x0000000000001fF3684f28c67538d4D072C22734`), whose address is shared by Ethereum, Base, Arbitrum and Robinhood.
 `swapData` is the `transaction.data` of a 0x Swap API quote with the bundle as taker, passed to AllowanceHolder unchanged. The quote type is not enforced on-chain, only the input cap and output floor are; the expected quotes are:
 
-- Lever: BUY quote with `buyAmount = collateralToBuy` and `maxSellAmount = loanAssets + maxBorrowAssets` minus the aggregate penalty of the reallocations.
+- Lever: BUY quote with `buyAmount = collateralToBuy` and `maxSellAmount = loanAssets + maxBorrowAssets - penaltyAssets`, where `penaltyAssets` is the aggregate penalty of the reallocations.
 - Delever: SELL quote with `sellAmount = collateralToSell` and `minBuyAmount >= minRepayAssets`.
 - Close, keeping the remaining collateral: BUY quote with `buyAmount` = debt plus a buffer for accrued interest, `maxSellAmount <= maxCollateralIn`, and `buyAmount >= minLoanOut`; the buffer returns as loan assets.
 - Close, exiting into loan assets: SELL quote with `sellAmount` = the position's collateral `<= maxCollateralIn` and `minBuyAmount >= minLoanOut`, which must cover the debt.
