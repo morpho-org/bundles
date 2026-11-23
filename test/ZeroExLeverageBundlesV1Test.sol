@@ -374,6 +374,65 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testDeleverNearLltvBorrowsBackWhatSwapDoesNotCover() public {
+        openPositionNearLltv();
+        // Repaying only minRepayAssets before withdrawing 20e18 would leave 22e18 of debt for 27e18 of collateral.
+        uint256 collateralToSell = 20e18;
+        uint256 minRepayAssets = 15e18;
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Delever(
+            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, 27e18);
+        assertApproxEqAbs(_debt(position, morpho.market(marketParams.id())), 17e18, 2);
+        assertNoResiduals();
+    }
+
+    function testDeleverAllCollateral() public {
+        uint256 debt = openPosition();
+        uint256 collateralToSell = 20e18;
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, 19e18);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Delever(marketParams, collateralToSell, 19e18, swapData, 0, block.timestamp);
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, 0);
+        assertEq(position.borrowShares, 0);
+        assertEq(loanToken.balanceOf(user), 20e18 - debt);
+        assertNoResiduals();
+    }
+
+    function testDeleverRevertsWhenBlueCannotLendBackTheRemainingDebt() public {
+        openPositionNearLltv();
+        // Blue holds no loan assets, as when every market of the loan token is fully utilized.
+        deal(address(loanToken), address(morpho), 0);
+        uint256 collateralToSell = 20e18;
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, 15e18);
+
+        vm.expectRevert();
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Delever(
+            marketParams, collateralToSell, 15e18, swapData, type(uint256).max, block.timestamp
+        );
+    }
+
+    function openPositionNearLltv() internal {
+        fundUser(address(bundle), 10e18);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 37e18, 37e18);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 10e18, 0, 37e18, 37e18, swapData, type(uint256).max, noReallocations(), 0, block.timestamp
+        );
+    }
+
     function testDeleverEnforcesMaxLtv() public {
         uint256 debt = openPosition();
         uint256 collateralToSell = debt / 2;

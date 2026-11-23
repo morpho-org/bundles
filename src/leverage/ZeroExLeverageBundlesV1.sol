@@ -121,11 +121,11 @@ contract ZeroExLeverageBundlesV1 is
         requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
-    /// @dev Repays minRepayAssets of msg.sender's debt; in Blue's callback, withdraws collateralToSell and sells it through 0x for at least minRepayAssets.
+    /// @dev Repays all of msg.sender's borrow shares; in Blue's callback, withdraws collateralToSell, sells it through 0x for at least minRepayAssets, and borrows back the debt that the loan assets received don't cover.
     /// @dev swapData is expected to be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount >= minRepayAssets.
-    /// @dev minRepayAssets must be non-zero and must not exceed msg.sender's debt, or else Blue reverts.
-    /// @dev Unsold collateral is supplied back; the loan assets received above minRepayAssets repay the remaining debt, and the rest is sent to msg.sender.
-    /// @dev Blue's health check on the withdrawal is performed with minRepayAssets repaid, before the surplus is repaid.
+    /// @dev Unsold collateral is supplied back; the loan assets received above the debt are sent to msg.sender.
+    /// @dev Blue's health check is performed on the borrow, with the collateral withdrawn and the loan assets received repaid.
+    /// @dev Blue must hold the loan assets borrowed back.
     /// @dev The msg.sender must have authorized this contract on Blue.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function zeroExLeverageBundlesV1Delever(
@@ -143,13 +143,13 @@ contract ZeroExLeverageBundlesV1 is
         IMorpho(BLUE)
             .repay(
                 marketParams,
-                minRepayAssets,
                 0,
+                IMorpho(BLUE).position(marketParams.id(), msg.sender).borrowShares,
                 msg.sender,
                 abi.encode(
                     this.zeroExLeverageBundlesV1Delever.selector,
                     msg.sender,
-                    abi.encode(marketParams, collateralToSell, swapData)
+                    abi.encode(marketParams, collateralToSell, minRepayAssets, swapData)
                 )
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
@@ -298,18 +298,22 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     function executeDelever(uint256 assets, address sender, bytes memory operationData) internal {
-        (MarketParams memory marketParams, uint256 collateralToSell, bytes memory swapData) =
-            abi.decode(operationData, (MarketParams, uint256, bytes));
+        (MarketParams memory marketParams, uint256 collateralToSell, uint256 minRepayAssets, bytes memory swapData) =
+            abi.decode(operationData, (MarketParams, uint256, uint256, bytes));
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateralToSell, sender, address(this));
         (uint256 spent, uint256 received) =
-            swap(marketParams.collateralToken, marketParams.loanToken, collateralToSell, assets, swapData);
+            swap(marketParams.collateralToken, marketParams.loanToken, collateralToSell, minRepayAssets, swapData);
 
         if (collateralToSell > spent) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
             IMorpho(BLUE).supplyCollateral(marketParams, collateralToSell - spent, sender, "");
         }
-        repaySurplus(marketParams, sender, received - assets);
+        if (received < assets) {
+            IMorpho(BLUE).borrow(marketParams, assets - received, 0, sender, address(this));
+        } else {
+            SafeTransferLib.safeTransfer(marketParams.loanToken, sender, received - assets);
+        }
     }
 
     /// @dev Repays sender's debt with the surplus of loan assets, and sends what is left above the debt to sender.
