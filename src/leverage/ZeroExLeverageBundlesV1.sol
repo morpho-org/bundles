@@ -62,7 +62,8 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev penaltyAssets must be the aggregate penalty P of the reallocations, so that it can be verified from the calldata.
     /// @dev P is paid to the public allocator upfront from loanAssets, with P - loanAssets flash loaned if P > loanAssets and repaid from maxBorrowAssets; at most loanAssets + maxBorrowAssets - P is swapped.
     /// @dev All public reallocations execute unconditionally.
-    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - P. If the swap would spend more than loanAssets + maxBorrowAssets - P or buys less than collateralToBuy, the call reverts.
+    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - P.
+    /// @dev If the swap would spend more than loanAssets + maxBorrowAssets - P or buys less than collateralToBuy, the call reverts.
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
     /// @dev Blue's health check is performed with maxBorrowAssets borrowed, before the surplus is repaid.
     /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
@@ -118,7 +119,8 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     /// @dev Repays minRepayAssets of msg.sender's debt; in Blue's callback, withdraws collateralToSell and sells it through 0x for at least minRepayAssets.
-    /// @dev swapData is expected to be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount >= minRepayAssets.
+    /// @dev swapData is expected to be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount = minRepayAssets.
+    /// @dev If the swap would spend more than collateralToSell or returns less than minRepayAssets, the call reverts.
     /// @dev minRepayAssets must be non-zero and must not exceed msg.sender's debt, or else Blue reverts.
     /// @dev Unsold collateral is supplied back; the loan assets received above minRepayAssets repay the remaining debt, and the rest is sent to msg.sender.
     /// @dev Blue's health check on the withdrawal is performed with minRepayAssets repaid, before the surplus is repaid.
@@ -153,8 +155,9 @@ contract ZeroExLeverageBundlesV1 is
 
     /// @dev Repays all of msg.sender's borrow shares; in Blue's callback, withdraws all collateral and swaps at most maxCollateralIn of it through 0x for at least minLoanOut.
     /// @dev The quote type is not enforced: maxCollateralIn and minLoanOut are expected to be the quote's input cap and output floor.
-    /// @dev To keep the collateral left after the repay, swapData is expected to be a 0x BUY quote with buyAmount = debt plus a buffer for the interest accrued until execution, maxSellAmount <= maxCollateralIn, and buyAmount >= minLoanOut.
-    /// @dev To exit fully into loan assets, swapData is expected to be a 0x SELL quote with sellAmount = msg.sender's collateral <= maxCollateralIn and minBuyAmount >= minLoanOut.
+    /// @dev To keep the collateral left after the repay, swapData is expected to be a 0x BUY quote with buyAmount = minLoanOut = debt plus a buffer for the interest accrued until execution, and maxSellAmount = maxCollateralIn.
+    /// @dev To exit fully into loan assets, swapData is expected to be a 0x SELL quote with sellAmount = maxCollateralIn = msg.sender's collateral and minBuyAmount = minLoanOut.
+    /// @dev If the swap would spend more than maxCollateralIn or returns less than minLoanOut, the call reverts.
     /// @dev minLoanOut includes the loan assets used to repay the debt; if the swap returns less than the debt, the repayment reverts on Blue.
     /// @dev The unsold collateral and the loan assets received above the debt are sent to msg.sender.
     /// @dev Without debt, withdraws all collateral to msg.sender and ignores maxCollateralIn, minLoanOut and swapData.
