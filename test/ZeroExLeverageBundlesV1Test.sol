@@ -12,7 +12,7 @@ import {IZeroExLeverageBundlesV1} from "../src/leverage/interfaces/IZeroExLevera
 import {ZeroExLeverageBundlesV1} from "../src/leverage/ZeroExLeverageBundlesV1.sol";
 import {AllowanceHolderMock, SettlerMock} from "./helpers/ZeroExMocks.sol";
 import {PublicAllocatorMock} from "./helpers/PublicAllocatorMock.sol";
-import {PublicAllocations} from "../src/leverage/interfaces/IZeroExLeverageBundlesV1.sol";
+import {PublicAllocations} from "../src/leverage/interfaces/IBluePublicAllocator.sol";
 import {IMorphoBase} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {ErrorsLib as BlueErrorsLib} from "../lib/morpho-blue/src/libraries/ErrorsLib.sol";
 

@@ -2,11 +2,8 @@
 // Copyright (c) 2026 Morpho Association
 pragma solidity 0.8.34;
 
-import {
-    IZeroExLeverageBundlesV1,
-    PublicAllocations,
-    IBluePublicAllocator
-} from "./interfaces/IZeroExLeverageBundlesV1.sol";
+import {IZeroExLeverageBundlesV1} from "./interfaces/IZeroExLeverageBundlesV1.sol";
+import {PublicAllocations, IBluePublicAllocator} from "./interfaces/IBluePublicAllocator.sol";
 import {IMorpho, MarketParams, Position, Market} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {
     IMorphoFlashLoanCallback,
@@ -65,9 +62,8 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev penaltyAssets must be the aggregate penalty P of the reallocations, so that it can be verified from the calldata.
     /// @dev P is paid to the public allocator upfront from loanAssets, with P - loanAssets flash loaned if P > loanAssets and repaid from maxBorrowAssets; at most loanAssets + maxBorrowAssets - P is swapped.
     /// @dev All public reallocations execute unconditionally.
-    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - P.
+    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - P. If the swap would spend more than loanAssets + maxBorrowAssets - P or buys less than collateralToBuy, the call reverts.
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
-    /// @dev If the swap would spend more than loanAssets + maxBorrowAssets - P or buys less than collateralToBuy, the call reverts.
     /// @dev Blue's health check is performed with maxBorrowAssets borrowed, before the surplus is repaid.
     /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
