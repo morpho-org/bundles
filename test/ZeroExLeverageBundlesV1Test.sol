@@ -12,7 +12,7 @@ import {IZeroExLeverageBundlesV1} from "../src/leverage/interfaces/IZeroExLevera
 import {ZeroExLeverageBundlesV1} from "../src/leverage/ZeroExLeverageBundlesV1.sol";
 import {AllowanceHolderMock, SettlerMock} from "./helpers/ZeroExMocks.sol";
 import {PublicAllocatorMock} from "./helpers/PublicAllocatorMock.sol";
-import {PublicAllocations} from "../src/leverage/interfaces/IZeroExLeverageBundlesV1.sol";
+import {PublicAllocations} from "../src/leverage/interfaces/IBluePublicAllocator.sol";
 import {IMorphoBase} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {ErrorsLib as BlueErrorsLib} from "../lib/morpho-blue/src/libraries/ErrorsLib.sol";
 
@@ -48,11 +48,12 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
     function setUp() public {
         setUpLeverageMarket();
-        allowanceHolder = new AllowanceHolderMock();
+        allowanceHolder = AllowanceHolderMock(0x0000000000001fF3684f28c67538d4D072C22734);
+        vm.etch(address(allowanceHolder), address(new AllowanceHolderMock()).code);
         settler = new SettlerMock(allowanceHolder);
         publicAllocator = new PublicAllocatorMock(morpho);
         vault = makeAddr("vault");
-        bundle = new ZeroExLeverageBundlesV1(address(morpho), address(allowanceHolder), address(publicAllocator));
+        bundle = new ZeroExLeverageBundlesV1(address(morpho), address(publicAllocator));
         assertEq(bundle.PUBLIC_ALLOCATOR(), address(publicAllocator));
     }
 
