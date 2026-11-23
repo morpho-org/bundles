@@ -980,7 +980,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 37e18, 37e18);
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, 10e18, 0, 37e18, 37e18, swapData, type(uint256).max, noReallocations(), block.timestamp
+            marketParams, 10e18, 0, 37e18, 37e18, swapData, type(uint256).max, noReallocations(), 0, block.timestamp
         );
     }
 
