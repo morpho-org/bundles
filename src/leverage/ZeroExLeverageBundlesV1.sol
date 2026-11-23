@@ -381,11 +381,12 @@ contract ZeroExLeverageBundlesV1 is
         .toAssetsUp(
             uint256(market.totalBorrowAssets).zeroFloorSub(minRepayAssets), market.totalBorrowShares - repaidShares
         );
-        if (borrowedAfter <= maxBorrow) return minRepayAssets;
-
-        return
-            (uint256(position.borrowShares) + 1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares)
+        if (borrowedAfter <= maxBorrow) {
+            return minRepayAssets;
+        } else {
+            return (uint256(position.borrowShares) + 1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares)
                 - maxBorrow;
+        }
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).
