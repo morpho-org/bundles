@@ -394,6 +394,48 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testDeleverRepaysWhatHealthRequiresAfterInterestAccrues() public {
+        address whale = makeAddr("whale");
+        deal(address(collateralToken), whale, 1e32);
+        vm.startPrank(whale);
+        safeApprove(collateralToken, address(morpho), 1e32);
+        morpho.supplyCollateral(marketParams, 1e32, whale, "");
+        morpho.borrow(marketParams, 0.5e32, 0, whale, whale);
+        vm.stopPrank();
+
+        openPositionNearLltv();
+        vm.warp(vm.getBlockTimestamp() + 1 days);
+        morpho.accrueInterest(marketParams);
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        Market memory market = morpho.market(marketParams.id());
+        uint256 debtBefore = _debt(position, market);
+        assertGt(
+            debtBefore, uint256(position.borrowShares).toAssetsDown(market.totalBorrowAssets, market.totalBorrowShares)
+        );
+
+        uint256 collateralToSell = 20e18;
+        uint256 minRepayAssets = 15e18;
+        uint256 maxDebt = 27e18 * LLTV / 1e18;
+        uint256 healthRequired = debtBefore - maxDebt;
+        assertGt(healthRequired, minRepayAssets);
+        settler.setRate(healthRequired + 1, collateralToSell);
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Delever(
+            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, vm.getBlockTimestamp()
+        );
+
+        position = morpho.position(marketParams.id(), user);
+        uint256 debtAfter = _debt(position, morpho.market(marketParams.id()));
+        assertEq(position.collateral, 27e18);
+        assertLe(debtAfter, maxDebt);
+        assertGe(debtBefore - debtAfter, healthRequired);
+        assertNoResiduals();
+    }
+
     function testDeleverRevertsWhenSwapReturnsLessThanHealthRequires() public {
         openPositionNearLltv();
         // 27e18 of collateral keeps 21.6e18 of debt healthy, so 15.4e18 must be repaid: more than the 15.2e18 received.
