@@ -436,6 +436,81 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testDeleverRepaysOnlyMinRepayAssetsWhenItKeepsThePositionHealthy() public {
+        openPositionNearLltv();
+        // 27e18 of collateral keeps 21.6e18 of debt healthy, so repaying exactly 15.4e18 of the 37e18 debt is enough.
+        uint256 collateralToSell = 20e18;
+        uint256 minRepayAssets = 15.4e18;
+        settler.setRate(minRepayAssets, collateralToSell);
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Delever(
+            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, 27e18);
+        assertEq(_debt(position, morpho.market(marketParams.id())), 21.6e18);
+        assertNoResiduals();
+    }
+
+    /// @dev Whenever repaying minRepayAssets is enough for Blue's withdrawal, Delever repays exactly that; otherwise it repays an amount that makes the withdrawal pass.
+    function testDeleverRepayIsEnoughAndNeverAboveNeeded(
+        uint256 otherBorrowShares,
+        uint256 elapsed,
+        uint256 price,
+        uint256 collateralToSell,
+        uint256 minRepayAssets
+    ) public {
+        address whale = makeAddr("whale");
+        deal(address(collateralToken), whale, 1e32);
+        vm.startPrank(whale);
+        safeApprove(collateralToken, address(morpho), 1e32);
+        morpho.supplyCollateral(marketParams, 1e32, whale, "");
+        morpho.borrow(marketParams, 0, bound(otherBorrowShares, 1, 1e32), whale, whale);
+        vm.stopPrank();
+
+        openPositionNearLltv();
+        vm.warp(vm.getBlockTimestamp() + bound(elapsed, 0, 365 days));
+        morpho.accrueInterest(marketParams);
+
+        uint256 debt = _debt(morpho.position(marketParams.id(), user), morpho.market(marketParams.id()));
+        // Keeps the user healthy before the delever.
+        price = bound(price, debt * 1e36 / (47e18 * LLTV / 1e18) + 1e20, 2e36);
+        oracle.setPrice(price);
+        collateralToSell = bound(collateralToSell, 1e18, 40e18);
+        minRepayAssets = bound(minRepayAssets, 1, debt / 2);
+
+        // Does repaying only minRepayAssets let Blue's withdrawal pass?
+        uint256 snapshot = vm.snapshotState();
+        deal(address(loanToken), user, minRepayAssets);
+        vm.startPrank(user);
+        safeApprove(loanToken, address(morpho), minRepayAssets);
+        morpho.repay(marketParams, minRepayAssets, 0, user, "");
+        bool minRepayAssetsIsEnough;
+        try morpho.withdrawCollateral(marketParams, collateralToSell, user, user) {
+            minRepayAssetsIsEnough = true;
+        } catch {}
+        vm.stopPrank();
+        vm.revertToState(snapshot);
+
+        // When it is enough the swap returns exactly minRepayAssets, so repaying anything more would revert.
+        uint256 swapOutput = minRepayAssetsIsEnough ? minRepayAssets : debt;
+        settler.setRate(swapOutput, collateralToSell);
+        bytes memory swapData =
+            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Delever(
+            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, vm.getBlockTimestamp()
+        );
+
+        assertEq(morpho.position(marketParams.id(), user).collateral, 47e18 - collateralToSell);
+        assertNoResiduals();
+    }
+
     function testDeleverRevertsWhenSwapReturnsLessThanHealthRequires() public {
         openPositionNearLltv();
         // 27e18 of collateral keeps 21.6e18 of debt healthy, so 15.4e18 must be repaid: more than the 15.2e18 received.
