@@ -138,12 +138,11 @@ contract ZeroExLeverageBundlesV1 is
         require(block.timestamp <= deadline, DeadlinePassed());
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
-        uint256 minHealthyRepayAssets = minHealthyRepay(marketParams, msg.sender, collateralToSell);
         // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
         IMorpho(BLUE)
             .repay(
                 marketParams,
-                minRepayAssets > minHealthyRepayAssets ? minRepayAssets : minHealthyRepayAssets,
+                minHealthyRepay(marketParams, msg.sender, collateralToSell, minRepayAssets),
                 0,
                 msg.sender,
                 abi.encode(
@@ -356,13 +355,15 @@ contract ZeroExLeverageBundlesV1 is
         }
     }
 
-    /// @dev Returns the least assets that sender must repay to stay healthy on Blue once withdrawnCollateral is withdrawn, at the current oracle price.
-    /// @dev Accrues interest when needed, then inverts Blue's health check to calculate the minimum assets to repay.
-    /// @dev Repaying rounds the debt up by at most the value of one share, so the debt is calculated with one more share as a margin.
-    function minHealthyRepay(MarketParams memory marketParams, address sender, uint256 withdrawnCollateral)
-        internal
-        returns (uint256)
-    {
+    /// @dev Returns minRepayAssets if repaying it keeps sender healthy on Blue once withdrawnCollateral is withdrawn, at the current oracle price; otherwise returns a greater amount that does.
+    /// @dev Accrues interest when needed, then mirrors Blue's repay and health check on minRepayAssets.
+    /// @dev Repaying rounds the debt up by at most the value of one share, so the greater amount is calculated with one more share as a margin.
+    function minHealthyRepay(
+        MarketParams memory marketParams,
+        address sender,
+        uint256 withdrawnCollateral,
+        uint256 minRepayAssets
+    ) internal returns (uint256) {
         Market memory market = IMorpho(BLUE).market(marketParams.id());
         if (market.lastUpdate != block.timestamp) {
             // forge-lint: disable-next-line(reentrancy-no-eth) The helper is only called from locked entrypoints.
@@ -370,13 +371,21 @@ contract ZeroExLeverageBundlesV1 is
             market = IMorpho(BLUE).market(marketParams.id());
         }
         Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
-        uint256 borrowed =
-            (uint256(position.borrowShares) + 1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
         uint256 price = IOracle(marketParams.oracle).price();
         uint256 maxBorrow = (position.collateral - withdrawnCollateral)
             .mulDivDown(price, ORACLE_PRICE_SCALE)
             .mulDivDown(marketParams.lltv, WAD);
-        return borrowed.zeroFloorSub(maxBorrow);
+
+        uint256 repaidShares = minRepayAssets.toSharesDown(market.totalBorrowAssets, market.totalBorrowShares);
+        uint256 borrowedAfter = (position.borrowShares - repaidShares)
+        .toAssetsUp(
+            uint256(market.totalBorrowAssets).zeroFloorSub(minRepayAssets), market.totalBorrowShares - repaidShares
+        );
+        if (borrowedAfter <= maxBorrow) return minRepayAssets;
+
+        return
+            (uint256(position.borrowShares) + 1).toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares)
+                - maxBorrow;
     }
 
     /// @dev Reverts unless sender's LTV is at or below maxLtv; type(uint256).max disables the check (and notably skips the oracle call).
