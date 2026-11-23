@@ -6,6 +6,7 @@ import {LeverageTest} from "./helpers/LeverageTest.sol";
 import {MarketParams, Market, Position} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SharesMathLib} from "../lib/morpho-blue/src/libraries/SharesMathLib.sol";
+import {MorphoBalancesLib} from "../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
 import {IAllowanceHolder} from "./helpers/IAllowanceHolder.sol";
 import {ISettlerTakerSubmitted} from "./helpers/ISettlerTakerSubmitted.sol";
 import {IZeroExLeverageBundlesV1} from "../src/leverage/interfaces/IZeroExLeverageBundlesV1.sol";
@@ -405,14 +406,13 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
 
         openPositionNearLltv();
         vm.warp(vm.getBlockTimestamp() + 1 days);
-        morpho.accrueInterest(marketParams);
+        assertLt(morpho.market(marketParams.id()).lastUpdate, vm.getBlockTimestamp());
 
-        Position memory position = morpho.position(marketParams.id(), user);
-        Market memory market = morpho.market(marketParams.id());
-        uint256 debtBefore = _debt(position, market);
-        assertGt(
-            debtBefore, uint256(position.borrowShares).toAssetsDown(market.totalBorrowAssets, market.totalBorrowShares)
-        );
+        uint256 borrowShares = morpho.position(marketParams.id(), user).borrowShares;
+        (,, uint256 borrowAssets, uint256 totalBorrowShares) =
+            MorphoBalancesLib.expectedMarketBalances(morpho, marketParams);
+        uint256 debtBefore = borrowShares.toAssetsUp(borrowAssets, totalBorrowShares);
+        assertGt(debtBefore, borrowShares.toAssetsDown(borrowAssets, totalBorrowShares));
 
         uint256 collateralToSell = 20e18;
         uint256 minRepayAssets = 15e18;
@@ -428,7 +428,7 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
             marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, vm.getBlockTimestamp()
         );
 
-        position = morpho.position(marketParams.id(), user);
+        Position memory position = morpho.position(marketParams.id(), user);
         uint256 debtAfter = _debt(position, morpho.market(marketParams.id()));
         assertEq(position.collateral, 27e18);
         assertLe(debtAfter, maxDebt);
@@ -1023,7 +1023,16 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 37e18, 37e18);
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Lever(
-            marketParams, 10e18, 0, 37e18, 37e18, swapData, type(uint256).max, noReallocations(), 0, block.timestamp
+            marketParams,
+            10e18,
+            0,
+            37e18,
+            37e18,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            0,
+            vm.getBlockTimestamp()
         );
     }
 
