@@ -56,6 +56,8 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 
 ### [ZeroExLeverageBundlesV1](src/leverage/ZeroExLeverageBundlesV1.sol)
 
+Lever, Delever and Close bound adverse swap execution against the Morpho Blue market oracle. The caller supplies a WAD-scaled maximum deviation of at most 5%. A reverting oracle or an unfavorable difference between the oracle and the tradable price can block a bundled exit. Markets whose oracle does not track the tradable price may reject otherwise valid swaps. This check does not protect against a manipulated oracle.
+
 - `zeroExLeverageBundlesV1Lever` — pull collateral and/or loan assets, borrow, and buy a chosen amount of collateral through 0x to open or increase a leveraged position.
   Requires a maximum LTV below the market's liquidation LTV.
   Supports VaultV2's BluePublicAllocator to bring liquidity to the market before the borrow.

@@ -25,7 +25,7 @@ import {TokenLib} from "../libraries/TokenLib.sol";
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
-/// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder; neither the Settler nor its calldata is validated, so each swap is bounded only by the input cap and the output floor.
+/// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder; neither the Settler nor its calldata is validated. Each swap is bounded by the input cap, output floor and oracle price check.
 /// @dev ALLOWANCE_HOLDER is hardcoded to the address of 0x AllowanceHolder on the chains supporting the Cancun hardfork; this contract must not be deployed on a chain where AllowanceHolder is at another address.
 /// @dev Because the swap can make arbitrary calls, all entrypoints remain locked throughout the call to this contract.
 contract ZeroExLeverageBundlesV1 is
@@ -39,6 +39,7 @@ contract ZeroExLeverageBundlesV1 is
     using UtilsLib for uint256;
 
     address public constant ALLOWANCE_HOLDER = 0x0000000000001fF3684f28c67538d4D072C22734;
+    uint256 public constant MAX_DEVIATION = 0.05e18;
 
     address public immutable BLUE;
     address public immutable PUBLIC_ALLOCATOR;
@@ -69,6 +70,7 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev Blue's health check is performed with maxBorrowAssets borrowed, before the surplus is repaid.
     /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
     /// @dev maxLtv caps msg.sender's resulting LTV and must be below the market's LLTV.
+    /// @dev maxDeviation is the WAD-scaled maximum adverse deviation from the oracle price and must not exceed MAX_DEVIATION.
     function zeroExLeverageBundlesV1Lever(
         MarketParams memory marketParams,
         uint256 collateralAssets,
@@ -77,6 +79,7 @@ contract ZeroExLeverageBundlesV1 is
         uint256 maxBorrowAssets,
         bytes calldata swapData,
         uint256 maxLtv,
+        uint256 maxDeviation,
         PublicAllocations[] calldata reallocations,
         uint256 penaltyAssets,
         uint256 deadline
@@ -85,6 +88,7 @@ contract ZeroExLeverageBundlesV1 is
         require(collateralToBuy != 0, ZeroCollateralToBuy());
         require(penaltyAssets == totalPenaltyAssets(reallocations), InconsistentPenaltyAssets());
         require(maxLtv < marketParams.lltv, MaxLtvTooHigh());
+        require(maxDeviation <= MAX_DEVIATION, MaxDeviationTooHigh());
 
         if (collateralAssets > 0) {
             SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);
@@ -101,7 +105,8 @@ contract ZeroExLeverageBundlesV1 is
             collateralToBuy,
             maxBorrowAssets,
             loanAssets + maxBorrowAssets - penaltyAssets,
-            swapData
+            swapData,
+            maxDeviation
         );
 
         if (penaltyAssets > loanAssets) {
@@ -128,15 +133,18 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev Blue's health check on the withdrawal is performed with minRepayAssets repaid, before the surplus is repaid.
     /// @dev The msg.sender must have authorized this contract on Blue.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
+    /// @dev maxDeviation is the WAD-scaled maximum adverse deviation from the oracle price and must not exceed MAX_DEVIATION.
     function zeroExLeverageBundlesV1Delever(
         MarketParams memory marketParams,
         uint256 collateralToSell,
         uint256 minRepayAssets,
         bytes calldata swapData,
         uint256 maxLtv,
+        uint256 maxDeviation,
         uint256 deadline
     ) external nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
+        require(maxDeviation <= MAX_DEVIATION, MaxDeviationTooHigh());
         TokenLib.forceApproveMax(marketParams.loanToken, BLUE);
 
         // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the callback.
@@ -149,7 +157,7 @@ contract ZeroExLeverageBundlesV1 is
                 abi.encode(
                     this.zeroExLeverageBundlesV1Delever.selector,
                     msg.sender,
-                    abi.encode(marketParams, collateralToSell, swapData)
+                    abi.encode(marketParams, collateralToSell, swapData, maxDeviation)
                 )
             );
         requireMaxLtv(marketParams, msg.sender, maxLtv);
@@ -164,14 +172,17 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev The unsold collateral and the loan assets received above the debt are sent to msg.sender.
     /// @dev Without debt, withdraws all collateral to msg.sender and ignores maxCollateralIn, minLoanOut and swapData.
     /// @dev The msg.sender must have authorized this contract on Blue.
+    /// @dev maxDeviation is the WAD-scaled maximum adverse deviation from the oracle price and must not exceed MAX_DEVIATION, even without a swap.
     function zeroExLeverageBundlesV1Close(
         MarketParams memory marketParams,
         uint256 maxCollateralIn,
         uint256 minLoanOut,
         bytes calldata swapData,
+        uint256 maxDeviation,
         uint256 deadline
     ) external nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
+        require(maxDeviation <= MAX_DEVIATION, MaxDeviationTooHigh());
 
         Position memory position = IMorpho(BLUE).position(marketParams.id(), msg.sender);
         if (position.borrowShares == 0) {
@@ -189,7 +200,9 @@ contract ZeroExLeverageBundlesV1 is
                     abi.encode(
                         this.zeroExLeverageBundlesV1Close.selector,
                         msg.sender,
-                        abi.encode(marketParams, position.collateral, maxCollateralIn, minLoanOut, swapData)
+                        abi.encode(
+                            marketParams, position.collateral, maxCollateralIn, minLoanOut, swapData, maxDeviation
+                        )
                     )
                 );
         }
@@ -242,12 +255,15 @@ contract ZeroExLeverageBundlesV1 is
             uint256 collateralToBuy,
             uint256 maxBorrowAssets,
             uint256 maxSwapIn,
-            bytes memory swapData
-        ) = abi.decode(leverData, (MarketParams, address, uint256, uint256, uint256, bytes));
+            bytes memory swapData,
+            uint256 maxDeviation
+        ) = abi.decode(leverData, (MarketParams, address, uint256, uint256, uint256, bytes, uint256));
 
         if (maxBorrowAssets > 0) IMorpho(BLUE).borrow(marketParams, maxBorrowAssets, 0, sender, address(this));
         (uint256 spent, uint256 received) =
             swap(marketParams.loanToken, marketParams.collateralToken, maxSwapIn, collateralToBuy, swapData);
+        uint256 collateralValue = received.mulDivDown(IOracle(marketParams.oracle).price(), ORACLE_PRICE_SCALE);
+        require(collateralValue >= spent.mulDivDown(WAD - maxDeviation, WAD), ExcessivePriceImpact());
 
         repaySurplus(marketParams, sender, maxSwapIn - spent);
         if (received > collateralToBuy) {
@@ -300,12 +316,13 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     function executeDelever(uint256 assets, address sender, bytes memory operationData) internal {
-        (MarketParams memory marketParams, uint256 collateralToSell, bytes memory swapData) =
-            abi.decode(operationData, (MarketParams, uint256, bytes));
+        (MarketParams memory marketParams, uint256 collateralToSell, bytes memory swapData, uint256 maxDeviation) =
+            abi.decode(operationData, (MarketParams, uint256, bytes, uint256));
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateralToSell, sender, address(this));
         (uint256 spent, uint256 received) =
             swap(marketParams.collateralToken, marketParams.loanToken, collateralToSell, assets, swapData);
+        requireCollateralSalePrice(marketParams.oracle, spent, received, maxDeviation);
 
         if (collateralToSell > spent) {
             TokenLib.forceApproveMax(marketParams.collateralToken, BLUE);
@@ -341,8 +358,9 @@ contract ZeroExLeverageBundlesV1 is
             uint256 collateral,
             uint256 maxCollateralIn,
             uint256 minLoanOut,
-            bytes memory swapData
-        ) = abi.decode(operationData, (MarketParams, uint256, uint256, uint256, bytes));
+            bytes memory swapData,
+            uint256 maxDeviation
+        ) = abi.decode(operationData, (MarketParams, uint256, uint256, uint256, bytes, uint256));
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, sender, address(this));
         (uint256 spent, uint256 received) = swap(
@@ -352,6 +370,7 @@ contract ZeroExLeverageBundlesV1 is
             minLoanOut,
             swapData
         );
+        requireCollateralSalePrice(marketParams.oracle, spent, received, maxDeviation);
 
         if (collateral > spent) {
             SafeTransferLib.safeTransfer(marketParams.collateralToken, sender, collateral - spent);
@@ -361,7 +380,15 @@ contract ZeroExLeverageBundlesV1 is
         }
     }
 
-    /// @dev Reverts unless sender's LTV is at or below maxLtv; only Delever accepts type(uint256).max to skip the check and its oracle call.
+    function requireCollateralSalePrice(address oracle, uint256 spent, uint256 received, uint256 maxDeviation)
+        internal
+        view
+    {
+        uint256 collateralValue = spent.mulDivDown(IOracle(oracle).price(), ORACLE_PRICE_SCALE);
+        require(received >= collateralValue.mulDivDown(WAD - maxDeviation, WAD), ExcessivePriceImpact());
+    }
+
+    /// @dev Reverts unless sender's LTV is at or below maxLtv; only Delever accepts type(uint256).max to skip this LTV check.
     /// @dev Accrues interest when needed, then mirrors Blue's health check against maxLtv.
     function requireMaxLtv(MarketParams memory marketParams, address sender, uint256 maxLtv) internal {
         if (maxLtv != type(uint256).max) {

@@ -9,10 +9,12 @@ interface IZeroExLeverageBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
     error ExcessiveInput();
+    error ExcessivePriceImpact();
     error InconsistentPenaltyAssets();
     error InconsistentTokens();
     error InsufficientOutput();
     error LtvExceeded();
+    error MaxDeviationTooHigh();
     error MaxLtvTooHigh();
     error Reentrancy();
     error UnauthorizedCallback();
@@ -21,6 +23,7 @@ interface IZeroExLeverageBundlesV1 {
     /// STORAGE GETTERS ///
     function BLUE() external view returns (address);
     function ALLOWANCE_HOLDER() external view returns (address);
+    function MAX_DEVIATION() external view returns (uint256);
     function PUBLIC_ALLOCATOR() external view returns (address);
 
     /// FUNCTIONS ///
@@ -32,6 +35,7 @@ interface IZeroExLeverageBundlesV1 {
         uint256 maxBorrowAssets,
         bytes calldata swapData,
         uint256 maxLtv,
+        uint256 maxDeviation,
         PublicAllocations[] calldata reallocations,
         uint256 penaltyAssets,
         uint256 deadline
@@ -43,6 +47,7 @@ interface IZeroExLeverageBundlesV1 {
         uint256 minRepayAssets,
         bytes calldata swapData,
         uint256 maxLtv,
+        uint256 maxDeviation,
         uint256 deadline
     ) external;
 
@@ -51,6 +56,7 @@ interface IZeroExLeverageBundlesV1 {
         uint256 maxCollateralIn,
         uint256 minLoanOut,
         bytes calldata swapData,
+        uint256 maxDeviation,
         uint256 deadline
     ) external;
 }
