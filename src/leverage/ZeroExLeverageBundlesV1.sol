@@ -155,11 +155,11 @@ contract ZeroExLeverageBundlesV1 is
         requireMaxLtv(marketParams, msg.sender, maxLtv);
     }
 
-    /// @dev Repays all of msg.sender's borrow shares; in Blue's callback, withdraws all collateral and swaps at most maxCollateralIn of it through 0x for at least minLoanOut.
+    /// @dev Repays all of msg.sender's borrow shares; in Blue's callback, withdraws all collateral and swaps up to the lower of maxCollateralIn and the withdrawn collateral through 0x for at least minLoanOut.
     /// @dev The quote type is not enforced: maxCollateralIn and minLoanOut are expected to be the quote's input cap and output floor.
     /// @dev To keep the collateral left after the repay, swapData is expected to be a 0x BUY quote with buyAmount = minLoanOut = debt plus a buffer for the interest accrued until execution, and maxSellAmount = maxCollateralIn.
     /// @dev To exit fully into loan assets, swapData is expected to be a 0x SELL quote with sellAmount = maxCollateralIn = msg.sender's collateral and minBuyAmount = minLoanOut.
-    /// @dev If the swap would spend more than maxCollateralIn or returns less than minLoanOut, the call reverts.
+    /// @dev If the swap would spend more than the input cap or returns less than minLoanOut, the call reverts.
     /// @dev minLoanOut includes the loan assets used to repay the debt; if the swap returns less than the debt, the repayment reverts on Blue.
     /// @dev The unsold collateral and the loan assets received above the debt are sent to msg.sender.
     /// @dev Without debt, withdraws all collateral to msg.sender and ignores maxCollateralIn, minLoanOut and swapData.
@@ -345,8 +345,13 @@ contract ZeroExLeverageBundlesV1 is
         ) = abi.decode(operationData, (MarketParams, uint256, uint256, uint256, bytes));
 
         IMorpho(BLUE).withdrawCollateral(marketParams, collateral, sender, address(this));
-        (uint256 spent, uint256 received) =
-            swap(marketParams.collateralToken, marketParams.loanToken, maxCollateralIn, minLoanOut, swapData);
+        (uint256 spent, uint256 received) = swap(
+            marketParams.collateralToken,
+            marketParams.loanToken,
+            UtilsLib.min(maxCollateralIn, collateral),
+            minLoanOut,
+            swapData
+        );
 
         if (collateral > spent) {
             SafeTransferLib.safeTransfer(marketParams.collateralToken, sender, collateral - spent);

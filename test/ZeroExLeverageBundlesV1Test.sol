@@ -482,6 +482,21 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testCloseCapsAllowanceAtWithdrawnCollateral() public {
+        uint256 debt = openPosition();
+        uint256 collateral = morpho.position(marketParams.id(), user).collateral;
+        bytes memory swapData = buildExactInSwapData(address(collateralToken), address(loanToken), collateral, debt);
+
+        vm.expectCall(
+            address(collateralToken), abi.encodeCall(collateralToken.approve, (address(allowanceHolder), collateral)), 1
+        );
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Close(marketParams, type(uint256).max, debt, swapData, block.timestamp);
+
+        assertEq(morpho.position(marketParams.id(), user).collateral, 0);
+        assertNoResiduals();
+    }
+
     function testCloseExactInRequiresOutputToCoverDebt() public {
         openPosition();
         Position memory position = morpho.position(marketParams.id(), user);

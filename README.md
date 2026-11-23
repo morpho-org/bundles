@@ -63,6 +63,7 @@ The three entrypoints that consume market liquidity (`blueBundlesV1SupplyCollate
 - `zeroExLeverageBundlesV1Delever` — sell a chosen amount of collateral through 0x and repay debt with the proceeds.
   Any excess token is used in the position if possible.
 - `zeroExLeverageBundlesV1Close` — repay the full debt by swapping collateral through 0x; either a chosen amount of loan token is bought, or all of the collateral is sold.
+  The swap can spend at most the lower of the caller's input cap and the collateral withdrawn from their position.
   Any excess token is transferred to the user.
 
 ## Changelog
