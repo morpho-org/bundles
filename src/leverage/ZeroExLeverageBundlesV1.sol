@@ -366,8 +366,7 @@ contract ZeroExLeverageBundlesV1 is
     }
 
     /// @dev Returns the least extra collateral that keeps sender healthy on Blue after supplying addedCollateral and borrowing borrowAssets, at the current oracle price.
-    /// @dev Accrues interest when needed, then inverts Blue's health check to calculate the minimum collateral.
-    /// @dev Borrowing rounds the debt up by at most the value of one share, so the debt is calculated with one more share as a margin.
+    /// @dev Accrues interest when needed, then mirrors Blue's borrow and inverts its health check to calculate the minimum collateral.
     function minHealthyExtraCollateral(
         MarketParams memory marketParams,
         address sender,
@@ -381,8 +380,9 @@ contract ZeroExLeverageBundlesV1 is
             market = IMorpho(BLUE).market(marketParams.id());
         }
         Position memory position = IMorpho(BLUE).position(marketParams.id(), sender);
-        uint256 borrowed = (uint256(position.borrowShares) + 1)
-        .toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares) + borrowAssets;
+        uint256 newShares = borrowAssets.toSharesUp(market.totalBorrowAssets, market.totalBorrowShares);
+        uint256 borrowed = (position.borrowShares + newShares)
+        .toAssetsUp(market.totalBorrowAssets + borrowAssets, market.totalBorrowShares + newShares);
         uint256 price = IOracle(marketParams.oracle).price();
         uint256 minCollateral = borrowed.mulDivUp(WAD, marketParams.lltv).mulDivUp(ORACLE_PRICE_SCALE, price);
         return minCollateral.zeroFloorSub(position.collateral + addedCollateral);

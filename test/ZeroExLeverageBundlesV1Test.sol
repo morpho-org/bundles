@@ -269,6 +269,77 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testLeverWithBorrowExactlyAtTheLimitNeedsNoCollateralInBlue() public {
+        fundUser(address(bundle), 10e18);
+        // 20e18 of collateral keeps exactly 16e18 of debt healthy, and Blue holds no collateral to lend.
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 16e18, 10e18);
+
+        vm.expectCall(address(morpho), abi.encodeWithSelector(IMorphoBase.withdrawCollateral.selector), 0);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 10e18, 0, 10e18, 16e18, swapData, type(uint256).max, noReallocations(), 0, block.timestamp
+        );
+
+        assertEq(morpho.position(marketParams.id(), user).collateral, 20e18);
+        assertNoResiduals();
+    }
+
+    /// @dev Extra collateral is supplied exactly when borrowing maxBorrowAssets directly on Blue would be unhealthy.
+    function testLeverSuppliesExtraCollateralOnlyWhenBorrowWouldFail(
+        uint256 otherBorrowShares,
+        uint256 elapsed,
+        uint256 price,
+        uint256 collateral,
+        uint256 maxBorrowAssets
+    ) public {
+        supplyOtherCollateral(1e30);
+        vm.prank(makeAddr("other"));
+        morpho.borrow(marketParams, 0, bound(otherBorrowShares, 1, 1e25), makeAddr("other"), makeAddr("other"));
+        vm.warp(vm.getBlockTimestamp() + bound(elapsed, 0, 365 days));
+        morpho.accrueInterest(marketParams);
+
+        price = bound(price, 0.5e36, 2e36);
+        oracle.setPrice(price);
+        collateral = bound(collateral, 2e18, 100e18);
+        uint256 limit = collateral * price / 1e36 * LLTV / 1e18;
+        // Around the limit, where rounding matters.
+        maxBorrowAssets = bound(maxBorrowAssets, limit - 10, limit + 10);
+
+        uint256 snapshot = vm.snapshotState();
+        deal(address(collateralToken), user, collateral);
+        vm.startPrank(user);
+        safeApprove(collateralToken, address(morpho), collateral);
+        morpho.supplyCollateral(marketParams, collateral, user, "");
+        bool borrowIsHealthy;
+        try morpho.borrow(marketParams, maxBorrowAssets, 0, user, user) {
+            borrowIsHealthy = true;
+        } catch {}
+        vm.stopPrank();
+        vm.revertToState(snapshot);
+
+        fundUser(address(bundle), collateral / 2);
+        settler.setRate(collateral - collateral / 2, limit / 2);
+        bytes memory swapData =
+            buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, collateral - collateral / 2);
+
+        vm.expectCall(
+            address(morpho), abi.encodeWithSelector(IMorphoBase.withdrawCollateral.selector), borrowIsHealthy ? 0 : 1
+        );
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateral / 2,
+            0,
+            collateral - collateral / 2,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            0,
+            vm.getBlockTimestamp()
+        );
+    }
+
     function testLeverRevertsWhenSwapSpendsMoreThanHealthy() public {
         supplyOtherCollateral(100e18);
         fundUser(address(bundle), 10e18);
