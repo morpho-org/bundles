@@ -4,10 +4,13 @@
 // Gas is intentionally out of scope.
 
 definition maxTokenSupply() returns uint256 = 10 ^ 32;
+
 definition maxSettlementFee() returns uint256 = 5 * 10 ^ 15;
 
 persistent ghost assetOf(address) returns address;
+
 persistent ghost tokenBalance(address, address) returns uint256;
+
 persistent ghost mathint flashLoanCalls;
 
 methods {
@@ -39,15 +42,9 @@ function recordFlashLoan() {
     flashLoanCalls = flashLoanCalls + 1;
 }
 
-function safeTransferSucceeds() {}
+function safeTransferSucceeds() { }
 
-rule fullyIdleExitDoesNotRevert(
-    env e,
-    address vault,
-    address adapter,
-    uint256 exitAssets,
-    uint256 deadline
-) {
+rule fullyIdleExitDoesNotRevert(env e, address vault, address adapter, uint256 exitAssets, uint256 deadline) {
     require e.msg.sender != currentContract;
     require e.msg.value == 0;
     require vault != 0 && vault != currentContract;
@@ -67,13 +64,7 @@ rule fullyIdleExitDoesNotRevert(
     assert initiator() == 0;
 }
 
-rule proRataThreeMarketsConservesAssets(
-    env e,
-    uint256 first,
-    uint256 second,
-    uint256 third,
-    uint256 assets
-) {
+rule proRataThreeMarketsConservesAssets(env e, uint256 first, uint256 second, uint256 third, uint256 assets) {
     require e.msg.value == 0;
     require first <= maxTokenSupply();
     require second <= maxTokenSupply();
@@ -93,12 +84,7 @@ rule proRataThreeMarketsConservesAssets(
     assert thirdAmount <= third;
 }
 
-rule chunkMakesProgress(
-    env e,
-    uint256 seed,
-    uint256 feeRate,
-    uint256 assets
-) {
+rule chunkMakesProgress(env e, uint256 seed, uint256 feeRate, uint256 assets) {
     require e.msg.value == 0;
     require seed >= 2;
     require seed <= maxTokenSupply();
