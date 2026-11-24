@@ -9,5 +9,7 @@ interface ISettlerTakerSubmitted {
         uint256 minAmountOut;
     }
 
-    function execute(AllowedSlippage calldata slippage, bytes[] calldata actions, bytes32 zidAndAffiliate) external;
+    function execute(AllowedSlippage calldata slippage, bytes[] calldata actions, bytes32 zidAndAffiliate)
+        external
+        returns (bool);
 }

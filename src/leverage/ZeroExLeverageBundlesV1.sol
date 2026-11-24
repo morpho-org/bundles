@@ -61,11 +61,11 @@ contract ZeroExLeverageBundlesV1 is
     /// ENTRYPOINT ///
 
     /// @dev Pulls collateralAssets and loanAssets from msg.sender, executes the public reallocations and supplies collateralAssets + collateralToBuy for msg.sender; in Blue's callback, borrows maxBorrowAssets and buys collateralToBuy through 0x.
-    /// @dev penaltyAssets must be the aggregate penalty P of the reallocations, so that it can be verified from the calldata.
-    /// @dev P is paid to the public allocator upfront from loanAssets, with P - loanAssets flash loaned if P > loanAssets and repaid from maxBorrowAssets; at most loanAssets + maxBorrowAssets - P is swapped.
+    /// @dev penaltyAssets must be the aggregate penalty of the reallocations, so that it can be verified from the calldata.
+    /// @dev penaltyAssets is paid to the public allocator upfront from loanAssets. If penaltyAssets > loanAssets, the difference is flash loaned and repaid from maxBorrowAssets.
     /// @dev All public reallocations execute unconditionally.
-    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - P.
-    /// @dev If the swap would spend more than loanAssets + maxBorrowAssets - P or buy less than collateralToBuy, the call reverts.
+    /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - penaltyAssets.
+    /// @dev If the swap would spend more than loanAssets + maxBorrowAssets - penaltyAssets or buy less than collateralToBuy, the call reverts.
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
     /// @dev With maxBorrowAssets > 0, the msg.sender must be healthy on Blue with maxBorrowAssets borrowed and collateralAssets + collateralToBuy supplied, or else Blue reverts: the health check is performed before the surplus repays debt.
     /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
@@ -234,7 +234,7 @@ contract ZeroExLeverageBundlesV1 is
 
     /// INTERNAL ///
 
-    /// @dev maxSwapIn is loanAssets + maxBorrowAssets minus the penalties of the public reallocations.
+    /// @dev maxSwapIn is loanAssets + maxBorrowAssets - penaltyAssets.
     /// @dev The flash-loaned assets, if any, stay in this contract to repay the flash loan.
     function executeLever(bytes calldata leverData) internal {
         (
