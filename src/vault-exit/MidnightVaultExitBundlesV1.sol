@@ -160,14 +160,10 @@ contract MidnightVaultExitBundlesV1 is IMorphoFlashLoanCallback, IIntermediary {
             uint256 assets = proRata ? amounts[i] : MathLib.min(remaining, marketAssets);
 
             uint256 feeRate = IMidnight(MIDNIGHT).settlementFee(marketId, market.maturity.zeroFloorSub(block.timestamp));
-            uint256 maxChunk = seed.mulDivDown(1e18, 1e18 + feeRate);
-            require(maxChunk > 0, ZeroSeed());
 
             while (assets > 0) {
-                uint256 chunk = assets < maxChunk ? assets : maxChunk;
-                uint256 fee = chunk.mulDivUp(feeRate, 1e18);
+                (uint256 chunk,, uint256 funding) = _chunk(seed, feeRate, assets);
                 IVaultV2(vault).forceDeallocate(adapter, abi.encode(market, initiator), chunk, initiator);
-                uint256 funding = chunk + fee;
                 uint256 idle = IERC20(asset).balanceOf(vault);
                 uint256 withdrawn = funding < idle ? funding : idle;
                 IVaultV2(vault).withdraw(withdrawn, address(this), initiator);
@@ -199,19 +195,44 @@ contract MidnightVaultExitBundlesV1 is IMorphoFlashLoanCallback, IIntermediary {
     {
         amounts = new uint256[](markets.length);
         uint256 total;
-        uint256 lastLive;
         for (uint256 i; i < markets.length; i++) {
             (uint128 credit, uint128 pendingFee,) =
                 IMidnight(MIDNIGHT).updatePositionView(markets[i], IdLib.toId(markets[i]), adapter);
             amounts[i] = uint256(credit) - pendingFee;
             total += amounts[i];
-            if (amounts[i] > 0) lastLive = i;
         }
+        return _distributeProRata(amounts, assets, total);
+    }
+
+    function _distributeProRata(uint256[] memory amounts, uint256 assets, uint256 total)
+        internal
+        pure
+        returns (uint256[] memory)
+    {
         require(total >= assets, InsufficientMarketCredit());
-        uint256 remaining = assets;
-        for (uint256 i; i < markets.length; i++) {
-            amounts[i] = i == lastLive ? remaining : assets.mulDivDown(amounts[i], total);
-            remaining -= amounts[i];
+        uint256 remainingAssets = assets;
+        uint256 remainingCredit = total;
+        for (uint256 i; i < amounts.length; i++) {
+            uint256 marketCredit = amounts[i];
+            uint256 marketAssets = marketCredit == remainingCredit
+                ? remainingAssets
+                : remainingAssets.mulDivDown(marketCredit, remainingCredit);
+            amounts[i] = marketAssets;
+            remainingAssets -= marketAssets;
+            remainingCredit -= marketCredit;
         }
+        return amounts;
+    }
+
+    function _chunk(uint256 seed, uint256 feeRate, uint256 assets)
+        internal
+        pure
+        returns (uint256 chunk, uint256 fee, uint256 funding)
+    {
+        uint256 maxChunk = seed.mulDivDown(1e18, 1e18 + feeRate);
+        require(maxChunk > 0, ZeroSeed());
+        chunk = assets < maxChunk ? assets : maxChunk;
+        fee = chunk.mulDivUp(feeRate, 1e18);
+        funding = chunk + fee;
     }
 }

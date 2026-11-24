@@ -5,6 +5,7 @@ pragma solidity 0.8.34;
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {Vm} from "../lib/forge-std/src/Vm.sol";
 import {MidnightVaultExitBundlesV1} from "../src/vault-exit/MidnightVaultExitBundlesV1.sol";
+import {MidnightVaultExitBundlesHarness} from "../certora/helpers/MidnightVaultExitBundlesHarness.sol";
 import {Permit} from "../src/libraries/TokenLib.sol";
 import {IMorpho} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
@@ -556,5 +557,15 @@ contract MidnightVaultExitBundlesTest is Test {
 contract MidnightVaultExitBundlesGatedTest is MidnightVaultExitBundlesTest {
     function setUp() public override {
         setUpMarket(true);
+    }
+}
+
+contract MidnightVaultExitBundlesMathTest is Test {
+    function testProRataRoundingDoesNotExceedMarketCredit() public {
+        MidnightVaultExitBundlesHarness harness = new MidnightVaultExitBundlesHarness();
+        (uint256 first, uint256 second, uint256 third) = harness.distributeThree(1, 1, 1, 2);
+        assertEq(first, 0);
+        assertEq(second, 1);
+        assertEq(third, 1);
     }
 }
