@@ -26,6 +26,7 @@ import {TokenLib} from "../libraries/TokenLib.sol";
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
 /// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder; neither the Settler nor its calldata is validated, so each swap is bounded only by the input cap and the output floor.
+/// @dev Blue's health checks are performed before the surplus of the swap is used, so a Lever or Delever call can revert even if the position would be healthy once the surplus has repaid debt.
 /// @dev ALLOWANCE_HOLDER is hardcoded to the address of 0x AllowanceHolder on the chains supporting the Cancun hardfork; this contract must not be deployed on a chain where AllowanceHolder is at another address.
 /// @dev Because the swap can make arbitrary calls, all entrypoints remain locked throughout the call to this contract.
 contract ZeroExLeverageBundlesV1 is
@@ -66,7 +67,7 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - P.
     /// @dev If the swap would spend more than loanAssets + maxBorrowAssets - P or buys less than collateralToBuy, the call reverts.
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
-    /// @dev Blue's health check is performed with maxBorrowAssets borrowed, before the surplus is repaid.
+    /// @dev The msg.sender must be healthy on Blue with maxBorrowAssets borrowed, or else Blue reverts: the health check is performed before the surplus repays debt.
     /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function zeroExLeverageBundlesV1Lever(
@@ -124,7 +125,7 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev If the swap would spend more than collateralToSell or returns less than minRepayAssets, the call reverts.
     /// @dev minRepayAssets must be non-zero and must not exceed msg.sender's debt, or else Blue reverts.
     /// @dev Unsold collateral is supplied back; the loan assets received above minRepayAssets repay the remaining debt, and the rest is sent to msg.sender.
-    /// @dev Blue's health check on the withdrawal is performed with minRepayAssets repaid, before the surplus is repaid.
+    /// @dev The msg.sender must be healthy on Blue with minRepayAssets repaid and collateralToSell withdrawn, or else Blue reverts: the health check is performed before the surplus repays debt.
     /// @dev The msg.sender must have authorized this contract on Blue.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function zeroExLeverageBundlesV1Delever(
