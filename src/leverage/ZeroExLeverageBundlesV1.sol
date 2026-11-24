@@ -20,12 +20,12 @@ import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {TokenLib} from "../libraries/TokenLib.sol";
 
-/// @dev Leverage bundle for Morpho Blue that swaps through 0x AllowanceHolder and Settler, using Blue's callbacks instead of flash loans (a flash loan is only taken to pay the public allocator's penalties when loanAssets doesn't cover them).
+/// @dev Leverage bundle for Morpho Blue that swaps through 0x AllowanceHolder, using Blue's callbacks instead of flash loans (a flash loan is only taken to pay the public allocator's penalties when loanAssets doesn't cover them).
 /// @dev Inherits the token safety requirements of Morpho Blue (see Morpho.sol).
 /// @dev Unusable with tokens that revert on such a sequence: approve(..., 0); approve(..., type(uint256).max).
 /// @dev No-ops are not systematically prevented.
 /// @dev Zero checks are not systematically performed.
-/// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder; neither the Settler nor its calldata is validated, so each swap is bounded only by the input cap and the output floor.
+/// @dev swapData is the 0x AllowanceHolder quote's transaction.data, called unchanged on AllowanceHolder. The calldata is not validated, so each swap is bounded only by the input cap and the output floor.
 /// @dev ALLOWANCE_HOLDER is hardcoded to the address of 0x AllowanceHolder on the chains supporting the Cancun hardfork; this contract must not be deployed on a chain where AllowanceHolder is at another address.
 /// @dev Because the swap can make arbitrary calls, all entrypoints remain locked throughout the call to this contract.
 contract ZeroExLeverageBundlesV1 is
