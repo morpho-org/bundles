@@ -6,4 +6,4 @@ Each spec verifies a bundler against its underlying protocol; see the repository
 
 ## No third party pull
 
-`NoThirdPartyPull` proves that each bundler only pulls tokens from, and only withdraws or redeems ERC-4626 shares of, `msg.sender`. `MidnightNoThirdPartyPull` extends it to the take and repay callbacks of Midnight, and `VaultExitNoThirdPartyPull` checks the Blue callbacks through the entrypoints that trigger them.
+`NoThirdPartyPull` proves that `BlueBundlesV1`, `MidnightBundlesV2`, `VaultBundlesV1` and `VaultExitBundlesV1` only pull tokens from, and only withdraws or redeems ERC-4626 shares of, `msg.sender`. `MidnightNoThirdPartyPull` extends it to the take and repay callbacks of Midnight, and `VaultExitNoThirdPartyPull` checks the Blue callbacks through the entrypoints that trigger them.
