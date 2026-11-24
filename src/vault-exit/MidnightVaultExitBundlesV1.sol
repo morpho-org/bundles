@@ -12,6 +12,7 @@ import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IERC20} from "../../lib/vault-v2/src/interfaces/IERC20.sol";
 import {IMidnightAdapter} from "../../lib/vault-v2/src/adapters/interfaces/IMidnightAdapter.sol";
 import {MathLib} from "../../lib/vault-v2/src/libraries/MathLib.sol";
+import {IIntermediary} from "../../lib/vault-v2/src/periphery/gates/interfaces/IWhitelistSendAssetsGate.sol";
 
 /// @dev POC exit into Midnight credit, purchased economically at par: the user forgoes remaining interest.
 /// @dev The adapter collects principal before its zero-price (tick 0) Midnight sale, then returns principal to the vault.
@@ -21,7 +22,7 @@ import {MathLib} from "../../lib/vault-v2/src/libraries/MathLib.sol";
 /// @dev The user pays the penalty in shares and the settlement fee, using vault assets first, then wallet assets.
 /// @dev Borrows a fee-free seed from Morpho Blue and recycles it in fee-inclusive chunks until the exit is complete.
 /// @dev Inherits Vault V2's token safety requirements. The vault's receiveAssetsGate must allow this bundle.
-contract MidnightVaultExitBundlesV1 is IMorphoFlashLoanCallback {
+contract MidnightVaultExitBundlesV1 is IMorphoFlashLoanCallback, IIntermediary {
     using MathLib for uint256;
 
     error AlreadyInitiated();
