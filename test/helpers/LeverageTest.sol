@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Morpho Association
-pragma solidity ^0.8.34;
+pragma solidity ^0.8.0;
 
 import {IMorpho, MarketParams} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {OracleMock} from "../../lib/morpho-blue/src/mocks/OracleMock.sol";
