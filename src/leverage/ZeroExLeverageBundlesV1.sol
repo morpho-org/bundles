@@ -124,6 +124,7 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev swapData is expected to be a 0x SELL quote with sellAmount = collateralToSell and minBuyAmount = minRepayAssets.
     /// @dev If the swap would spend more than collateralToSell or returns less than minRepayAssets, the call reverts.
     /// @dev minRepayAssets must be non-zero and must not exceed msg.sender's debt, or else Blue reverts.
+    /// @dev The debt is repaid by assets: to repay all the debt or sell all the collateral, use Close.
     /// @dev Unsold collateral is supplied back; the loan assets received above minRepayAssets repay the remaining debt, and the rest is sent to msg.sender.
     /// @dev The msg.sender must be healthy on Blue with minRepayAssets repaid and collateralToSell withdrawn, or else Blue reverts: the health check is performed before the surplus repays debt.
     /// @dev The msg.sender must have authorized this contract on Blue.
