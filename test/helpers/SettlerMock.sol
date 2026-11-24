@@ -48,6 +48,7 @@ contract SettlerMock is ISettlerTakerSubmitted {
     function execute(ISettlerTakerSubmitted.AllowedSlippage calldata slippage, bytes[] calldata actions, bytes32)
         external
         override
+        returns (bool)
     {
         if (msg.sender != address(allowanceHolder)) revert OnlyAllowanceHolder();
         if (actions.length == 0 || actions[0].length < 0xa4) revert InvalidAction();
@@ -76,6 +77,7 @@ contract SettlerMock is ISettlerTakerSubmitted {
         if (amountOut < slippage.minAmountOut) revert MinimumOutputNotMet();
         if (refund != 0) SafeTransferLib.safeTransfer(sellToken, taker, refund);
         SafeTransferLib.safeTransfer(slippage.buyToken, slippage.recipient, amountOut);
+        return true;
     }
 
     function _attemptReentry() internal {

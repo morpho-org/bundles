@@ -5,5 +5,6 @@ pragma solidity >=0.8.0;
 interface IAllowanceHolder {
     function exec(address operator, address token, uint256 amount, address payable target, bytes calldata data)
         external
-        payable;
+        payable
+        returns (bytes memory result);
 }
