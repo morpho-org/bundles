@@ -188,6 +188,121 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testLeverWithBorrowAboveHealthyWhenSwapSpendsLess() public {
+        supplyOtherCollateral(100e18);
+        fundUser(address(bundle), 10e18);
+        // 47e18 of collateral keeps 37.6e18 of debt healthy: borrowing 38e18 is unhealthy, but the swap only spends 37e18.
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 38e18, 37e18);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 10e18, 0, 37e18, 38e18, swapData, type(uint256).max, noReallocations(), 0, block.timestamp
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, 47e18);
+        assertApproxEqAbs(_debt(position, morpho.market(marketParams.id())), 37e18, 1);
+        assertEq(collateralToken.balanceOf(address(morpho)), 147e18);
+        assertNoResiduals();
+    }
+
+    function testLeverSuppliesNoExtraCollateralWhenBorrowIsHealthy() public {
+        supplyOtherCollateral(100e18);
+        fundUser(address(bundle), 10e18);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 12e18, 10e18);
+
+        vm.expectCall(address(morpho), abi.encodeWithSelector(IMorphoBase.withdrawCollateral.selector), 0);
+        vm.expectCall(
+            address(morpho), abi.encodeWithSelector(IMorphoBase.supplyCollateral.selector, marketParams, 20e18, user), 1
+        );
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 10e18, 0, 10e18, 12e18, swapData, type(uint256).max, noReallocations(), 0, block.timestamp
+        );
+    }
+
+    /// @dev Whatever maxBorrowAssets is, Lever succeeds when the swap spends an amount that leaves the position healthy.
+    function testLeverBorrowAboveHealthyFuzz(
+        uint256 otherBorrowShares,
+        uint256 elapsed,
+        uint256 price,
+        uint256 collateralAssets,
+        uint256 collateralToBuy,
+        uint256 spent,
+        uint256 maxBorrowAssets
+    ) public {
+        supplyOtherCollateral(1e30);
+        vm.prank(makeAddr("other"));
+        morpho.borrow(marketParams, 0, bound(otherBorrowShares, 1, 1e25), makeAddr("other"), makeAddr("other"));
+        vm.warp(vm.getBlockTimestamp() + bound(elapsed, 0, 365 days));
+
+        price = bound(price, 0.5e36, 2e36);
+        oracle.setPrice(price);
+        collateralAssets = bound(collateralAssets, 1e18, 50e18);
+        collateralToBuy = bound(collateralToBuy, 1e18, 50e18);
+        uint256 limit = (collateralAssets + collateralToBuy) * price / 1e36 * LLTV / 1e18;
+        spent = bound(spent, 1e15, limit * 99 / 100);
+        maxBorrowAssets = bound(maxBorrowAssets, spent, 3 * limit);
+
+        fundUser(address(bundle), collateralAssets);
+        settler.setRate(collateralToBuy, spent);
+        bytes memory swapData =
+            buildSwapData(address(loanToken), address(collateralToken), maxBorrowAssets, collateralToBuy);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            collateralAssets,
+            0,
+            collateralToBuy,
+            maxBorrowAssets,
+            swapData,
+            type(uint256).max,
+            noReallocations(),
+            0,
+            vm.getBlockTimestamp()
+        );
+
+        Position memory position = morpho.position(marketParams.id(), user);
+        assertEq(position.collateral, collateralAssets + collateralToBuy);
+        assertApproxEqAbs(_debt(position, morpho.market(marketParams.id())), spent, 2);
+        assertNoResiduals();
+    }
+
+    function testLeverRevertsWhenSwapSpendsMoreThanHealthy() public {
+        supplyOtherCollateral(100e18);
+        fundUser(address(bundle), 10e18);
+        settler.setRate(37e18, 38e18);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 38e18, 37e18);
+
+        vm.expectRevert("insufficient collateral");
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 10e18, 0, 37e18, 38e18, swapData, type(uint256).max, noReallocations(), 0, block.timestamp
+        );
+    }
+
+    function testLeverWithBorrowAboveHealthyRevertsWithoutCollateralInBlue() public {
+        fundUser(address(bundle), 10e18);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 38e18, 37e18);
+
+        // Blue holds no collateral to give back the extra collateral, so its transfer fails.
+        vm.expectRevert();
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams, 10e18, 0, 37e18, 38e18, swapData, type(uint256).max, noReallocations(), 0, block.timestamp
+        );
+    }
+
+    function supplyOtherCollateral(uint256 assets) internal {
+        address other = makeAddr("other");
+        deal(address(collateralToken), other, assets);
+        vm.startPrank(other);
+        safeApprove(collateralToken, address(morpho), assets);
+        morpho.supplyCollateral(marketParams, assets, other, "");
+        vm.stopPrank();
+    }
+
     function testLeverWithoutBorrow() public {
         uint256 collateralAssets = 5e18;
         uint256 loanAssets = 12e18;
