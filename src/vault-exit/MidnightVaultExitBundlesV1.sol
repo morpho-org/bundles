@@ -18,8 +18,8 @@ import {IIntermediary} from "../../lib/vault-v2/src/periphery/gates/interfaces/I
 /// @dev The adapter collects principal before its zero-price (tick 0) Midnight sale, then returns principal to the vault.
 /// @dev The user must authorize both the adapter and this bundle with Midnight.setIsAuthorized.
 /// @dev Requires vault-share allowance to this bundle for withdrawals and the force-deallocation penalty.
-/// @dev Requires loan-token allowance to this bundle for any settlement fee not covered by vault idle assets.
-/// @dev The user pays the penalty in shares and the settlement fee, using vault assets first, then wallet assets.
+/// @dev Requires loan-token allowance to this bundle for settlement fees.
+/// @dev Vault idle assets are paid out first as principal. The user pays the penalty in shares and the settlement fee from their wallet.
 /// @dev Borrows a fee-free seed from Morpho Blue and recycles it in fee-inclusive chunks until the exit is complete.
 /// @dev Inherits Vault V2's token safety requirements. The vault's receiveAssetsGate must allow this bundle.
 contract MidnightVaultExitBundlesV1 is IMorphoFlashLoanCallback, IIntermediary {
