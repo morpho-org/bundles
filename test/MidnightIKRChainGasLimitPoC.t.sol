@@ -22,7 +22,7 @@ contract MidnightIKRChainGasLimitPoC is MidnightVaultExitBundlesTest {
         m.maturity += (i + 1) * 1 days;
         address borrower = makeAddr(string.concat("sibling", vm.toString(i)));
         ERC20 collateral = ERC20(m.collateralParams[0].token);
-        deal(address(usdc), address(this), PER_MARKET);
+        deal(address(usdc), address(this), usdc.balanceOf(address(this)) + PER_MARKET);
         vault.deposit(PER_MARKET, address(this));
         deal(address(collateral), borrower, PER_MARKET);
         vm.startPrank(borrower);

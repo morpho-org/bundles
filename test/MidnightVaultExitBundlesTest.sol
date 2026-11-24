@@ -226,6 +226,39 @@ contract MidnightVaultExitBundlesTest is Test {
         }
     }
 
+    function createRedeemerDebt(uint256 units) internal {
+        ERC20 collateral = ERC20(market.collateralParams[0].token);
+        deal(address(collateral), address(this), collateral.balanceOf(address(this)) + units);
+        collateral.approve(address(midnight), type(uint256).max);
+        if (market.enterGate != address(0)) {
+            IWhitelistEnterSubGate(IVaultV2CompatibleEnterGate(market.enterGate).subGate())
+                .setIsWhitelisted(false, address(this), true);
+        }
+        midnight.supplyCollateral(market, 0, units, address(this));
+
+        address lender = makeAddr(string.concat("debt lender", vm.toString(units)));
+        if (market.enterGate != address(0)) {
+            IWhitelistEnterSubGate(IVaultV2CompatibleEnterGate(market.enterGate).subGate())
+                .setIsWhitelisted(true, lender, true);
+        }
+        deal(address(usdc), lender, units);
+        vm.prank(lender);
+        usdc.approve(address(midnight), type(uint256).max);
+        Offer memory offer;
+        offer.market = market;
+        offer.buy = true;
+        offer.maker = lender;
+        offer.expiry = type(uint256).max;
+        offer.tick = MAX_TICK;
+        offer.maxUnits = uint128(units);
+        offer.continuousFeeCap = type(uint256).max;
+        offer.ratifier = address(new DummyRatifier());
+        vm.prank(lender);
+        midnight.setIsAuthorized(offer.ratifier, true, lender);
+        midnight.take(offer, "", units, address(this), address(this), address(0), "");
+        assertEq(midnight.debt(IdLib.toId(market), address(this)), units, "redeemer debt");
+    }
+
     function exit(uint256 assets, uint256 maxSeed) internal {
         bundle.midnightVaultExitBundlesV1InKindRedemption(
             address(vault), address(adapter), assets, maxSeed, noPermit(), block.timestamp
@@ -356,6 +389,20 @@ contract MidnightVaultExitBundlesTest is Test {
 
         assertEq(midnight.credit(IdLib.toId(market), address(this)), firstMarketAssets, "first market credit");
         assertEq(midnight.credit(IdLib.toId(otherMarket), address(this)), otherMarketAssets, "other market credit");
+    }
+
+    function testRedeemerDebtBelowExitIsRepaidBeforeCredit() public {
+        createRedeemerDebt(ASSETS / 2);
+        exit(ASSETS, 0);
+        assertEq(midnight.debt(IdLib.toId(market), address(this)), 0, "debt repaid");
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), ASSETS / 2, "excess becomes credit");
+    }
+
+    function testRedeemerDebtAboveExitIsPartlyRepaid() public {
+        createRedeemerDebt(2 * ASSETS);
+        exit(ASSETS, 0);
+        assertEq(midnight.debt(IdLib.toId(market), address(this)), ASSETS, "remaining debt");
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), 0, "no excess credit");
     }
 
     function testInsufficientMarketCredit() public {

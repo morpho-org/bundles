@@ -14,7 +14,7 @@ import {IMidnightAdapter} from "../../lib/vault-v2/src/adapters/interfaces/IMidn
 import {MathLib} from "../../lib/vault-v2/src/libraries/MathLib.sol";
 import {IIntermediary} from "../../lib/vault-v2/src/periphery/gates/interfaces/IWhitelistSendAssetsGate.sol";
 
-/// @dev POC exit into Midnight credit, purchased economically at par: the user forgoes remaining interest.
+/// @dev POC exit into Midnight position units purchased economically at par: they repay the user's debt first, then increase credit, and the user forgoes remaining interest.
 /// @dev The adapter collects principal before its zero-price (tick 0) Midnight sale, then returns principal to the vault.
 /// @dev The user must authorize both the adapter and this bundle with Midnight.setIsAuthorized.
 /// @dev Requires vault-share allowance to this bundle for withdrawals and the force-deallocation penalty.
@@ -44,8 +44,8 @@ contract MidnightVaultExitBundlesV1 is IMorphoFlashLoanCallback, IIntermediary {
         MORPHO = morpho;
     }
 
-    /// @dev Exit from a Vault V2 and get idle assets and/or Midnight shares, even if the vault is illiquid and if the vault roles are not cooperating.
-    /// @dev Buys exactly exitAssets - assetsToWithdrawFromIdle units of credit across the adapter's live markets, in marketIds order. Pending Midnight fees can reduce their net value.
+    /// @dev Exit from a Vault V2 and get idle assets and/or Midnight position value, even if the vault is illiquid and if the vault roles are not cooperating.
+    /// @dev Buys exactly exitAssets - assetsToWithdrawFromIdle Midnight units across the adapter's live markets, in marketIds order. Units repay the user's debt in that market first, and any excess increases credit. Pending Midnight fees can reduce their net value.
     /// @dev The market list is always read from the adapter. A caller-supplied list would let an exit select markets and give up non-custodiality.
     /// @dev Markets with no adapter credit are skipped.
     /// @dev Requires enough vault-share allowance, beforehand or through sharesPermit, for each penalty and withdrawal.
