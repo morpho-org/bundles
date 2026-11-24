@@ -67,7 +67,7 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev swapData is expected to be a 0x BUY quote with buyAmount = collateralToBuy and maxSellAmount = loanAssets + maxBorrowAssets - P.
     /// @dev If the swap would spend more than loanAssets + maxBorrowAssets - P or buys less than collateralToBuy, the call reverts.
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
-    /// @dev The msg.sender must be healthy on Blue with maxBorrowAssets borrowed and collateralAssets + collateralToBuy supplied, or else Blue reverts: the health check is performed before the surplus repays debt.
+    /// @dev The msg.sender must be healthy on Blue with maxBorrowAssets borrowed (if non-zero) and collateralAssets + collateralToBuy supplied, or else Blue reverts: the health check is performed before the surplus repays debt.
     /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function zeroExLeverageBundlesV1Lever(
