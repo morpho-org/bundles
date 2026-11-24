@@ -782,6 +782,27 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         );
     }
 
+    function testLeverRevertsWhenPenaltyAssetsExceedLoanAndBorrowAssets() public {
+        fundUser(address(bundle), 10e18);
+        bytes memory swapData = buildSwapData(address(loanToken), address(collateralToken), 0, 10e18);
+        PublicAllocations[] memory reallocations = idleReallocation(12e18, PENALTY);
+
+        vm.expectRevert(IZeroExLeverageBundlesV1.ExcessivePenaltyAssets.selector);
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Lever(
+            marketParams,
+            10e18,
+            0.05e18,
+            10e18,
+            0.06e18,
+            swapData,
+            type(uint256).max,
+            reallocations,
+            0.12e18,
+            block.timestamp
+        );
+    }
+
     function testLeverSwapInputIsCappedNetOfPenalty() public {
         setUpIlliquidMarket();
         fundUser(address(bundle), 10e18);

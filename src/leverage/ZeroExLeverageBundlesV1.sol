@@ -86,6 +86,7 @@ contract ZeroExLeverageBundlesV1 is
         require(block.timestamp <= deadline, DeadlinePassed());
         require(collateralToBuy != 0, ZeroCollateralToBuy());
         require(penaltyAssets == totalPenaltyAssets(reallocations), InconsistentPenaltyAssets());
+        require(penaltyAssets <= loanAssets + maxBorrowAssets, ExcessivePenaltyAssets());
 
         if (collateralAssets > 0) {
             SafeTransferLib.safeTransferFrom(marketParams.collateralToken, msg.sender, address(this), collateralAssets);

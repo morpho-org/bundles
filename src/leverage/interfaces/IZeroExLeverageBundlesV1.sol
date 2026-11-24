@@ -9,6 +9,7 @@ interface IZeroExLeverageBundlesV1 {
     /// ERRORS ///
     error DeadlinePassed();
     error ExcessiveInput();
+    error ExcessivePenaltyAssets();
     error InconsistentPenaltyAssets();
     error InconsistentTokens();
     error InsufficientOutput();
