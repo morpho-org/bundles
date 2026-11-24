@@ -160,9 +160,11 @@ contract MidnightVaultExitBundlesTest is Test {
         }
     }
 
-    function singleton(Market memory market_) internal pure returns (Market[] memory markets) {
-        markets = new Market[](1);
-        markets[0] = market_;
+    function adapterMarkets() internal view returns (Market[] memory markets) {
+        markets = new Market[](adapter.marketIdsLength());
+        for (uint256 i; i < markets.length; i++) {
+            markets[i] = midnight.toMarket(adapter.marketIds(i));
+        }
     }
 
     function noPermit() internal pure returns (Permit memory) {}
@@ -224,8 +226,8 @@ contract MidnightVaultExitBundlesTest is Test {
     }
 
     function exit(uint256 assets, uint256 maxSeed) internal {
-        bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(adapter), singleton(market), assets, maxSeed, noPermit(), block.timestamp
+        bundle.midnightVaultExitBundlesV1InKindRedemption(
+            address(vault), address(adapter), assets, maxSeed, noPermit(), block.timestamp
         );
     }
 
@@ -235,7 +237,10 @@ contract MidnightVaultExitBundlesTest is Test {
     {
         uint256 snapshot = vm.snapshotState();
         uint256 walletBefore = usdc.balanceOf(address(this));
-        deal(address(usdc), address(this), walletBefore + maxChunk + maxChunk.mulDivUp(RATE, 1e18));
+        uint256 idlePrincipal = MathLib.min(usdc.balanceOf(address(vault)), assets);
+        if (idlePrincipal > 0) vault.withdraw(idlePrincipal, address(this), address(this));
+        assets -= idlePrincipal;
+        deal(address(usdc), address(this), walletBefore + idlePrincipal + maxChunk + maxChunk.mulDivUp(RATE, 1e18));
         usdc.approve(address(adapter), type(uint256).max);
         while (assets > 0) {
             uint256 chunk = assets < maxChunk ? assets : maxChunk;
@@ -259,7 +264,9 @@ contract MidnightVaultExitBundlesTest is Test {
     }
 
     function checkExit(uint256 assets, uint256 maxSeed) internal {
-        uint256 seed = assets + assets.mulDivUp(RATE, 1e18);
+        uint256 idlePrincipal = MathLib.min(usdc.balanceOf(address(vault)), assets);
+        uint256 creditAssets = assets - idlePrincipal;
+        uint256 seed = creditAssets + creditAssets.mulDivUp(RATE, 1e18);
         uint256 blueBefore = usdc.balanceOf(address(morpho));
         if (seed > blueBefore) seed = blueBefore;
         if (maxSeed != 0 && seed > maxSeed) seed = maxSeed;
@@ -271,14 +278,14 @@ contract MidnightVaultExitBundlesTest is Test {
             address(morpho),
             abi.encodeCall(
                 morpho.flashLoan,
-                (address(usdc), seed, abi.encode(address(vault), address(adapter), singleton(market), assets))
+                (address(usdc), seed, abi.encode(address(vault), address(adapter), adapterMarkets(), creditAssets))
             ),
             1
         );
         if (market.enterGate != address(0)) {
             assertFalse(IVaultV2CompatibleEnterGate(market.enterGate).canIncreaseCredit(address(this)));
             // forge-lint: disable-next-item(unsafe-typecast) test amounts bound the round count well below uint64.
-            uint64 rounds = uint64((assets + maxChunk - 1) / maxChunk);
+            uint64 rounds = uint64((creditAssets + maxChunk - 1) / maxChunk);
             vm.expectCall(
                 market.enterGate,
                 abi.encodeCall(IVaultV2CompatibleEnterGate.admit, (address(this), address(adapterFactory))),
@@ -287,10 +294,10 @@ contract MidnightVaultExitBundlesTest is Test {
             vm.expectCall(market.enterGate, abi.encodeCall(IVaultV2CompatibleEnterGate.unadmit, ()), rounds);
         }
         exit(assets, maxSeed);
-        assertEq(midnight.credit(IdLib.toId(market), address(this)), assets, "gross credit");
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), creditAssets, "gross credit");
         assertEq(midnight.pendingFee(IdLib.toId(market), address(this)), 0, "pending fee");
         assertEq(vault.balanceOf(address(this)), expectedShares, "penalties plus withdrawals");
-        assertEq(walletBefore - usdc.balanceOf(address(this)), walletFee, "wallet fee shortfall");
+        assertEq(usdc.balanceOf(address(this)), walletBefore + idlePrincipal - walletFee, "wallet balance");
         assertEq(midnight.claimableSettlementFee(address(usdc)), claimableBefore + fees, "sum of rounded fees");
         assertEq(usdc.balanceOf(address(morpho)), blueBefore, "seed repaid");
         assertEq(usdc.balanceOf(address(bundle)), 0, "bundle USDC");
@@ -327,18 +334,27 @@ contract MidnightVaultExitBundlesTest is Test {
         Market memory otherMarket = addMarket(ASSETS / 2);
         Market memory emptyMarket = abi.decode(abi.encode(otherMarket), (Market));
         emptyMarket.maturity += 1 days;
-        Market[] memory markets = new Market[](3);
-        markets[0] = emptyMarket;
-        markets[1] = otherMarket;
-        markets[2] = market;
-
-        bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(adapter), markets, ASSETS, 0, noPermit(), block.timestamp
+        bundle.midnightVaultExitBundlesV1InKindRedemption(
+            address(vault), address(adapter), ASSETS, 0, noPermit(), block.timestamp
         );
 
-        assertEq(midnight.credit(IdLib.toId(emptyMarket), address(this)), 0, "empty market skipped");
-        assertEq(midnight.credit(IdLib.toId(otherMarket), address(this)), ASSETS / 2, "other market credit");
-        assertEq(midnight.credit(IdLib.toId(market), address(this)), ASSETS / 2, "first market credit");
+        assertEq(midnight.credit(IdLib.toId(emptyMarket), address(this)), 0, "market absent from the adapter book");
+        assertEq(midnight.credit(IdLib.toId(otherMarket), address(this)), 0, "later adapter market untouched");
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), ASSETS, "first adapter market");
+    }
+
+    function testProRataUsesAllMarkets() public {
+        Market memory otherMarket = addMarket(ASSETS / 2);
+        uint256 totalCredit = DEPOSIT + ASSETS / 2;
+        uint256 firstMarketAssets = ASSETS.mulDivDown(DEPOSIT, totalCredit);
+        uint256 otherMarketAssets = ASSETS - firstMarketAssets;
+
+        bundle.midnightVaultExitBundlesV1InKindRedemptionProRata(
+            address(vault), address(adapter), ASSETS, 0, noPermit(), block.timestamp
+        );
+
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), firstMarketAssets, "first market credit");
+        assertEq(midnight.credit(IdLib.toId(otherMarket), address(this)), otherMarketAssets, "other market credit");
     }
 
     function testInsufficientMarketCredit() public {
@@ -359,8 +375,8 @@ contract MidnightVaultExitBundlesTest is Test {
 
         Permit memory permit = signSharesPermit(privateKey, user, shares);
         vm.prank(user);
-        bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(adapter), singleton(market), ASSETS, 0, permit, block.timestamp
+        bundle.midnightVaultExitBundlesV1InKindRedemption(
+            address(vault), address(adapter), ASSETS, 0, permit, block.timestamp
         );
 
         assertEq(midnight.credit(IdLib.toId(market), user), ASSETS, "user credit");
@@ -380,17 +396,18 @@ contract MidnightVaultExitBundlesTest is Test {
         Permit memory permit = signSharesPermit(privateKey, user, 1);
         vm.prank(user);
         vm.expectRevert();
-        bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(adapter), singleton(market), ASSETS, 0, permit, block.timestamp
+        bundle.midnightVaultExitBundlesV1InKindRedemption(
+            address(vault), address(adapter), ASSETS, 0, permit, block.timestamp
         );
 
         assertEq(midnight.credit(IdLib.toId(market), user), 0, "atomic exit");
     }
 
-    function testFeesCoveredByIdle() public {
+    function testIdleDoesNotCoverFees() public {
         vault.deposit(2 * FEE, address(this));
         usdc.approve(address(bundle), 0);
-        checkExit(ASSETS, ASSETS / 2);
+        vm.expectRevert();
+        exit(ASSETS, ASSETS / 2);
     }
 
     function testFeesPartlyCoveredByIdle() public {
@@ -399,8 +416,26 @@ contract MidnightVaultExitBundlesTest is Test {
     }
 
     function testZeroAssets() public {
-        vm.expectRevert(MidnightVaultExitBundlesV1.ZeroSeed.selector);
+        uint256 sharesBefore = vault.balanceOf(address(this));
         exit(0, 0);
+        assertEq(vault.balanceOf(address(this)), sharesBefore, "shares");
+        assertEq(bundle.initiator(), address(0), "lock cleared");
+    }
+
+    function testFullyIdleExit() public {
+        deal(address(usdc), address(this), usdc.balanceOf(address(this)) + ASSETS);
+        vault.deposit(ASSETS, address(this));
+        uint256 walletBefore = usdc.balanceOf(address(this));
+        uint256 sharesBefore = vault.balanceOf(address(this));
+        uint256 burnedShares = vault.previewWithdraw(ASSETS);
+
+        exit(ASSETS, 0);
+
+        assertEq(usdc.balanceOf(address(this)), walletBefore + ASSETS, "idle assets");
+        assertEq(vault.balanceOf(address(this)), sharesBefore - burnedShares, "burned shares");
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), 0, "no Midnight credit");
+        assertEq(midnight.credit(IdLib.toId(market), address(adapter)), DEPOSIT, "adapter credit untouched");
+        assertEq(bundle.initiator(), address(0), "lock cleared");
     }
 
     function testZeroLiquidity() public {
@@ -416,8 +451,8 @@ contract MidnightVaultExitBundlesTest is Test {
 
     function testDeadlinePassed() public {
         vm.expectRevert(MidnightVaultExitBundlesV1.DeadlinePassed.selector);
-        bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(adapter), singleton(market), ASSETS, 0, noPermit(), block.timestamp - 1
+        bundle.midnightVaultExitBundlesV1InKindRedemption(
+            address(vault), address(adapter), ASSETS, 0, noPermit(), block.timestamp - 1
         );
     }
 
@@ -452,8 +487,8 @@ contract MidnightVaultExitBundlesTest is Test {
 
     function testAdapterNotPartOfVault() public {
         vm.expectRevert(MidnightVaultExitBundlesV1.AdapterNotPartOfVault.selector);
-        bundle.midnightVaultExitBundlesV1InKindRedemptionVaultV2(
-            address(vault), address(1), singleton(market), ASSETS, 0, noPermit(), block.timestamp
+        bundle.midnightVaultExitBundlesV1InKindRedemption(
+            address(vault), address(1), ASSETS, 0, noPermit(), block.timestamp
         );
     }
 
@@ -465,8 +500,10 @@ contract MidnightVaultExitBundlesTest is Test {
 
     function testLoanAssetMismatch() public {
         market.loanToken = address(1);
-        vm.expectRevert(MidnightVaultExitBundlesV1.LoanAssetMismatch.selector);
         exit(ASSETS, 0);
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), 0, "mutated caller market is not the book");
+        market.loanToken = address(usdc);
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), ASSETS, "adapter market");
     }
 
     function recordExitGas(bytes memory data) internal {
@@ -489,8 +526,8 @@ contract MidnightVaultExitBundlesTest is Test {
         uint256 seed = chunk + chunk.mulDivUp(RATE, 1e18);
         recordExitGas(
             abi.encodeCall(
-                MidnightVaultExitBundlesV1.midnightVaultExitBundlesV1InKindRedemptionVaultV2,
-                (address(vault), address(adapter), singleton(market), ASSETS, seed, noPermit(), block.timestamp)
+                MidnightVaultExitBundlesV1.midnightVaultExitBundlesV1InKindRedemption,
+                (address(vault), address(adapter), ASSETS, seed, noPermit(), block.timestamp)
             )
         );
     }
