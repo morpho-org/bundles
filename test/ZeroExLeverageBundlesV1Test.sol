@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Morpho Association
-pragma solidity ^0.8.34;
+pragma solidity ^0.8.0;
 
 import {LeverageTest} from "./helpers/LeverageTest.sol";
 import {MarketParams, Market, Position} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
@@ -10,7 +10,8 @@ import {IAllowanceHolder} from "./helpers/IAllowanceHolder.sol";
 import {ISettlerTakerSubmitted} from "./helpers/ISettlerTakerSubmitted.sol";
 import {IZeroExLeverageBundlesV1} from "../src/leverage/interfaces/IZeroExLeverageBundlesV1.sol";
 import {ZeroExLeverageBundlesV1} from "../src/leverage/ZeroExLeverageBundlesV1.sol";
-import {AllowanceHolderMock, SettlerMock} from "./helpers/ZeroExMocks.sol";
+import {AllowanceHolderMock} from "./helpers/AllowanceHolderMock.sol";
+import {SettlerMock} from "./helpers/SettlerMock.sol";
 import {PublicAllocatorMock} from "./helpers/PublicAllocatorMock.sol";
 import {PublicAllocations} from "../src/leverage/interfaces/IBluePublicAllocator.sol";
 import {IMorphoBase} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
