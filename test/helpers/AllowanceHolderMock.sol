@@ -12,12 +12,14 @@ contract AllowanceHolderMock {
     function exec(address operator, address token, uint256 amount, address payable target, bytes calldata data)
         external
         payable
+        returns (bytes memory result)
     {
         transientAllowance[operator][msg.sender][token] = amount;
-        (bool success, bytes memory returnData) = target.call(bytes.concat(data, bytes20(msg.sender)));
+        bool success;
+        (success, result) = target.call(bytes.concat(data, bytes20(msg.sender)));
         if (!success) {
             assembly ("memory-safe") {
-                revert(add(returnData, 0x20), mload(returnData))
+                revert(add(result, 0x20), mload(result))
             }
         }
         delete transientAllowance[operator][msg.sender][token];
