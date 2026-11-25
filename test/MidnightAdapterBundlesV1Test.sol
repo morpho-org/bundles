@@ -33,6 +33,7 @@ interface ITestMidnightAdapter {
     function increaseShortfallAllowance(uint256 allowanceIncrease) external;
     function ids(Market memory market) external view returns (bytes32[] memory);
     function decreaseMaxTtm(uint256 newMaxTtm) external;
+    function maxNetSellRate() external view returns (uint128);
     function increaseMinNetBuyRate(uint256 newMinNetBuyRate) external;
     function setForceSellable(bytes32 marketId) external;
     function forceRemove(bytes32 marketId) external;
@@ -90,6 +91,32 @@ contract FakeAdapter {
 contract FakeVault {
     function isAllocator(address) external pure returns (bool) {
         return true;
+    }
+}
+
+/// @dev Buyer callback of a buy offer: pays from its own balance and reports a funding bound, or reverts on it.
+contract BoundedBuyCallback {
+    uint256 public bound;
+    bool public reverts;
+
+    constructor(address token, address midnight, uint256 _bound, bool _reverts) {
+        bound = _bound;
+        reverts = _reverts;
+        (bool success,) = token.call(abi.encodeWithSignature("approve(address,uint256)", midnight, type(uint256).max));
+        require(success);
+    }
+
+    function buyerAssetsBound(bytes32, Market memory, address, bytes memory) external view returns (uint256) {
+        require(!reverts, "no bound");
+        return bound;
+    }
+
+    function onBuy(bytes32, Market memory, uint256, uint256, uint256, address, bytes memory)
+        external
+        pure
+        returns (bytes32)
+    {
+        return CALLBACK_SUCCESS;
     }
 }
 
@@ -350,31 +377,49 @@ abstract contract MidnightAdapterBundlesV1Setup is TokenTest {
         Vm.Log[] memory logs = vm.getRecordedLogs();
         for (uint256 i; i < logs.length; i++) {
             if (logs[i].emitter != address(midnight) || logs[i].topics[0] != EventsLib.Take.selector) continue;
-            (,,, bytes32 group,,, uint256 units, uint256 buyerAssets, uint256 sellerAssets,,,,,) = abi.decode(
-                logs[i].data,
-                (
-                    address,
-                    bytes32,
-                    bool,
-                    bytes32,
-                    address,
-                    bytes,
-                    uint256,
-                    uint256,
-                    uint256,
-                    uint256,
-                    uint256,
-                    uint256,
-                    int256,
-                    address
-                )
-            );
+            // Static head words of the event data: group is the 4th, units, buyerAssets and sellerAssets the 7th to 9th.
+            bytes memory data = logs[i].data;
+            bytes32 group = bytes32(word(data, 3));
+            uint256 units = word(data, 6);
+            uint256 buyerAssets = word(data, 7);
+            uint256 sellerAssets = word(data, 8);
             address maker = address(uint160(uint256(logs[i].topics[2])));
             if (midnight.consumed(maker, group) == 0) continue;
             totals.count++;
             totals.units += units;
             totals.buyerAssets += buyerAssets;
             totals.sellerAssets += sellerAssets;
+        }
+    }
+
+    struct TakeRecord {
+        bytes32 group;
+        uint256 units;
+        uint256 buyerAssets;
+        uint256 sellerAssets;
+    }
+
+    /// @dev Midnight's Take events in the recorded logs, in order, with the same filter as sumTakeEvents.
+    function recordedTakes() internal view returns (TakeRecord[] memory takes) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        takes = new TakeRecord[](logs.length);
+        uint256 n;
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].emitter != address(midnight) || logs[i].topics[0] != EventsLib.Take.selector) continue;
+            bytes memory data = logs[i].data;
+            bytes32 group = bytes32(word(data, 3));
+            if (midnight.consumed(address(uint160(uint256(logs[i].topics[2]))), group) == 0) continue;
+            takes[n++] = TakeRecord(group, word(data, 6), word(data, 7), word(data, 8));
+        }
+        assembly ("memory-safe") {
+            mstore(takes, n)
+        }
+    }
+
+    /// @dev Returns the i-th 32-byte word of data.
+    function word(bytes memory data, uint256 i) internal pure returns (uint256 value) {
+        assembly ("memory-safe") {
+            value := mload(add(add(data, 32), mul(i, 32)))
         }
     }
 
@@ -1066,5 +1111,258 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
         assertEq(loanToken.balanceOf(address(vault)), vaultBalanceBefore, "real vault untouched");
         assertEq(creditOf(address(adapter)), 0, "real adapter credit untouched");
         assertBundleHoldsNothing();
+    }
+
+    /// EVERY CHECK ON EVERY ENTRY POINT ///
+
+    /// @dev Calls entry point `kind` (0: buy assets, 1: buy units, 2: sell assets, 3: sell units) with a 1e18 target.
+    function callEntry(uint256 kind, address caller, uint256 deadline, OfferFill[] memory fills) internal {
+        vm.prank(caller);
+        if (kind == 0) {
+            bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(
+                address(adapter), market, 1e18, 0, fills, abi.encode(address(0), bytes("")), type(uint256).max, deadline
+            );
+        } else if (kind == 1) {
+            bundle.midnightAdapterBundlesV1BuyWithUnitsTarget(
+                address(adapter),
+                market,
+                1e18,
+                type(uint256).max,
+                fills,
+                abi.encode(address(0), bytes("")),
+                type(uint256).max,
+                deadline
+            );
+        } else if (kind == 2) {
+            bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+                address(adapter), market, 1e18, type(uint256).max, fills, deadline
+            );
+        } else {
+            bundle.midnightAdapterBundlesV1SellWithUnitsTarget(address(adapter), market, 1e18, 0, fills, deadline);
+        }
+    }
+
+    /// @dev The offers each entry point expects: sell offers for buys, buy offers for sells.
+    function rightSide(uint256 kind) internal view returns (OfferFill[] memory) {
+        return kind < 2 ? twoSellFills(10_000e18) : twoBuyFills(10_000e18);
+    }
+
+    function testDeadlinePassedEveryEntryPoint() public {
+        for (uint256 kind; kind < 4; kind++) {
+            vm.expectRevert(IMidnightAdapterBundlesV1.DeadlinePassed.selector);
+            callEntry(kind, allocator, vm.getBlockTimestamp() - 1, rightSide(kind));
+        }
+    }
+
+    function testUnauthorizedEveryEntryPoint() public {
+        for (uint256 kind; kind < 4; kind++) {
+            vm.expectRevert(IMidnightAdapterBundlesV1.Unauthorized.selector);
+            callEntry(kind, stranger, vm.getBlockTimestamp(), rightSide(kind));
+        }
+    }
+
+    function testInconsistentSideEveryEntryPoint() public {
+        for (uint256 kind; kind < 4; kind++) {
+            vm.expectRevert(IMidnightAdapterBundlesV1.InconsistentSide.selector);
+            callEntry(kind, allocator, vm.getBlockTimestamp(), rightSide(3 - kind));
+        }
+    }
+
+    function testInconsistentMarketEveryEntryPoint() public {
+        for (uint256 kind; kind < 4; kind++) {
+            OfferFill[] memory fills = rightSide(kind);
+            fills[0].offer.market.maturity += 1;
+            vm.expectRevert(IMidnightAdapterBundlesV1.InconsistentMarket.selector);
+            callEntry(kind, allocator, vm.getBlockTimestamp(), fills);
+        }
+    }
+
+    /// REDUCE-ONLY OFFERS ///
+
+    function testReduceOnlySellOfferCappedAtMakerCredit() public {
+        // The lender buys 3k units of credit from the borrower, then posts a reduce-only sell offer.
+        vm.prank(lender);
+        midnight.take(sellOffer(bytes32(uint256(71))), "", 3_000e18, lender, address(0), address(0), "");
+        assertEq(creditOf(lender), 3_000e18, "lender credit");
+        OfferFill[] memory fills = twoSellFills(10_000e18);
+        fills[0].offer.maker = lender;
+        fills[0].offer.receiverIfMakerIsSeller = lender;
+        fills[0].offer.reduceOnly = true;
+
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1BuyWithUnitsTarget(
+            address(adapter),
+            market,
+            5_000e18,
+            type(uint256).max,
+            fills,
+            abi.encode(address(0), bytes("")),
+            type(uint256).max,
+            vm.getBlockTimestamp()
+        );
+
+        assertEq(midnight.consumed(lender, fills[0].offer.group), 3_000e18, "capped at the maker's credit");
+        assertEq(midnight.consumed(borrower, fills[1].offer.group), 2_000e18, "rest from the second offer");
+        assertEq(creditOf(address(adapter)), 5_000e18, "credit bought");
+    }
+
+    function testReduceOnlyBuyOfferCappedAtMakerDebt() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        relaxSaleGuardrails();
+        // The borrower repays down to 5k units of debt, then posts a reduce-only buy offer.
+        uint256 debt = midnight.debt(id, borrower);
+        deal(address(loanToken), borrower, debt);
+        vm.startPrank(borrower);
+        safeApprove(loanToken, address(midnight), type(uint256).max);
+        midnight.repay(market, debt - 5_000e18, borrower, address(0), "");
+        vm.stopPrank();
+        OfferFill[] memory fills = twoBuyFills(10_000e18);
+        fills[0].offer.maker = borrower;
+        fills[0].offer.reduceOnly = true;
+
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, 8_000e18, 0, fills, vm.getBlockTimestamp()
+        );
+
+        assertEq(midnight.consumed(borrower, fills[0].offer.group), 5_000e18, "capped at the maker's debt");
+        assertEq(midnight.consumed(lender, fills[1].offer.group), 3_000e18, "rest from the second offer");
+        assertEq(midnight.debt(id, borrower), 0, "maker's debt repaid");
+    }
+
+    function testReduceOnlySellOfferCappedAtMakerCreditAssetsTarget() public {
+        vm.prank(lender);
+        midnight.take(sellOffer(bytes32(uint256(71))), "", 3_000e18, lender, address(0), address(0), "");
+        OfferFill[] memory fills = twoSellFills(10_000e18);
+        fills[0].offer.maker = lender;
+        fills[0].offer.receiverIfMakerIsSeller = lender;
+        fills[0].offer.reduceOnly = true;
+
+        buyWithAssets(allocator, 5_000e18, 0, fills);
+
+        assertEq(midnight.consumed(lender, fills[0].offer.group), 3_000e18, "capped at the maker's credit");
+        assertGt(midnight.consumed(borrower, fills[1].offer.group), 0, "rest from the second offer");
+    }
+
+    function testReduceOnlyBuyOfferCappedAtMakerDebtAssetsTarget() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        relaxSaleGuardrails();
+        uint256 debt = midnight.debt(id, borrower);
+        deal(address(loanToken), borrower, debt);
+        vm.startPrank(borrower);
+        safeApprove(loanToken, address(midnight), type(uint256).max);
+        midnight.repay(market, debt - 5_000e18, borrower, address(0), "");
+        vm.stopPrank();
+        OfferFill[] memory fills = twoBuyFills(10_000e18);
+        fills[0].offer.maker = borrower;
+        fills[0].offer.reduceOnly = true;
+
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+            address(adapter), market, 7_000e18, type(uint256).max, fills, vm.getBlockTimestamp()
+        );
+
+        assertEq(midnight.consumed(borrower, fills[0].offer.group), 5_000e18, "capped at the maker's debt");
+        assertGt(midnight.consumed(lender, fills[1].offer.group), 0, "rest from the second offer");
+    }
+
+    /// CONTINUOUS FEE ///
+
+    function testContinuousFeeAboveMaxOnBuysOnly() public {
+        uint256 continuousFee = 1000;
+        midnight.setMarketContinuousFee(id, continuousFee);
+
+        vm.prank(allocator);
+        vm.expectRevert(IMidnightAdapterBundlesV1.ContinuousFeeAboveMax.selector);
+        bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(
+            address(adapter),
+            market,
+            15_000e18,
+            0,
+            twoSellFills(10_000e18),
+            abi.encode(address(0), bytes("")),
+            continuousFee - 1,
+            vm.getBlockTimestamp()
+        );
+        vm.prank(allocator);
+        vm.expectRevert(IMidnightAdapterBundlesV1.ContinuousFeeAboveMax.selector);
+        bundle.midnightAdapterBundlesV1BuyWithUnitsTarget(
+            address(adapter),
+            market,
+            15_000e18,
+            type(uint256).max,
+            twoSellFills(10_000e18),
+            abi.encode(address(0), bytes("")),
+            continuousFee - 1,
+            vm.getBlockTimestamp()
+        );
+
+        // At the max, the buy goes through.
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(
+            address(adapter),
+            market,
+            15_000e18,
+            0,
+            twoSellFills(10_000e18),
+            abi.encode(address(0), bytes("")),
+            continuousFee,
+            vm.getBlockTimestamp()
+        );
+
+        // Sells have no continuous fee check.
+        relaxSaleGuardrails();
+        uint256 credit = creditOf(address(adapter));
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, 1_000e18, 0, twoBuyFills(10_000e18), vm.getBlockTimestamp()
+        );
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+            address(adapter), market, 1_000e18, type(uint256).max, twoBuyFills(10_000e18), vm.getBlockTimestamp()
+        );
+        assertLt(creditOf(address(adapter)), credit - 1_000e18, "both sells went through");
+    }
+
+    /// BUYER ASSETS BOUND ///
+
+    function boundedBuyFills(uint256 bound_, bool reverts) internal returns (OfferFill[] memory fills) {
+        BoundedBuyCallback callback = new BoundedBuyCallback(address(loanToken), address(midnight), bound_, reverts);
+        deal(address(loanToken), address(callback), 1e24);
+        fills = twoBuyFills(10_000e18);
+        fills[0].offer.callback = address(callback);
+    }
+
+    function testBuyerAssetsBoundCapsTake() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        relaxSaleGuardrails();
+        OfferFill[] memory fills = boundedBuyFills(2_000e18, false);
+
+        vm.recordLogs();
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, 5_000e18, 0, fills, vm.getBlockTimestamp()
+        );
+        TakeRecord[] memory takes = recordedTakes();
+
+        assertEq(takes.length, 2, "two takes");
+        assertEq(takes[0].buyerAssets, 2_000e18, "first take capped at the callback's bound");
+        assertEq(takes[0].units + takes[1].units, 5_000e18, "rest from the second offer");
+    }
+
+    function testBuyerAssetsBoundRevertIsUnbounded() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        relaxSaleGuardrails();
+        OfferFill[] memory fills = boundedBuyFills(0, true);
+
+        vm.recordLogs();
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, 5_000e18, 0, fills, vm.getBlockTimestamp()
+        );
+        TakeRecord[] memory takes = recordedTakes();
+
+        assertEq(takes.length, 1, "one take");
+        assertEq(takes[0].units, 5_000e18, "uncapped");
     }
 }
