@@ -23,17 +23,6 @@ interface IMidnightAdapterBundlesV1 {
     function MIDNIGHT() external view returns (address);
 
     /// FUNCTIONS ///
-    function midnightAdapterBundlesV1BuyWithAssetsTarget(
-        address adapter,
-        Market memory market,
-        uint256 targetBuyerAssets,
-        uint256 minUnits,
-        OfferFill[] memory offerFills,
-        bytes memory takerCallbackData,
-        uint256 maxContinuousFee,
-        uint256 deadline
-    ) external;
-
     function midnightAdapterBundlesV1BuyWithUnitsTarget(
         address adapter,
         Market memory market,
@@ -45,20 +34,31 @@ interface IMidnightAdapterBundlesV1 {
         uint256 deadline
     ) external;
 
-    function midnightAdapterBundlesV1SellWithAssetsTarget(
-        address adapter,
-        Market memory market,
-        uint256 targetSellerAssets,
-        uint256 maxUnits,
-        OfferFill[] memory offerFills,
-        uint256 deadline
-    ) external;
-
     function midnightAdapterBundlesV1SellWithUnitsTarget(
         address adapter,
         Market memory market,
         uint256 targetUnits,
         uint256 minSellerAssets,
+        OfferFill[] memory offerFills,
+        uint256 deadline
+    ) external;
+
+    function midnightAdapterBundlesV1BuyWithAssetsTarget(
+        address adapter,
+        Market memory market,
+        uint256 targetBuyerAssets,
+        uint256 minUnits,
+        OfferFill[] memory offerFills,
+        bytes memory takerCallbackData,
+        uint256 maxContinuousFee,
+        uint256 deadline
+    ) external;
+
+    function midnightAdapterBundlesV1SellWithAssetsTarget(
+        address adapter,
+        Market memory market,
+        uint256 targetSellerAssets,
+        uint256 maxUnits,
         OfferFill[] memory offerFills,
         uint256 deadline
     ) external;

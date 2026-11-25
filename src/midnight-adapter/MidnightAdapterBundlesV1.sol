@@ -13,16 +13,14 @@ import {IVaultV2} from "../../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IMidnightAdapter} from "./interfaces/IMidnightAdapter.sol";
 import {IMidnightAdapterBundlesV1} from "./interfaces/IMidnightAdapterBundlesV1.sol";
 
-/// @dev Lets an allocator of a Vault V2 take several Midnight offers through the vault's MidnightAdapter in one
-/// transaction, with slippage protection. The take side of MidnightBundlesV2, pointed at MidnightAdapter.take.
-/// @dev The only access rule: msg.sender must be an allocator of adapter.parentVault(). The vault is always read from
-/// the adapter. Every other rule (the bundle being an allocator, caps, maxTtm, rate guardrails, shortfall allowance)
-/// is enforced by the adapter and the vault; a take they reject reverts and is skipped.
-/// @dev This contract must be an allocator of the vault: MidnightAdapter.take only accepts vault allocators.
-/// @dev Holds no tokens, gives no approvals, has no storage besides the transient lock. Nothing is authorized on
-/// Midnight. Its only state-changing calls are Midnight.touchMarket, MidnightAdapter.take and, on sells,
-/// VaultV2.deallocate on the adapter's parent vault to withdraw already-repaid credit at par.
-/// @dev The vault pays and receives through the adapter's callbacks.
+/// @dev This contract enables Midnight batch-takes for a Vault V2 through its MidnightAdapter, including the withdrawal of repaid credit at face value.
+/// @dev It is the take side of MidnightBundlesV2, with MidnightAdapter.take in place of Midnight.take and VaultV2.deallocate in place of Midnight.withdraw.
+/// @dev msg.sender must be an allocator of the adapter's parent vault. The vault is always read from the adapter, never passed by the caller.
+/// @dev This contract must be an allocator of the vault beforehand.
+/// @dev The adapter must be a MidnightAdapter whose take returns the buyer and seller assets.
+/// @dev The adapter's and the vault's checks (caps, maxTtm, minNetBuyRate, maxNetSellRate, shortfallAllowance, forceSellable) apply to every take.
+/// @dev This contract holds no tokens and gives no approvals: the vault pays and receives through the adapter.
+/// @dev Because takes can make arbitrary calls, all entrypoints remain locked throughout the call to this contract.
 contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
     using UtilsLib for uint256;
 
@@ -43,63 +41,16 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
 
     /// EXTERNAL FUNCTIONS ///
 
-    // Offers are taken in the order they are passed. Only touched offers are checked to point to the given market.
-    // The functions below skip an offer if its take reverted, including reverts from the adapter's and the vault's
-    // checks (caps, maxTtm, minNetBuyRate, maxNetSellRate, shortfallAllowance, forceSellable). This avoids reverting
-    // the whole call when other offers passed as argument still have liquidity.
-    // The vault is always read from the adapter, never passed by the caller.
+    // Only touched offers are checked to point to the given market.
+    // The buy/sell functions below skip the offer if the take reverted, including when the adapter or the vault rejects it. This avoids reverting the whole call when other offers passed as argument still have liquidity.
+    // The vault is always the tokens payer (for buy) and the tokens receiver (for sell and withdraw), through the adapter.
+    // Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing to buy, decreasing to sell).
+    // offerFills[i].units should prevent taking more than what is takeable w.r.t. the callback / the balances / the health.
     // For the buy functions below, the current market continuous fee must be at most maxContinuousFee when taking offers.
+    // For the buy functions below, takerCallbackData is forwarded to the adapter and selects the funding source: abi.encode(address(0), "") for the vault's idle assets.
 
-    /// @dev Buys credit for the adapter's parent vault by taking sell offers.
-    /// @dev The vault spends exactly targetBuyerAssets (settlement fee included), or the call reverts with OutOfOffers.
-    /// @dev The adapter gains at least minUnits, or the call reverts with UnitsTooLow.
-    /// @dev takerCallbackData is forwarded to the adapter and selects the funding source:
-    /// abi.encode(address(0), "") for the vault's idle assets.
-    function midnightAdapterBundlesV1BuyWithAssetsTarget(
-        address adapter,
-        Market memory market,
-        uint256 targetBuyerAssets,
-        uint256 minUnits,
-        OfferFill[] memory offerFills,
-        bytes memory takerCallbackData,
-        uint256 maxContinuousFee,
-        uint256 deadline
-    ) external nonReentrant {
-        require(block.timestamp <= deadline, DeadlinePassed());
-        require(IVaultV2(IMidnightAdapter(adapter).parentVault()).isAllocator(msg.sender), Unauthorized());
-        // touchMarket to have the correct settlement fees.
-        // forge-lint: disable-next-line(reentrancy-no-eth) The entrypoint lock remains active.
-        bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
-
-        uint256 filledUnits;
-        uint256 filledBuyerAssets;
-        for (uint256 i; i < offerFills.length && filledBuyerAssets < targetBuyerAssets; i++) {
-            OfferFill memory fill = offerFills[i];
-            require(!fill.offer.buy, InconsistentSide());
-            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
-            uint256 unitsToTake = min(
-                TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, targetBuyerAssets - filledBuyerAssets),
-                fill.units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                fill.offer.reduceOnly ? credit(market, id, fill.offer.maker) : type(uint256).max
-            );
-            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the take.
-            try IMidnightAdapter(adapter).take(fill.offer, fill.ratifierData, unitsToTake, takerCallbackData) returns (
-                uint256 resBuyerAssets, uint256
-            ) {
-                filledUnits += unitsToTake;
-                filledBuyerAssets += resBuyerAssets;
-            } catch {}
-        }
-
-        require(filledBuyerAssets == targetBuyerAssets, OutOfOffers());
-        require(filledUnits >= minUnits, UnitsTooLow());
-    }
-
-    /// @dev Buys exactly targetUnits of credit for the adapter's parent vault by taking sell offers.
-    /// @dev The vault spends at most maxBuyerAssets, or the call reverts with BuyerAssetsTooHigh.
-    /// @dev takerCallbackData is forwarded to the adapter and selects the funding source.
+    /// @dev The vault will pay at most maxBuyerAssets.
+    /// @dev The adapter will gain exactly targetUnits.
     function midnightAdapterBundlesV1BuyWithUnitsTarget(
         address adapter,
         Market memory market,
@@ -142,62 +93,9 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
         require(filledBuyerAssets <= maxBuyerAssets, BuyerAssetsTooHigh());
     }
 
-    /// @dev Sells credit of the adapter's parent vault by taking buy offers until the vault has received exactly
-    /// targetSellerAssets, or the call reverts with OutOfOffers.
-    /// @dev The adapter sells at most maxUnits, or the call reverts with UnitsTooHigh.
-    /// @dev Already-repaid credit is withdrawn to the vault first, at par, as in MidnightBundlesV2. It counts towards
-    /// the target and towards maxUnits. With an empty offerFills this only withdraws.
-    function midnightAdapterBundlesV1SellWithAssetsTarget(
-        address adapter,
-        Market memory market,
-        uint256 targetSellerAssets,
-        uint256 maxUnits,
-        OfferFill[] memory offerFills,
-        uint256 deadline
-    ) external nonReentrant {
-        require(block.timestamp <= deadline, DeadlinePassed());
-        // The vault is read once: the caller check and the withdrawal below must use the same vault.
-        address vault = IMidnightAdapter(adapter).parentVault();
-        require(IVaultV2(vault).isAllocator(msg.sender), Unauthorized());
-        // touchMarket to have the correct settlement fees.
-        // forge-lint: disable-next-line(reentrancy-no-eth) The entrypoint lock remains active.
-        bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
-
-        uint256 withdrawUnits =
-            min(targetSellerAssets, credit(market, id, adapter), IMidnight(MIDNIGHT).withdrawable(id));
-        // forge-lint: disable-next-line(reentrancy-no-eth) The entrypoint lock remains active.
-        if (withdrawUnits > 0) IVaultV2(vault).deallocate(adapter, abi.encode(market), withdrawUnits);
-        uint256 filledUnits = withdrawUnits;
-        uint256 filledSellerAssets = withdrawUnits;
-        for (uint256 i; i < offerFills.length && filledSellerAssets < targetSellerAssets; i++) {
-            OfferFill memory fill = offerFills[i];
-            require(fill.offer.buy, InconsistentSide());
-            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
-            uint256 unitsToTake = min(
-                TakeAmountsLib.sellerAssetsToUnits(MIDNIGHT, id, fill.offer, targetSellerAssets - filledSellerAssets),
-                fill.units,
-                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max,
-                TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
-            );
-            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the take.
-            try IMidnightAdapter(adapter).take(fill.offer, fill.ratifierData, unitsToTake, "") returns (
-                uint256, uint256 resSellerAssets
-            ) {
-                filledUnits += unitsToTake;
-                filledSellerAssets += resSellerAssets;
-            } catch {}
-        }
-
-        require(filledSellerAssets == targetSellerAssets, OutOfOffers());
-        require(filledUnits <= maxUnits, UnitsTooHigh());
-    }
-
-    /// @dev Sells exactly targetUnits of credit of the adapter's parent vault by taking buy offers.
-    /// @dev targetUnits = type(uint256).max targets the adapter's credit in the market at execution.
-    /// @dev The vault receives at least minSellerAssets, or the call reverts with SellerAssetsTooLow.
-    /// @dev Already-repaid credit is withdrawn to the vault first, at par, as in MidnightBundlesV2. It counts towards
-    /// the target and towards minSellerAssets. With an empty offerFills this only withdraws.
+    /// @dev The vault will receive at least minSellerAssets.
+    /// @dev If the adapter has credit, as much credit as possible is withdrawn to the vault before the take loop.
+    /// @dev targetUnits = type(uint256).max targets the adapter's credit before withdrawing and taking offers.
     function midnightAdapterBundlesV1SellWithUnitsTarget(
         address adapter,
         Market memory market,
@@ -207,7 +105,7 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
         uint256 deadline
     ) external nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
-        // The vault is read once: the caller check and the withdrawal below must use the same vault.
+        // The same vault is used for the allocator check and for the withdrawal.
         address vault = IMidnightAdapter(adapter).parentVault();
         require(IVaultV2(vault).isAllocator(msg.sender), Unauthorized());
         // touchMarket to have the correct settlement fees.
@@ -230,7 +128,7 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
                 targetUnits - filledUnits,
                 fill.units,
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
-                fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max,
+                fill.offer.reduceOnly ? debt(id, fill.offer.maker) : type(uint256).max,
                 TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
             // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the take.
@@ -246,6 +144,99 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
         require(filledSellerAssets >= minSellerAssets, SellerAssetsTooLow());
     }
 
+    /// @dev Total loan assets paid by the vault is targetBuyerAssets.
+    /// @dev The adapter will gain at least minUnits.
+    function midnightAdapterBundlesV1BuyWithAssetsTarget(
+        address adapter,
+        Market memory market,
+        uint256 targetBuyerAssets,
+        uint256 minUnits,
+        OfferFill[] memory offerFills,
+        bytes memory takerCallbackData,
+        uint256 maxContinuousFee,
+        uint256 deadline
+    ) external nonReentrant {
+        require(block.timestamp <= deadline, DeadlinePassed());
+        require(IVaultV2(IMidnightAdapter(adapter).parentVault()).isAllocator(msg.sender), Unauthorized());
+        // touchMarket to have the correct settlement fees.
+        // forge-lint: disable-next-line(reentrancy-no-eth) The entrypoint lock remains active.
+        bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
+
+        uint256 filledUnits;
+        uint256 filledBuyerAssets;
+        for (uint256 i; i < offerFills.length && filledBuyerAssets < targetBuyerAssets; i++) {
+            OfferFill memory fill = offerFills[i];
+            require(!fill.offer.buy, InconsistentSide());
+            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
+            require(IMidnight(MIDNIGHT).continuousFee(id) <= maxContinuousFee, ContinuousFeeAboveMax());
+            uint256 unitsToTake = min(
+                TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, targetBuyerAssets - filledBuyerAssets),
+                fill.units,
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                fill.offer.reduceOnly ? credit(market, id, fill.offer.maker) : type(uint256).max
+            );
+            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the take.
+            try IMidnightAdapter(adapter).take(fill.offer, fill.ratifierData, unitsToTake, takerCallbackData) returns (
+                uint256 resBuyerAssets, uint256
+            ) {
+                filledUnits += unitsToTake;
+                filledBuyerAssets += resBuyerAssets;
+            } catch {}
+        }
+
+        require(filledBuyerAssets == targetBuyerAssets, OutOfOffers());
+        require(filledUnits >= minUnits, UnitsTooLow());
+    }
+
+    /// @dev Total loan assets received by the vault is targetSellerAssets.
+    /// @dev If the adapter has credit, as much credit as possible is withdrawn to the vault before the take loop.
+    /// @dev The adapter will lose at most maxUnits.
+    function midnightAdapterBundlesV1SellWithAssetsTarget(
+        address adapter,
+        Market memory market,
+        uint256 targetSellerAssets,
+        uint256 maxUnits,
+        OfferFill[] memory offerFills,
+        uint256 deadline
+    ) external nonReentrant {
+        require(block.timestamp <= deadline, DeadlinePassed());
+        // The same vault is used for the allocator check and for the withdrawal.
+        address vault = IMidnightAdapter(adapter).parentVault();
+        require(IVaultV2(vault).isAllocator(msg.sender), Unauthorized());
+        // touchMarket to have the correct settlement fees.
+        // forge-lint: disable-next-line(reentrancy-no-eth) The entrypoint lock remains active.
+        bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
+
+        uint256 withdrawUnits =
+            min(targetSellerAssets, credit(market, id, adapter), IMidnight(MIDNIGHT).withdrawable(id));
+        // forge-lint: disable-next-line(reentrancy-no-eth) The entrypoint lock remains active.
+        if (withdrawUnits > 0) IVaultV2(vault).deallocate(adapter, abi.encode(market), withdrawUnits);
+        uint256 filledUnits = withdrawUnits;
+        uint256 filledSellerAssets = withdrawUnits;
+        for (uint256 i; i < offerFills.length && filledSellerAssets < targetSellerAssets; i++) {
+            OfferFill memory fill = offerFills[i];
+            require(fill.offer.buy, InconsistentSide());
+            require(IdLib.toId(fill.offer.market) == id, InconsistentMarket());
+            uint256 unitsToTake = min(
+                TakeAmountsLib.sellerAssetsToUnits(MIDNIGHT, id, fill.offer, targetSellerAssets - filledSellerAssets),
+                fill.units,
+                ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
+                fill.offer.reduceOnly ? debt(id, fill.offer.maker) : type(uint256).max,
+                TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
+            );
+            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the take.
+            try IMidnightAdapter(adapter).take(fill.offer, fill.ratifierData, unitsToTake, "") returns (
+                uint256, uint256 resSellerAssets
+            ) {
+                filledUnits += unitsToTake;
+                filledSellerAssets += resSellerAssets;
+            } catch {}
+        }
+
+        require(filledSellerAssets == targetSellerAssets, OutOfOffers());
+        require(filledUnits <= maxUnits, UnitsTooHigh());
+    }
+
     /// INTERNAL FUNCTIONS ///
 
     /// @dev Returns user's credit on market, after fee accrual and slashing.
@@ -254,7 +245,13 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
         return userCredit;
     }
 
+    /// @dev Returns user's debt on market.
+    function debt(bytes32 id, address user) internal view returns (uint256) {
+        return IMidnight(MIDNIGHT).debt(id, user);
+    }
+
     /// @dev Returns the maker's callback funding cap in buyer assets for a buy offer.
+    /// @dev Buy offers already limit buyer assets to uint128.max through maxAssets or maxUnits and buyerPrice <= WAD.
     function buyerAssetsBound(bytes32 id, Offer memory offer) internal view returns (uint256) {
         if (offer.callback == address(0)) return type(uint128).max;
         try IBuyerAssetsBound(offer.callback)

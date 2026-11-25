@@ -36,10 +36,10 @@ The taker is msg.sender and must authorize the bundle on Midnight and approve it
 
 Takes Midnight offers for a Vault V2 through its MidnightAdapter, with slippage protection. Offers whose take reverts are skipped.
 
-- `midnightAdapterBundlesV1BuyWithAssetsTarget` — buy credit for the vault with an exact loan-asset amount across sell offers, with a minimum of units.
 - `midnightAdapterBundlesV1BuyWithUnitsTarget` — buy an exact number of units for the vault across sell offers, with a maximum loan-asset amount.
-- `midnightAdapterBundlesV1SellWithAssetsTarget` — sell the vault's credit for an exact loan-asset amount, filling it first by withdrawing credit and then across buy offers, with a maximum of units.
+- `midnightAdapterBundlesV1BuyWithAssetsTarget` — buy credit for the vault with an exact loan-asset amount across sell offers, with a minimum of units.
 - `midnightAdapterBundlesV1SellWithUnitsTarget` — sell an exact number of the vault's units (or all its credit in the market), filling it first by withdrawing credit and then across buy offers, with a minimum loan-asset amount.
+- `midnightAdapterBundlesV1SellWithAssetsTarget` — sell the vault's credit for an exact loan-asset amount, filling it first by withdrawing credit and then across buy offers, with a maximum of units.
 
 The bundle must be an allocator of the vault. The caller must be an allocator of the adapter's parent vault. Nothing is authorized on Midnight and no token approval is needed: the vault pays and receives through the adapter.
 
