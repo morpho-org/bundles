@@ -22,6 +22,7 @@ import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
 import {IVaultV2Factory} from "../lib/vault-v2/src/interfaces/IVaultV2Factory.sol";
 import {MidnightAdapterBundlesV1} from "../src/midnight-adapter/MidnightAdapterBundlesV1.sol";
 import {IMidnightAdapterBundlesV1} from "../src/midnight-adapter/interfaces/IMidnightAdapterBundlesV1.sol";
+import {IMidnightAdapter} from "../src/midnight-adapter/interfaces/IMidnightAdapter.sol";
 import {OfferFill} from "../src/midnight/interfaces/IMidnightBundlesV2.sol";
 
 /// @dev The parts of MidnightAdapter the tests use, typed with this repo's copy of Midnight's types.
@@ -55,6 +56,8 @@ contract ReenteringSellCallback {
     address internal immutable adapter;
     bytes public lastRevertData;
     bool public reentered;
+    /// @dev The entry point to re-enter (0: buy assets, 1: buy units, 2: sell assets, 3: sell units).
+    uint256 public kind;
 
     constructor(MidnightAdapterBundlesV1 _bundle, address _adapter) {
         bundle = _bundle;
@@ -66,13 +69,43 @@ contract ReenteringSellCallback {
         returns (bytes32)
     {
         reentered = true;
-        try bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(
-            adapter, market, 1, 0, new OfferFill[](0), abi.encode(address(0), bytes("")), 0, block.timestamp
-        ) {}
+        try this.reenter(market) {}
         catch (bytes memory data) {
             lastRevertData = data;
         }
         return CALLBACK_SUCCESS;
+    }
+
+    function setKind(uint256 _kind) external {
+        kind = _kind;
+    }
+
+    function reenter(Market memory market) external {
+        OfferFill[] memory none = new OfferFill[](0);
+        bytes memory funding = abi.encode(address(0), bytes(""));
+        if (kind == 0) {
+            bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(adapter, market, 1, 0, none, funding, 0, block.timestamp);
+        } else if (kind == 1) {
+            bundle.midnightAdapterBundlesV1BuyWithUnitsTarget(
+                adapter, market, 1, type(uint256).max, none, funding, 0, block.timestamp
+            );
+        } else if (kind == 2) {
+            bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+                adapter, market, 1, type(uint256).max, none, block.timestamp
+            );
+        } else {
+            bundle.midnightAdapterBundlesV1SellWithUnitsTarget(adapter, market, 1, 0, none, block.timestamp);
+        }
+    }
+}
+
+/// @dev An allocator contract that places two orders in one transaction.
+contract TwoOrders {
+    function twice(address bundle, bytes calldata order) external {
+        (bool first, bytes memory firstData) = bundle.call(order);
+        require(first, string(firstData));
+        (bool second, bytes memory secondData) = bundle.call(order);
+        require(second, string(secondData));
     }
 }
 
@@ -612,6 +645,81 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
         );
         assertEq(totals.count, 2, "both takes went through");
         assertEq(totals.buyerAssets, 15_000e18, "event buyer assets");
+    }
+
+    /// @dev Every entry point refuses re-entry, whichever one is running. The re-entering contract is an allocator
+    /// and re-enters from inside the adapter's own msg.sender check, so only the lock can stop it.
+    function testReentryIntoEveryEntryPoint() public {
+        ReenteringSellCallback reenterer = new ReenteringSellCallback(bundle, address(adapter));
+        submitAndExec(vault, abi.encodeCall(IVaultV2.setIsAllocator, (address(reenterer), true)));
+        bytes memory reentrancy = abi.encodeWithSelector(IMidnightAdapterBundlesV1.Reentrancy.selector);
+
+        for (uint256 inner; inner < 4; inner++) {
+            reenterer.setKind(inner);
+            OfferFill[] memory fills = twoSellFills(10_000e18);
+            fills[0].offer.callback = address(reenterer);
+            fills[0].offer.group = bytes32(100 + inner);
+            // Outer call through the assets target, then through the units target.
+            buyWithAssets(allocator, 1_000e18, 0, fills);
+            assertEq(reenterer.lastRevertData(), reentrancy, "refused from buy with assets target");
+            fills[0].offer.group = bytes32(200 + inner);
+            vm.prank(allocator);
+            bundle.midnightAdapterBundlesV1BuyWithUnitsTarget(
+                address(adapter),
+                market,
+                1_000e18,
+                type(uint256).max,
+                fills,
+                abi.encode(address(0), bytes("")),
+                type(uint256).max,
+                vm.getBlockTimestamp()
+            );
+            assertEq(reenterer.lastRevertData(), reentrancy, "refused from buy with units target");
+        }
+    }
+
+    /// @dev The lock is released when an order ends: the same caller can place a second order in one transaction.
+    function testTwoOrdersInOneTransaction() public {
+        TwoOrders caller = new TwoOrders();
+        submitAndExec(vault, abi.encodeCall(IVaultV2.setIsAllocator, (address(caller), true)));
+        OfferFill[] memory fills = twoSellFills(10_000e18);
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+
+        caller.twice(
+            address(bundle),
+            abi.encodeCall(
+                bundle.midnightAdapterBundlesV1BuyWithAssetsTarget,
+                (
+                    address(adapter),
+                    market,
+                    1_000e18,
+                    0,
+                    fills,
+                    abi.encode(address(0), bytes("")),
+                    type(uint256).max,
+                    vm.getBlockTimestamp()
+                )
+            )
+        );
+
+        assertEq(vaultBalanceBefore - loanToken.balanceOf(address(vault)), 2_000e18, "both orders filled");
+    }
+
+    /// @dev Once the target is met, no further offer is touched: the adapter is called once although two offers
+    /// were passed. An extra call would run the next maker's ratifier and callbacks for nothing.
+    function testStopsAtTheTargetOnBuys() public {
+        vm.expectCall(address(adapter), abi.encodeWithSelector(IMidnightAdapter.take.selector), 2);
+        callEntry(0, allocator, vm.getBlockTimestamp(), rightSide(0));
+        callEntry(1, allocator, vm.getBlockTimestamp(), rightSide(1));
+    }
+
+    function testStopsAtTheTargetOnSells() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        relaxSaleGuardrails();
+
+        vm.expectCall(address(adapter), abi.encodeWithSelector(IMidnightAdapter.take.selector), 2);
+        callEntry(2, allocator, vm.getBlockTimestamp(), rightSide(2));
+        callEntry(3, allocator, vm.getBlockTimestamp(), rightSide(3));
     }
 
     /// SELL ///
@@ -1589,6 +1697,23 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
         assertEq(takes.length, 2, "two takes");
         assertEq(takes[0].buyerAssets, 2_000e18, "first take capped at the callback's bound");
         assertEq(takes[0].units + takes[1].units, 5_000e18, "rest from the second offer");
+    }
+
+    function testBuyerAssetsBoundCapsTakeAssetsTarget() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        relaxSaleGuardrails();
+        OfferFill[] memory fills = boundedBuyFills(2_000e18, false);
+
+        vm.recordLogs();
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+            address(adapter), market, 4_000e18, type(uint256).max, fills, vm.getBlockTimestamp()
+        );
+        TakeRecord[] memory takes = recordedTakes();
+
+        assertEq(takes.length, 2, "two takes");
+        assertEq(takes[0].buyerAssets, 2_000e18, "first take capped at the callback's bound");
+        assertEq(takes[0].sellerAssets + takes[1].sellerAssets, 4_000e18, "rest from the second offer");
     }
 
     function testBuyerAssetsBoundRevertIsUnbounded() public {
