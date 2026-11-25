@@ -79,6 +79,8 @@ See the [Certora README](./certora/README.md) for the full list of verified prop
 
 Audits can be found in the [audits](./audits/) folder.
 
-## License
+## Licenses
 
-The primary license, `BUSL-1.1`, covers `src/leverage/` (see [LICENSE](./LICENSE)). All other files authored for this repository are under `MIT` (see [LICENSE-MIT](./LICENSE-MIT)); git submodules in `lib/` keep their own licenses.
+Bundles are licensed under `BUSL-1.1` (see [LICENSE](./LICENSE)), except `MidnightBundlesV2`, `BlueBundlesV1`, `VaultBundlesV1` and `VaultExitBundlesV1`, which remain under `MIT` (see [LICENSE-MIT](./LICENSE-MIT)).
+
+All other files authored for this repository are under `MIT`.
