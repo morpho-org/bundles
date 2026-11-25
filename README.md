@@ -81,4 +81,4 @@ Audits can be found in the [audits](./audits/) folder.
 
 ## License
 
-Files in this repository are publicly available under `MIT`, see [LICENSE](./LICENSE).
+The primary license, `BUSL-1.1`, covers `src/leverage/ZeroExLeverageBundlesV1.sol` (see [LICENSE](./LICENSE)). All other files authored for this repository are under `MIT` (see [LICENSE-MIT](./LICENSE-MIT)); git submodules in `lib/` keep their own licenses.
