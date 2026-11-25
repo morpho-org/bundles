@@ -81,6 +81,6 @@ Audits can be found in the [audits](./audits/) folder.
 
 ## Licenses
 
-Bundles are licensed under `BUSL-1.1` (see [LICENSE](./LICENSE)), except `MidnightBundlesV2`, `BlueBundlesV1`, `VaultBundlesV1` and `VaultExitBundlesV1`, which remain under `MIT` (see [LICENSE-MIT](./LICENSE-MIT)).
+Bundles and their interfaces are licensed under `BUSL-1.1` (see [LICENSE](./LICENSE)), except `MidnightBundlesV2`, `BlueBundlesV1`, `VaultBundlesV1` and `VaultExitBundlesV1`, which remain under `MIT` (see [LICENSE-MIT](./LICENSE-MIT)).
 
 All other files authored for this repository are under `MIT`.
