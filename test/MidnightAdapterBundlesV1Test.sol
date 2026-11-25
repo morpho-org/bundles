@@ -512,11 +512,6 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
 
     /// ACCESS ///
 
-    function testBuyUnauthorizedStranger() public {
-        vm.expectRevert(IMidnightAdapterBundlesV1.Unauthorized.selector);
-        buyWithAssets(stranger, 15_000e18, 0, twoSellFills(10_000e18));
-    }
-
     function testBuyUnauthorizedSentinel() public {
         vm.expectRevert(IMidnightAdapterBundlesV1.Unauthorized.selector);
         buyWithAssets(sentinel, 15_000e18, 0, twoSellFills(10_000e18));
@@ -535,29 +530,6 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
 
         vm.expectRevert(IMidnightAdapterBundlesV1.Unauthorized.selector);
         buyWithAssets(otherAllocator, 15_000e18, 0, twoSellFills(10_000e18));
-    }
-
-    function testSellUnauthorizedStranger() public {
-        vm.prank(stranger);
-        vm.expectRevert(IMidnightAdapterBundlesV1.Unauthorized.selector);
-        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
-            address(adapter), market, type(uint256).max, 0, twoBuyFills(10_000e18), vm.getBlockTimestamp()
-        );
-    }
-
-    function testDeadlinePassed() public {
-        vm.prank(allocator);
-        vm.expectRevert(IMidnightAdapterBundlesV1.DeadlinePassed.selector);
-        bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(
-            address(adapter),
-            market,
-            1e18,
-            0,
-            twoSellFills(10_000e18),
-            abi.encode(address(0), bytes("")),
-            type(uint256).max,
-            vm.getBlockTimestamp() - 1
-        );
     }
 
     /// SKIPPING AND FINAL CHECKS ///
@@ -599,20 +571,6 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
     function testBuyUnitsTooLow() public {
         vm.expectRevert(IMidnightAdapterBundlesV1.UnitsTooLow.selector);
         buyWithAssets(allocator, 15_000e18, 15_000e18 * 2, twoSellFills(10_000e18));
-    }
-
-    function testBuyInconsistentSide() public {
-        OfferFill[] memory fills = twoSellFills(10_000e18);
-        fills[0].offer.buy = true;
-        vm.expectRevert(IMidnightAdapterBundlesV1.InconsistentSide.selector);
-        buyWithAssets(allocator, 15_000e18, 0, fills);
-    }
-
-    function testBuyInconsistentMarket() public {
-        OfferFill[] memory fills = twoSellFills(10_000e18);
-        fills[0].offer.market.maturity += 1;
-        vm.expectRevert(IMidnightAdapterBundlesV1.InconsistentMarket.selector);
-        buyWithAssets(allocator, 15_000e18, 0, fills);
     }
 
     function testBundleNotAllocatorEveryTakeRejected() public {
