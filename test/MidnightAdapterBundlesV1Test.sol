@@ -32,6 +32,11 @@ interface ITestMidnightAdapter {
     function increaseMaxNetSellRate(uint256 newMaxNetSellRate) external;
     function increaseShortfallAllowance(uint256 allowanceIncrease) external;
     function ids(Market memory market) external view returns (bytes32[] memory);
+    function decreaseMaxTtm(uint256 newMaxTtm) external;
+    function increaseMinNetBuyRate(uint256 newMinNetBuyRate) external;
+    function setForceSellable(bytes32 marketId) external;
+    function forceRemove(bytes32 marketId) external;
+    function shortfallAllowance() external view returns (uint128);
 }
 
 interface ITestMidnightAdapterFactory {
@@ -70,7 +75,26 @@ contract ReenteringSellCallback {
     }
 }
 
-contract MidnightAdapterBundlesV1Test is TokenTest {
+/// @dev An adapter that names a real vault and does nothing on take.
+contract FakeAdapter {
+    address public parentVault;
+
+    constructor(address _parentVault) {
+        parentVault = _parentVault;
+    }
+
+    function take(Offer memory, bytes calldata, uint256, bytes calldata) external {}
+}
+
+/// @dev A vault that says everyone is an allocator.
+contract FakeVault {
+    function isAllocator(address) external pure returns (bool) {
+        return true;
+    }
+}
+
+/// @dev Deploys Midnight, a real Vault V2 with a real MidnightAdapter, and the bundle. Shared with the invariant test.
+abstract contract MidnightAdapterBundlesV1Setup is TokenTest {
     using UtilsLib for uint256;
 
     uint256 internal constant VAULT_ASSETS = 1_000_000e18;
@@ -101,7 +125,7 @@ contract MidnightAdapterBundlesV1Test is TokenTest {
     uint256 internal sellTick;
     uint256 internal buyTick;
 
-    function setUp() public {
+    function setUp() public virtual {
         midnight = IMidnight(deployCode("Midnight"));
         dummyRatifier = new DummyRatifier();
         midnight.setFeeSetter(address(this));
@@ -319,11 +343,14 @@ contract MidnightAdapterBundlesV1Test is TokenTest {
     }
 
     /// @dev Sums Midnight's Take events in the recorded logs.
+    /// @dev vm.recordLogs also records the logs of reverted sub-calls, so a take that the adapter rejected after
+    /// Midnight emitted Take still shows up. Such events are left out by skipping offers whose group is unconsumed.
+    /// This assumes every recorded take of a group either all succeeded or all reverted, as in these tests.
     function sumTakeEvents() internal view returns (TakeTotals memory totals) {
         Vm.Log[] memory logs = vm.getRecordedLogs();
         for (uint256 i; i < logs.length; i++) {
             if (logs[i].emitter != address(midnight) || logs[i].topics[0] != EventsLib.Take.selector) continue;
-            (,,,,,, uint256 units, uint256 buyerAssets, uint256 sellerAssets,,,,,) = abi.decode(
+            (,,, bytes32 group,,, uint256 units, uint256 buyerAssets, uint256 sellerAssets,,,,,) = abi.decode(
                 logs[i].data,
                 (
                     address,
@@ -342,6 +369,8 @@ contract MidnightAdapterBundlesV1Test is TokenTest {
                     address
                 )
             );
+            address maker = address(uint160(uint256(logs[i].topics[2])));
+            if (midnight.consumed(maker, group) == 0) continue;
             totals.count++;
             totals.units += units;
             totals.buyerAssets += buyerAssets;
@@ -355,6 +384,10 @@ contract MidnightAdapterBundlesV1Test is TokenTest {
         assertEq(loanToken.allowance(address(bundle), address(midnight)), 0, "bundle allowance midnight");
         assertEq(loanToken.allowance(address(bundle), address(adapter)), 0, "bundle allowance adapter");
     }
+}
+
+contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
+    using UtilsLib for uint256;
 
     /// MILESTONE 1: BUY WITH ASSETS TARGET ACROSS TWO OFFERS ///
 
@@ -757,6 +790,281 @@ contract MidnightAdapterBundlesV1Test is TokenTest {
         assertEq(totals.sellerAssets, targetSellerAssets, "computed seller assets = sum of Take events");
         assertEq(loanToken.balanceOf(address(vault)) - vaultBalanceBefore, targetSellerAssets, "vault received");
         assertEq(creditOf(address(adapter)), credit - totals.units, "credit left");
+        assertBundleHoldsNothing();
+    }
+
+    /// GUARDRAIL HELPERS ///
+
+    function tickAt(uint256 price) internal pure returns (uint256) {
+        return TickLib.priceToTick(price, DEFAULT_TICK_SPACING);
+    }
+
+    function sellFillAt(bytes32 group, uint256 price, uint256 units) internal view returns (OfferFill memory fill) {
+        fill.offer = sellOffer(group);
+        fill.offer.tick = tickAt(price);
+        fill.units = units;
+    }
+
+    function buyFillAt(bytes32 group, uint256 price, uint256 units) internal view returns (OfferFill memory fill) {
+        fill.offer = buyOffer(group);
+        fill.offer.tick = tickAt(price);
+        fill.units = units;
+    }
+
+    function pair(OfferFill memory a, OfferFill memory b) internal pure returns (OfferFill[] memory fills) {
+        fills = new OfferFill[](2);
+        fills[0] = a;
+        fills[1] = b;
+    }
+
+    function sellWithUnits(uint256 targetUnits, OfferFill[] memory fills) internal {
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, targetUnits, 0, fills, vm.getBlockTimestamp()
+        );
+    }
+
+    /// @dev The first offer (at 0.5) needs about twice the units of the second (at 0.98) for the same assets.
+    function assertBuyFilledFromSecondOnly(OfferFill[] memory fills, uint256 targetBuyerAssets) internal {
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+        vm.recordLogs();
+        buyWithAssets(allocator, targetBuyerAssets, 0, fills);
+        TakeTotals memory totals = sumTakeEvents();
+
+        assertEq(totals.count, 1, "one take");
+        assertEq(midnight.consumed(borrower, fills[0].offer.group), 0, "first offer skipped");
+        assertEq(midnight.consumed(borrower, fills[1].offer.group), totals.units, "filled from second offer");
+        assertEq(totals.buyerAssets, targetBuyerAssets, "event buyer assets");
+        assertEq(vaultBalanceBefore - loanToken.balanceOf(address(vault)), targetBuyerAssets, "vault spent target");
+        assertBundleHoldsNothing();
+    }
+
+    /// BUY GUARDRAILS ///
+
+    function testBuySkipsAbsoluteCapExceeded() public {
+        vm.prank(curator);
+        vault.decreaseAbsoluteCap(abi.encode("this", address(adapter)), 6_000e18);
+        // 5k assets: ~10k units at 0.5 (over the cap), ~5.1k units at 0.98 (under it).
+        OfferFill[] memory fills = pair(
+            sellFillAt(bytes32(uint256(1)), 0.5e18, OFFER_UNITS), sellFillAt(bytes32(uint256(2)), 0.98e18, OFFER_UNITS)
+        );
+        assertBuyFilledFromSecondOnly(fills, 5_000e18);
+        assertLe(creditOf(address(adapter)), 6_000e18, "within cap");
+    }
+
+    function testBuySkipsRelativeCapExceeded() public {
+        vm.prank(curator);
+        vault.decreaseRelativeCap(abi.encode("this", address(adapter)), 0.006e18);
+        // The relative cap is 0.6% of the vault's 1M total assets: 6k units, as in the absolute cap test.
+        OfferFill[] memory fills = pair(
+            sellFillAt(bytes32(uint256(1)), 0.5e18, OFFER_UNITS), sellFillAt(bytes32(uint256(2)), 0.98e18, OFFER_UNITS)
+        );
+        assertBuyFilledFromSecondOnly(fills, 5_000e18);
+    }
+
+    function testBuySkipsMinNetBuyRate() public {
+        // About 3.2% a year. At 0.999 over 30 days the net rate is far below it, at 0.98 it is far above it.
+        vm.prank(curator);
+        adapter.increaseMinNetBuyRate(1e9);
+        OfferFill[] memory fills = pair(
+            sellFillAt(bytes32(uint256(1)), 0.999e18, OFFER_UNITS),
+            sellFillAt(bytes32(uint256(2)), 0.98e18, OFFER_UNITS)
+        );
+        assertBuyFilledFromSecondOnly(fills, 5_000e18);
+    }
+
+    /// @dev maxTtm is checked against the market's maturity, and every offer of an order is on the same market, so it
+    /// rejects every offer: the order reverts OutOfOffers.
+    function testBuyMaxTtmRejectsEveryOffer() public {
+        vm.prank(curator);
+        adapter.decreaseMaxTtm(1 days);
+        vm.expectRevert(IMidnightAdapterBundlesV1.OutOfOffers.selector);
+        buyWithAssets(allocator, 5_000e18, 0, twoSellFills(OFFER_UNITS));
+    }
+
+    /// @dev forceSellable is per market, so it rejects every offer of an order: the order reverts OutOfOffers.
+    function testBuyForceSellableRejectsEveryOffer() public {
+        submitAndExecAdapter(adapter, abi.encodeCall(ITestMidnightAdapter.setForceSellable, (id)));
+        vm.expectRevert(IMidnightAdapterBundlesV1.OutOfOffers.selector);
+        buyWithAssets(allocator, 5_000e18, 0, twoSellFills(OFFER_UNITS));
+    }
+
+    /// @dev forceRemove is per market, so it rejects every offer of an order: the order reverts OutOfOffers.
+    function testBuyForceRemovedRejectsEveryOffer() public {
+        submitAndExecAdapter(adapter, abi.encodeCall(ITestMidnightAdapter.forceRemove, (id)));
+        vm.expectRevert(IMidnightAdapterBundlesV1.OutOfOffers.selector);
+        buyWithAssets(allocator, 5_000e18, 0, twoSellFills(OFFER_UNITS));
+    }
+
+    /// SELL GUARDRAILS ///
+
+    function testSellSkipsMaxNetSellRate() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        // About 31% a year: over 30 days, sales must pay at least ~0.975 per unit.
+        submitAndExecAdapter(adapter, abi.encodeCall(ITestMidnightAdapter.increaseMaxNetSellRate, (1e10)));
+        OfferFill[] memory fills = pair(
+            buyFillAt(bytes32(uint256(11)), 0.9e18, OFFER_UNITS), buyFillAt(bytes32(uint256(12)), 0.99e18, OFFER_UNITS)
+        );
+
+        uint256 creditBefore = creditOf(address(adapter));
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+        vm.recordLogs();
+        sellWithUnits(5_000e18, fills);
+        TakeTotals memory totals = sumTakeEvents();
+
+        assertEq(totals.count, 1, "one take");
+        assertEq(midnight.consumed(lender, fills[0].offer.group), 0, "first offer skipped");
+        assertEq(midnight.consumed(lender, fills[1].offer.group), 5_000e18, "filled from second offer");
+        assertEq(creditBefore - creditOf(address(adapter)), 5_000e18, "credit sold");
+        assertEq(loanToken.balanceOf(address(vault)) - vaultBalanceBefore, totals.sellerAssets, "vault received");
+    }
+
+    function testSellShortfallAllowanceExhaustedMidOrder() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        submitAndExecAdapter(adapter, abi.encodeCall(ITestMidnightAdapter.increaseMaxNetSellRate, (type(uint64).max)));
+        // Selling 2k units bought at ~0.98 for ~0.9 costs a shortfall of ~160: the budget covers one such sale.
+        submitAndExecAdapter(adapter, abi.encodeCall(ITestMidnightAdapter.increaseShortfallAllowance, (200e18)));
+        OfferFill[] memory cheap =
+            pair(buyFillAt(bytes32(uint256(11)), 0.9e18, 2_000e18), buyFillAt(bytes32(uint256(12)), 0.9e18, 2_000e18));
+
+        // A units target above the first fill: the first take uses the budget, the second is rejected.
+        vm.prank(allocator);
+        vm.expectRevert(IMidnightAdapterBundlesV1.OutOfOffers.selector);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, 4_000e18, 0, cheap, vm.getBlockTimestamp()
+        );
+
+        // Same order with a third offer at 0.99: the second offer is skipped mid-order and the third fills the rest.
+        OfferFill[] memory fills = new OfferFill[](3);
+        fills[0] = cheap[0];
+        fills[1] = cheap[1];
+        fills[2] = buyFillAt(bytes32(uint256(13)), 0.99e18, 2_000e18);
+        vm.recordLogs();
+        sellWithUnits(4_000e18, fills);
+        TakeTotals memory totals = sumTakeEvents();
+
+        assertEq(totals.count, 2, "two takes");
+        assertEq(midnight.consumed(lender, fills[0].offer.group), 2_000e18, "first offer filled");
+        assertEq(midnight.consumed(lender, fills[1].offer.group), 0, "second offer skipped");
+        assertEq(midnight.consumed(lender, fills[2].offer.group), 2_000e18, "third offer filled");
+        assertLt(adapter.shortfallAllowance(), 200e18 - 100e18, "budget mostly used");
+    }
+
+    /// FUNDING FROM ANOTHER SOURCE ///
+
+    /// @dev Buys in the 30-day market with funds withdrawn from the adapter's repaid credit in a 1-day market.
+    function testBuyFundedFromAdapterCreditInAnotherMarket() public {
+        Market memory fundingMarket = market;
+        fundingMarket.maturity = vm.getBlockTimestamp() + 1 days;
+        bytes32 fundingId = midnight.touchMarket(fundingMarket);
+        uint256 collateral = OFFER_UNITS.mulDivUp(WAD, market.collateralParams[0].lltv);
+        deal(address(collateralToken), borrower, collateral);
+        vm.startPrank(borrower);
+        safeApprove(collateralToken, address(midnight), collateral);
+        midnight.supplyCollateral(fundingMarket, 0, collateral, borrower);
+        vm.stopPrank();
+
+        // Buy credit in the funding market through the bundle.
+        Offer memory fundingOffer = sellOffer(bytes32(uint256(21)));
+        fundingOffer.market = fundingMarket;
+        fundingOffer.expiry = fundingMarket.maturity;
+        OfferFill[] memory fundingFills = new OfferFill[](1);
+        fundingFills[0] = OfferFill({offer: fundingOffer, ratifierData: "", units: OFFER_UNITS});
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(
+            address(adapter),
+            fundingMarket,
+            10_000e18,
+            0,
+            fundingFills,
+            abi.encode(address(0), bytes("")),
+            type(uint256).max,
+            vm.getBlockTimestamp()
+        );
+
+        // The borrower repays after maturity, so the adapter's credit there becomes withdrawable.
+        vm.warp(fundingMarket.maturity + 1);
+        uint256 debt = midnight.debt(fundingId, borrower);
+        deal(address(loanToken), borrower, debt);
+        vm.startPrank(borrower);
+        safeApprove(loanToken, address(midnight), debt);
+        midnight.repay(fundingMarket, debt, borrower, address(0), "");
+        vm.stopPrank();
+
+        (uint128 fundingCreditBefore,,) = midnight.updatePositionView(fundingMarket, fundingId, address(adapter));
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+        uint256 targetBuyerAssets = 5_000e18;
+
+        vm.recordLogs();
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(
+            address(adapter),
+            market,
+            targetBuyerAssets,
+            0,
+            twoSellFills(OFFER_UNITS),
+            abi.encode(address(adapter), abi.encode(fundingMarket)),
+            type(uint256).max,
+            vm.getBlockTimestamp()
+        );
+        TakeTotals memory totals = sumTakeEvents();
+
+        (uint128 fundingCreditAfter,,) = midnight.updatePositionView(fundingMarket, fundingId, address(adapter));
+        assertEq(totals.buyerAssets, targetBuyerAssets, "event buyer assets");
+        assertEq(fundingCreditBefore - fundingCreditAfter, targetBuyerAssets, "paid from the funding market");
+        assertEq(loanToken.balanceOf(address(vault)), vaultBalanceBefore, "vault idle assets untouched");
+        assertEq(creditOf(address(adapter)), totals.units, "credit bought");
+        assertBundleHoldsNothing();
+    }
+
+    /// FAKE ADAPTERS ///
+
+    /// @dev The bundle counts a take that does not revert as filled, so an adapter whose take does nothing makes the
+    /// call succeed with nothing bought. Harmless: the fake adapter only acts as itself, and nothing real moves.
+    function testFakeAdapterNamingRealVault() public {
+        FakeAdapter fake = new FakeAdapter(address(vault));
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+
+        vm.recordLogs();
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(
+            address(fake),
+            market,
+            15_000e18,
+            0,
+            twoSellFills(10_000e18),
+            abi.encode(address(0), bytes("")),
+            type(uint256).max,
+            vm.getBlockTimestamp()
+        );
+
+        assertEq(sumTakeEvents().count, 0, "no Midnight take");
+        assertEq(loanToken.balanceOf(address(vault)), vaultBalanceBefore, "real vault untouched");
+        assertEq(creditOf(address(adapter)), 0, "real adapter credit untouched");
+        assertEq(creditOf(address(fake)), 0, "fake adapter has no credit");
+        assertBundleHoldsNothing();
+    }
+
+    function testFakeAdapterWithFakeVaultCalledByStranger() public {
+        FakeAdapter fake = new FakeAdapter(address(new FakeVault()));
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+
+        vm.recordLogs();
+        vm.prank(stranger);
+        bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(
+            address(fake),
+            market,
+            15_000e18,
+            0,
+            twoSellFills(10_000e18),
+            abi.encode(address(0), bytes("")),
+            type(uint256).max,
+            vm.getBlockTimestamp()
+        );
+
+        assertEq(sumTakeEvents().count, 0, "no Midnight take");
+        assertEq(loanToken.balanceOf(address(vault)), vaultBalanceBefore, "real vault untouched");
+        assertEq(creditOf(address(adapter)), 0, "real adapter credit untouched");
         assertBundleHoldsNothing();
     }
 }

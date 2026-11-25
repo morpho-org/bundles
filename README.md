@@ -32,6 +32,17 @@ Withdrawing credit (only) can be done through the sell functions with a nonzero 
 
 The taker is msg.sender and must authorize the bundle on Midnight and approve it to pull the tokens it needs.
 
+### [MidnightAdapterBundlesV1](src/midnight-adapter/MidnightAdapterBundlesV1.sol)
+
+Takes Midnight offers for a Vault V2 through its MidnightAdapter, with slippage protection. Offers whose take reverts are skipped.
+
+- `midnightAdapterBundlesV1BuyWithAssetsTarget` — buy credit for the vault with an exact loan-asset amount across sell offers, with a minimum of units.
+- `midnightAdapterBundlesV1BuyWithUnitsTarget` — buy an exact number of units for the vault across sell offers, with a maximum loan-asset amount.
+- `midnightAdapterBundlesV1SellWithAssetsTarget` — sell the vault's credit across buy offers for an exact loan-asset amount, with a maximum of units.
+- `midnightAdapterBundlesV1SellWithUnitsTarget` — sell an exact number of the vault's units (or all its credit in the market) across buy offers, with a minimum loan-asset amount.
+
+The bundle must be an allocator of the vault. The caller must be an allocator of the adapter's parent vault. Nothing is authorized on Midnight and no token approval is needed: the vault pays and receives through the adapter.
+
 ### [BlueBundlesV1](src/blue/BlueBundlesV1.sol)
 
 - `blueBundlesV1SupplyCollateralAndBorrow` — supply collateral and borrow.

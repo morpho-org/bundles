@@ -2,6 +2,13 @@
 
 ## Changes
 
+### [MidnightAdapterBundlesV1](https://github.com/morpho-org/bundles/blob/main/src/midnight-adapter/MidnightAdapterBundlesV1.sol)
+
+- New bundle: the take side of MidnightBundlesV2 for Vault V2 allocators, pointed at `MidnightAdapter.take` instead of `Midnight.take`.
+- Four functions: buy with an assets or units target, and sell with an assets or units target, with the same per-offer rules, skipping and slippage checks as MidnightBundlesV2.
+- The caller must be an allocator of the adapter's parent vault, read from the adapter. The bundle must be an allocator of the vault.
+- No referral fee, collateral, repayment, credit withdrawal or native token handling.
+
 ### MidnightBundlesV1 → [MidnightBundlesV2](https://github.com/morpho-org/bundles/blob/main/src/midnight/MidnightBundlesV2.sol)
 
 Maker side:
@@ -32,11 +39,12 @@ All functions:
 
 ## Source code
 
-| Contract                | Source code                                                                                                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| BlueBundlesV1           | [BlueBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/blue/BlueBundlesV1.sol)                                                                                     |
-| MidnightBundlesV1       | [MidnightBundlesV1@068d625de4623a522b25196928fc4b053a953141](https://github.com/morpho-org/bundles/blob/068d625de4623a522b25196928fc4b053a953141/src/midnight/MidnightBundlesV1.sol) |
-| MidnightBundlesV2       | [MidnightBundlesV2@main](https://github.com/morpho-org/bundles/blob/main/src/midnight/MidnightBundlesV2.sol)                                                                         |
-| VaultBundlesV1          | [VaultBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/vault/VaultBundlesV1.sol)                                                                                  |
-| VaultExitBundlesV1      | [VaultExitBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/vault-exit/VaultExitBundlesV1.sol)                                                                     |
-| ZeroExLeverageBundlesV1 | [ZeroExLeverageBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/leverage/ZeroExLeverageBundlesV1.sol)                                                             |
+| Contract                 | Source code                                                                                                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| BlueBundlesV1            | [BlueBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/blue/BlueBundlesV1.sol)                                                                                     |
+| MidnightAdapterBundlesV1 | [MidnightAdapterBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/midnight-adapter/MidnightAdapterBundlesV1.sol)                                                   |
+| MidnightBundlesV1        | [MidnightBundlesV1@068d625de4623a522b25196928fc4b053a953141](https://github.com/morpho-org/bundles/blob/068d625de4623a522b25196928fc4b053a953141/src/midnight/MidnightBundlesV1.sol) |
+| MidnightBundlesV2        | [MidnightBundlesV2@main](https://github.com/morpho-org/bundles/blob/main/src/midnight/MidnightBundlesV2.sol)                                                                         |
+| VaultBundlesV1           | [VaultBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/vault/VaultBundlesV1.sol)                                                                                  |
+| VaultExitBundlesV1       | [VaultExitBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/vault-exit/VaultExitBundlesV1.sol)                                                                     |
+| ZeroExLeverageBundlesV1  | [ZeroExLeverageBundlesV1@main](https://github.com/morpho-org/bundles/blob/main/src/leverage/ZeroExLeverageBundlesV1.sol)                                                             |
