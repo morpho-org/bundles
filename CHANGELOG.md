@@ -7,7 +7,8 @@
 - New bundle: the take side of MidnightBundlesV2 for Vault V2 allocators, pointed at `MidnightAdapter.take` instead of `Midnight.take`.
 - Four functions: buy with an assets or units target, and sell with an assets or units target, with the same per-offer rules, skipping and slippage checks as MidnightBundlesV2.
 - The caller must be an allocator of the adapter's parent vault, read from the adapter. The bundle must be an allocator of the vault.
-- No referral fee, collateral, repayment, credit withdrawal or native token handling.
+- Sells withdraw already-repaid credit to the vault first, through `VaultV2.deallocate`, as MidnightBundlesV2 does with `Midnight.withdraw`.
+- No referral fee, collateral, repayment or native token handling.
 
 ### MidnightBundlesV1 → [MidnightBundlesV2](https://github.com/morpho-org/bundles/blob/main/src/midnight/MidnightBundlesV2.sol)
 

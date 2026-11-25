@@ -302,6 +302,22 @@ abstract contract MidnightAdapterBundlesV1Setup is TokenTest {
         vm.stopPrank();
     }
 
+    /// @dev A second borrower who owes `debt` units to the lender and can pay for a buy offer.
+    function smallDebtor(uint256 debt) internal returns (address smallBorrower) {
+        smallBorrower = makeAddr("smallBorrower");
+        collateralize(smallBorrower, debt);
+        vm.prank(smallBorrower);
+        midnight.setIsAuthorized(address(dummyRatifier), true, smallBorrower);
+        Offer memory offer = sellOffer(bytes32(uint256(72)));
+        offer.maker = smallBorrower;
+        offer.receiverIfMakerIsSeller = smallBorrower;
+        vm.prank(lender);
+        midnight.take(offer, "", debt, lender, address(0), address(0), "");
+        deal(address(loanToken), smallBorrower, 2 * debt);
+        vm.prank(smallBorrower);
+        safeApprove(loanToken, address(midnight), type(uint256).max);
+    }
+
     function sellOffer(bytes32 group) internal view returns (Offer memory offer) {
         offer.market = market;
         offer.buy = false;
@@ -801,6 +817,8 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
         uint256 credit = creditOf(address(adapter));
         // A sale too small to pay out a single asset is rejected by the adapter's maxNetSellRate check.
         sellUnits = bound(sellUnits, 1e6, credit);
+        // The same holds for what spills past the first offer (OFFER_UNITS / 2 units): leave out tiny spills.
+        vm.assume(sellUnits <= OFFER_UNITS / 2 || sellUnits - OFFER_UNITS / 2 >= 1e6);
 
         uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
         vm.recordLogs();
@@ -1064,6 +1082,233 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
         assertBundleHoldsNothing();
     }
 
+    /// WITHDRAW FIRST ///
+
+    /// @dev The borrower repays `units`, which makes that much credit withdrawable in the market.
+    function repayFromBorrower(uint256 units) internal {
+        deal(address(loanToken), borrower, units);
+        vm.startPrank(borrower);
+        safeApprove(loanToken, address(midnight), units);
+        midnight.repay(market, units, borrower, address(0), "");
+        vm.stopPrank();
+        assertEq(midnight.withdrawable(id), units, "withdrawable");
+    }
+
+    function testSellWithUnitsTargetWithdrawsRepaidCreditFirst() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        relaxSaleGuardrails();
+        repayFromBorrower(4_000e18);
+        uint256 creditBefore = creditOf(address(adapter));
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+
+        vm.recordLogs();
+        sellWithUnits(10_000e18, twoBuyFills(10_000e18));
+        TakeTotals memory totals = sumTakeEvents();
+
+        assertEq(midnight.withdrawable(id), 0, "all repaid credit withdrawn");
+        assertEq(totals.units, 6_000e18, "only the rest is sold to offers");
+        assertEq(creditBefore - creditOf(address(adapter)), 10_000e18, "credit down by the target");
+        assertEq(
+            loanToken.balanceOf(address(vault)) - vaultBalanceBefore,
+            4_000e18 + totals.sellerAssets,
+            "vault received the withdrawal at par plus the sale"
+        );
+        assertBundleHoldsNothing();
+    }
+
+    function testSellWithAssetsTargetWithdrawsRepaidCreditFirst() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        relaxSaleGuardrails();
+        repayFromBorrower(4_000e18);
+        uint256 creditBefore = creditOf(address(adapter));
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+
+        vm.recordLogs();
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+            address(adapter), market, 9_000e18, type(uint256).max, twoBuyFills(10_000e18), vm.getBlockTimestamp()
+        );
+        TakeTotals memory totals = sumTakeEvents();
+
+        assertEq(midnight.withdrawable(id), 0, "all repaid credit withdrawn");
+        assertEq(totals.sellerAssets, 5_000e18, "only the rest is sold to offers");
+        assertEq(loanToken.balanceOf(address(vault)) - vaultBalanceBefore, 9_000e18, "vault received the target");
+        assertEq(creditBefore - creditOf(address(adapter)), 4_000e18 + totals.units, "credit withdrawn and sold");
+        assertBundleHoldsNothing();
+    }
+
+    /// @dev When the repaid credit covers the target, no offer is taken, even if offers are given.
+    function testSellWithdrawableAboveTargetTakesNoOffer() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        relaxSaleGuardrails();
+        repayFromBorrower(4_000e18);
+        uint256 creditBefore = creditOf(address(adapter));
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+
+        vm.recordLogs();
+        sellWithUnits(3_000e18, twoBuyFills(10_000e18));
+
+        assertEq(sumTakeEvents().count, 0, "no take");
+        assertEq(midnight.withdrawable(id), 1_000e18, "the rest stays withdrawable");
+        assertEq(creditBefore - creditOf(address(adapter)), 3_000e18, "credit down by the target");
+        assertEq(loanToken.balanceOf(address(vault)) - vaultBalanceBefore, 3_000e18, "vault received at par");
+    }
+
+    /// @dev As in MidnightBundlesV2, a sell with a target and no offers only withdraws.
+    function testSellWithEmptyOfferFillsOnlyWithdraws() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        repayFromBorrower(4_000e18);
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+
+        sellWithUnits(3_000e18, new OfferFill[](0));
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+            address(adapter), market, 1_000e18, type(uint256).max, new OfferFill[](0), vm.getBlockTimestamp()
+        );
+
+        assertEq(midnight.withdrawable(id), 0, "all withdrawn");
+        assertEq(loanToken.balanceOf(address(vault)) - vaultBalanceBefore, 4_000e18, "vault received at par");
+
+        // Nothing is left to withdraw and there is no offer: the target cannot be met.
+        vm.prank(allocator);
+        vm.expectRevert(IMidnightAdapterBundlesV1.OutOfOffers.selector);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, 1, 0, new OfferFill[](0), vm.getBlockTimestamp()
+        );
+    }
+
+    /// @dev A withdrawal is at par, so it needs none of the adapter's sale guardrails. The part that would need a
+    /// sale is still refused under the default guardrails.
+    function testSellWithdrawNeedsNoSaleGuardrails() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        repayFromBorrower(4_000e18);
+        uint256 snapshot = vm.snapshotState();
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+
+        sellWithUnits(4_000e18, twoBuyFills(10_000e18));
+        assertEq(loanToken.balanceOf(address(vault)) - vaultBalanceBefore, 4_000e18, "withdrawn at par");
+
+        vm.revertToState(snapshot);
+        vm.prank(allocator);
+        vm.expectRevert(IMidnightAdapterBundlesV1.OutOfOffers.selector);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, 5_000e18, 0, twoBuyFills(10_000e18), vm.getBlockTimestamp()
+        );
+    }
+
+    function testSellAllWithdrawsThenSells() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        relaxSaleGuardrails();
+        repayFromBorrower(4_000e18);
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+
+        vm.recordLogs();
+        sellWithUnits(type(uint256).max, twoBuyFills(10_000e18));
+        TakeTotals memory totals = sumTakeEvents();
+
+        assertEq(creditOf(address(adapter)), 0, "no credit left");
+        assertEq(midnight.withdrawable(id), 0, "all repaid credit withdrawn");
+        assertEq(
+            loanToken.balanceOf(address(vault)) - vaultBalanceBefore, 4_000e18 + totals.sellerAssets, "vault received"
+        );
+    }
+
+    /// @dev The withdrawn units count one for one towards both slippage limits, tight to the wei.
+    function testSellSlippageLimitsCountTheWithdrawal() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        relaxSaleGuardrails();
+        repayFromBorrower(4_000e18);
+        uint256 snapshot = vm.snapshotState();
+
+        vm.recordLogs();
+        sellWithUnits(10_000e18, twoBuyFills(10_000e18));
+        uint256 sellerAssets = 4_000e18 + sumTakeEvents().sellerAssets;
+        vm.revertToState(snapshot);
+        vm.prank(allocator);
+        vm.expectRevert(IMidnightAdapterBundlesV1.SellerAssetsTooLow.selector);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, 10_000e18, sellerAssets + 1, twoBuyFills(10_000e18), vm.getBlockTimestamp()
+        );
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, 10_000e18, sellerAssets, twoBuyFills(10_000e18), vm.getBlockTimestamp()
+        );
+
+        vm.revertToState(snapshot);
+        vm.recordLogs();
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+            address(adapter), market, 9_000e18, type(uint256).max, twoBuyFills(10_000e18), vm.getBlockTimestamp()
+        );
+        uint256 units = 4_000e18 + sumTakeEvents().units;
+        vm.revertToState(snapshot);
+        vm.prank(allocator);
+        vm.expectRevert(IMidnightAdapterBundlesV1.UnitsTooHigh.selector);
+        bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+            address(adapter), market, 9_000e18, units - 1, twoBuyFills(10_000e18), vm.getBlockTimestamp()
+        );
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+            address(adapter), market, 9_000e18, units, twoBuyFills(10_000e18), vm.getBlockTimestamp()
+        );
+    }
+
+    /// @dev A stranger cannot make the bundle withdraw: the caller check comes first.
+    function testSellWithdrawUnauthorized() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        repayFromBorrower(4_000e18);
+
+        vm.prank(stranger);
+        vm.expectRevert(IMidnightAdapterBundlesV1.Unauthorized.selector);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, 3_000e18, 0, new OfferFill[](0), vm.getBlockTimestamp()
+        );
+        vm.prank(sentinel);
+        vm.expectRevert(IMidnightAdapterBundlesV1.Unauthorized.selector);
+        bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+            address(adapter), market, 3_000e18, type(uint256).max, new OfferFill[](0), vm.getBlockTimestamp()
+        );
+        assertEq(midnight.withdrawable(id), 4_000e18, "nothing withdrawn");
+    }
+
+    /// @dev Without the allocator role the bundle cannot withdraw either: the vault refuses and the call reverts.
+    function testSellWithdrawWhenBundleIsNotAllocator() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        repayFromBorrower(4_000e18);
+        submitAndExec(vault, abi.encodeCall(IVaultV2.setIsAllocator, (address(bundle), false)));
+
+        vm.prank(allocator);
+        vm.expectRevert(bytes4(keccak256("Unauthorized()")));
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, 3_000e18, 0, new OfferFill[](0), vm.getBlockTimestamp()
+        );
+        assertEq(midnight.withdrawable(id), 4_000e18, "nothing withdrawn");
+    }
+
+    /// @dev A fake adapter that names the real vault and holds real credit cannot be used to withdraw through the
+    /// vault: the vault only deallocates from its own adapters.
+    function testFakeAdapterWithCreditCannotWithdrawThroughRealVault() public {
+        buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
+        FakeAdapter fake = new FakeAdapter(address(vault));
+        deal(address(loanToken), address(fake), 10_000e18);
+        vm.startPrank(address(fake));
+        safeApprove(loanToken, address(midnight), type(uint256).max);
+        midnight.take(sellOffer(bytes32(uint256(73))), "", 2_000e18, address(fake), address(0), address(0), "");
+        vm.stopPrank();
+        repayFromBorrower(4_000e18);
+        assertEq(creditOf(address(fake)), 2_000e18, "fake adapter holds credit");
+        uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
+
+        vm.prank(allocator);
+        vm.expectRevert(bytes4(keccak256("NotAdapter()")));
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(fake), market, 1_000e18, 0, new OfferFill[](0), vm.getBlockTimestamp()
+        );
+
+        assertEq(loanToken.balanceOf(address(vault)), vaultBalanceBefore, "real vault untouched");
+        assertEq(midnight.withdrawable(id), 4_000e18, "nothing withdrawn");
+    }
+
     /// FAKE ADAPTERS ///
 
     /// @dev The bundle counts a take that does not revert as filled and trusts the amounts the adapter returns, so an
@@ -1212,15 +1457,11 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
     function testReduceOnlyBuyOfferCappedAtMakerDebt() public {
         buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
         relaxSaleGuardrails();
-        // The borrower repays down to 5k units of debt, then posts a reduce-only buy offer.
-        uint256 debt = midnight.debt(id, borrower);
-        deal(address(loanToken), borrower, debt);
-        vm.startPrank(borrower);
-        safeApprove(loanToken, address(midnight), type(uint256).max);
-        midnight.repay(market, debt - 5_000e18, borrower, address(0), "");
-        vm.stopPrank();
+        // A second borrower with 5k units of debt posts a reduce-only buy offer. Nothing is repaid, so nothing is
+        // withdrawable and the sale goes to the offers.
+        address smallBorrower = smallDebtor(5_000e18);
         OfferFill[] memory fills = twoBuyFills(10_000e18);
-        fills[0].offer.maker = borrower;
+        fills[0].offer.maker = smallBorrower;
         fills[0].offer.reduceOnly = true;
 
         vm.prank(allocator);
@@ -1228,9 +1469,9 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
             address(adapter), market, 8_000e18, 0, fills, vm.getBlockTimestamp()
         );
 
-        assertEq(midnight.consumed(borrower, fills[0].offer.group), 5_000e18, "capped at the maker's debt");
+        assertEq(midnight.consumed(smallBorrower, fills[0].offer.group), 5_000e18, "capped at the maker's debt");
         assertEq(midnight.consumed(lender, fills[1].offer.group), 3_000e18, "rest from the second offer");
-        assertEq(midnight.debt(id, borrower), 0, "maker's debt repaid");
+        assertEq(midnight.debt(id, smallBorrower), 0, "maker's debt repaid");
     }
 
     function testReduceOnlySellOfferCappedAtMakerCreditAssetsTarget() public {
@@ -1250,14 +1491,11 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
     function testReduceOnlyBuyOfferCappedAtMakerDebtAssetsTarget() public {
         buyWithAssets(allocator, 15_000e18, 0, twoSellFills(10_000e18));
         relaxSaleGuardrails();
-        uint256 debt = midnight.debt(id, borrower);
-        deal(address(loanToken), borrower, debt);
-        vm.startPrank(borrower);
-        safeApprove(loanToken, address(midnight), type(uint256).max);
-        midnight.repay(market, debt - 5_000e18, borrower, address(0), "");
-        vm.stopPrank();
+        // A second borrower with 5k units of debt posts a reduce-only buy offer. Nothing is repaid, so nothing is
+        // withdrawable and the sale goes to the offers.
+        address smallBorrower = smallDebtor(5_000e18);
         OfferFill[] memory fills = twoBuyFills(10_000e18);
-        fills[0].offer.maker = borrower;
+        fills[0].offer.maker = smallBorrower;
         fills[0].offer.reduceOnly = true;
 
         vm.prank(allocator);
@@ -1265,7 +1503,7 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
             address(adapter), market, 7_000e18, type(uint256).max, fills, vm.getBlockTimestamp()
         );
 
-        assertEq(midnight.consumed(borrower, fills[0].offer.group), 5_000e18, "capped at the maker's debt");
+        assertEq(midnight.consumed(smallBorrower, fills[0].offer.group), 5_000e18, "capped at the maker's debt");
         assertGt(midnight.consumed(lender, fills[1].offer.group), 0, "rest from the second offer");
     }
 

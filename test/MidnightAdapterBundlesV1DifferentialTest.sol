@@ -251,4 +251,118 @@ contract MidnightAdapterBundlesV1DifferentialTest is MidnightAdapterBundlesV1Set
         );
         assertSameTakes(v2, recordedTakes());
     }
+
+    /// WITHDRAW FIRST ///
+
+    /// @dev The borrower repays `units`, which makes that much credit withdrawable in the market.
+    function repay(uint256 units) internal {
+        deal(address(loanToken), borrower, units);
+        vm.startPrank(borrower);
+        safeApprove(loanToken, address(midnight), units);
+        midnight.repay(market, units, borrower, address(0), "");
+        vm.stopPrank();
+    }
+
+    function assertSameTakesOrNone(TakeRecord[] memory a, TakeRecord[] memory b) internal pure {
+        assertEq(a.length, b.length, "same number of takes");
+        for (uint256 i; i < a.length; i++) {
+            assertEq(a[i].group, b[i].group, "same offer");
+            assertEq(a[i].units, b[i].units, "same units");
+            assertEq(a[i].buyerAssets, b[i].buyerAssets, "same buyer assets");
+            assertEq(a[i].sellerAssets, b[i].sellerAssets, "same seller assets");
+        }
+    }
+
+    /// @dev With repaid credit in the market, an account through V2 and the vault through the bundle withdraw the
+    /// same amount first, take the same offers after, and end with the same proceeds and credit.
+    function testDifferentialSellWithUnitsTargetWithdrawFirst(uint256 target, uint256 price, uint256 repaid) public {
+        giveBothCredit();
+        repaid = bound(repaid, 1, 20_000e18);
+        repay(repaid);
+        target = bound(target, 2, 15_000e18);
+        // Leave out targets whose sold part is 1 unit, or 1 unit past the first offer (see above).
+        uint256 sold = target > repaid ? target - repaid : 0;
+        vm.assume(sold != 1 && sold != 10_000e18 + 1);
+        price = bound(price, 0.51e18, 1e18);
+        OfferFill[] memory offerFills = fills(price, true);
+        uint256 snapshot = vm.snapshotState();
+
+        uint256 balanceBefore = loanToken.balanceOf(user);
+        vm.recordLogs();
+        vm.prank(user);
+        bundleV2.midnightBundlesV2SupplyCollateralAndSellWithUnitsTarget(
+            market,
+            target,
+            0,
+            false,
+            user,
+            new CollateralTransfer[](0),
+            offerFills,
+            0,
+            address(0),
+            vm.getBlockTimestamp(),
+            address(0)
+        );
+        TakeRecord[] memory v2 = recordedTakes();
+        uint256 v2Proceeds = loanToken.balanceOf(user) - balanceBefore;
+        uint256 v2Credit = creditOf(user);
+        uint256 v2Withdrawable = midnight.withdrawable(id);
+
+        vm.revertToState(snapshot);
+        balanceBefore = loanToken.balanceOf(address(vault));
+        vm.recordLogs();
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithUnitsTarget(
+            address(adapter), market, target, 0, offerFills, vm.getBlockTimestamp()
+        );
+        assertSameTakesOrNone(v2, recordedTakes());
+        assertEq(loanToken.balanceOf(address(vault)) - balanceBefore, v2Proceeds, "same proceeds");
+        assertEq(creditOf(address(adapter)), v2Credit, "same credit left");
+        assertEq(midnight.withdrawable(id), v2Withdrawable, "same amount withdrawn");
+    }
+
+    function testDifferentialSellWithAssetsTargetWithdrawFirst(uint256 target, uint256 price, uint256 repaid) public {
+        giveBothCredit();
+        repaid = bound(repaid, 1, 20_000e18);
+        repay(repaid);
+        // The sold part stays within 7k assets, as above; the withdrawn part is at par.
+        target = bound(target, 1, 7_000e18);
+        price = bound(price, 0.51e18, 1e18);
+        OfferFill[] memory offerFills = fills(price, true);
+        uint256 snapshot = vm.snapshotState();
+
+        uint256 balanceBefore = loanToken.balanceOf(user);
+        vm.recordLogs();
+        vm.prank(user);
+        bundleV2.midnightBundlesV2SupplyCollateralAndSellWithAssetsTarget(
+            market,
+            target,
+            type(uint256).max,
+            false,
+            user,
+            new CollateralTransfer[](0),
+            offerFills,
+            0,
+            address(0),
+            vm.getBlockTimestamp(),
+            address(0)
+        );
+        TakeRecord[] memory v2 = recordedTakes();
+        uint256 v2Proceeds = loanToken.balanceOf(user) - balanceBefore;
+        uint256 v2Credit = creditOf(user);
+        uint256 v2Withdrawable = midnight.withdrawable(id);
+
+        vm.revertToState(snapshot);
+        balanceBefore = loanToken.balanceOf(address(vault));
+        vm.recordLogs();
+        vm.prank(allocator);
+        bundle.midnightAdapterBundlesV1SellWithAssetsTarget(
+            address(adapter), market, target, type(uint256).max, offerFills, vm.getBlockTimestamp()
+        );
+        assertSameTakesOrNone(v2, recordedTakes());
+        assertEq(v2Proceeds, target, "V2 hit the target");
+        assertEq(loanToken.balanceOf(address(vault)) - balanceBefore, v2Proceeds, "same proceeds");
+        assertEq(creditOf(address(adapter)), v2Credit, "same credit left");
+        assertEq(midnight.withdrawable(id), v2Withdrawable, "same amount withdrawn");
+    }
 }

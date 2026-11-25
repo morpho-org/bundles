@@ -20,7 +20,8 @@ import {IMidnightAdapterBundlesV1} from "./interfaces/IMidnightAdapterBundlesV1.
 /// is enforced by the adapter and the vault; a take they reject reverts and is skipped.
 /// @dev This contract must be an allocator of the vault: MidnightAdapter.take only accepts vault allocators.
 /// @dev Holds no tokens, gives no approvals, has no storage besides the transient lock. Nothing is authorized on
-/// Midnight. Its only state-changing calls are Midnight.touchMarket and MidnightAdapter.take.
+/// Midnight. Its only state-changing calls are Midnight.touchMarket, MidnightAdapter.take and, on sells,
+/// VaultV2.deallocate on the adapter's parent vault to withdraw already-repaid credit at par.
 /// @dev The vault pays and receives through the adapter's callbacks.
 contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
     using UtilsLib for uint256;
@@ -144,7 +145,8 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
     /// @dev Sells credit of the adapter's parent vault by taking buy offers until the vault has received exactly
     /// targetSellerAssets, or the call reverts with OutOfOffers.
     /// @dev The adapter sells at most maxUnits, or the call reverts with UnitsTooHigh.
-    /// @dev Does not withdraw already-repaid credit first.
+    /// @dev Already-repaid credit is withdrawn to the vault first, at par, as in MidnightBundlesV2. It counts towards
+    /// the target and towards maxUnits. With an empty offerFills this only withdraws.
     function midnightAdapterBundlesV1SellWithAssetsTarget(
         address adapter,
         Market memory market,
@@ -154,13 +156,19 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
         uint256 deadline
     ) external nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
-        require(IVaultV2(IMidnightAdapter(adapter).parentVault()).isAllocator(msg.sender), Unauthorized());
+        // The vault is read once: the caller check and the withdrawal below must use the same vault.
+        address vault = IMidnightAdapter(adapter).parentVault();
+        require(IVaultV2(vault).isAllocator(msg.sender), Unauthorized());
         // touchMarket to have the correct settlement fees.
         // forge-lint: disable-next-line(reentrancy-no-eth) The entrypoint lock remains active.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
-        uint256 filledUnits;
-        uint256 filledSellerAssets;
+        uint256 withdrawUnits =
+            min(targetSellerAssets, credit(market, id, adapter), IMidnight(MIDNIGHT).withdrawable(id));
+        // forge-lint: disable-next-line(reentrancy-no-eth) The entrypoint lock remains active.
+        if (withdrawUnits > 0) IVaultV2(vault).deallocate(adapter, abi.encode(market), withdrawUnits);
+        uint256 filledUnits = withdrawUnits;
+        uint256 filledSellerAssets = withdrawUnits;
         for (uint256 i; i < offerFills.length && filledSellerAssets < targetSellerAssets; i++) {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
@@ -188,7 +196,8 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
     /// @dev Sells exactly targetUnits of credit of the adapter's parent vault by taking buy offers.
     /// @dev targetUnits = type(uint256).max targets the adapter's credit in the market at execution.
     /// @dev The vault receives at least minSellerAssets, or the call reverts with SellerAssetsTooLow.
-    /// @dev Does not withdraw already-repaid credit first.
+    /// @dev Already-repaid credit is withdrawn to the vault first, at par, as in MidnightBundlesV2. It counts towards
+    /// the target and towards minSellerAssets. With an empty offerFills this only withdraws.
     function midnightAdapterBundlesV1SellWithUnitsTarget(
         address adapter,
         Market memory market,
@@ -198,15 +207,21 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
         uint256 deadline
     ) external nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
-        require(IVaultV2(IMidnightAdapter(adapter).parentVault()).isAllocator(msg.sender), Unauthorized());
+        // The vault is read once: the caller check and the withdrawal below must use the same vault.
+        address vault = IMidnightAdapter(adapter).parentVault();
+        require(IVaultV2(vault).isAllocator(msg.sender), Unauthorized());
         // touchMarket to have the correct settlement fees.
         // forge-lint: disable-next-line(reentrancy-no-eth) The entrypoint lock remains active.
         bytes32 id = IMidnight(MIDNIGHT).touchMarket(market);
 
-        if (targetUnits == type(uint256).max) targetUnits = credit(market, id, adapter);
+        uint256 currentCredit = credit(market, id, adapter);
+        if (targetUnits == type(uint256).max) targetUnits = currentCredit;
 
-        uint256 filledUnits;
-        uint256 filledSellerAssets;
+        uint256 withdrawUnits = min(targetUnits, currentCredit, IMidnight(MIDNIGHT).withdrawable(id));
+        // forge-lint: disable-next-line(reentrancy-no-eth) The entrypoint lock remains active.
+        if (withdrawUnits > 0) IVaultV2(vault).deallocate(adapter, abi.encode(market), withdrawUnits);
+        uint256 filledUnits = withdrawUnits;
+        uint256 filledSellerAssets = withdrawUnits;
         for (uint256 i; i < offerFills.length && filledUnits < targetUnits; i++) {
             OfferFill memory fill = offerFills[i];
             require(fill.offer.buy, InconsistentSide());
@@ -250,6 +265,11 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
         } catch {
             return type(uint128).max;
         }
+    }
+
+    /// @dev Returns min(x, y, z).
+    function min(uint256 x, uint256 y, uint256 z) internal pure returns (uint256) {
+        return UtilsLib.min(UtilsLib.min(x, y), z);
     }
 
     /// @dev Returns min(x, y, z, w).
