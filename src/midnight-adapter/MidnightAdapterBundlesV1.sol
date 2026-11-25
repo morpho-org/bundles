@@ -6,8 +6,6 @@ import {IMidnight, Market, Offer} from "../../lib/midnight/src/interfaces/IMidni
 import {IBuyerAssetsBound} from "../../lib/midnight/src/interfaces/ICallbacks.sol";
 import {UtilsLib} from "../../lib/midnight/src/libraries/UtilsLib.sol";
 import {IdLib} from "../../lib/midnight/src/libraries/IdLib.sol";
-import {TickLib} from "../../lib/midnight/src/libraries/TickLib.sol";
-import {WAD} from "../../lib/midnight/src/libraries/ConstantsLib.sol";
 import {TakeAmountsLib} from "../../lib/midnight/src/periphery/libraries/TakeAmountsLib.sol";
 import {ConsumableUnitsLib} from "../../lib/midnight/src/periphery/libraries/ConsumableUnitsLib.sol";
 import {OfferFill} from "../midnight/interfaces/IMidnightBundlesV2.sol";
@@ -85,10 +83,13 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
                 fill.offer.reduceOnly ? credit(market, id, fill.offer.maker) : type(uint256).max
             );
-            (uint256 takenUnits, uint256 buyerAssets,) =
-                tryTake(adapter, fill.offer, fill.ratifierData, unitsToTake, takerCallbackData, id);
-            filledUnits += takenUnits;
-            filledBuyerAssets += buyerAssets;
+            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the take.
+            try IMidnightAdapter(adapter).take(fill.offer, fill.ratifierData, unitsToTake, takerCallbackData) returns (
+                uint256 resBuyerAssets, uint256
+            ) {
+                filledUnits += unitsToTake;
+                filledBuyerAssets += resBuyerAssets;
+            } catch {}
         }
 
         require(filledBuyerAssets == targetBuyerAssets, OutOfOffers());
@@ -127,10 +128,13 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
                 ConsumableUnitsLib.consumableUnits(MIDNIGHT, id, fill.offer),
                 fill.offer.reduceOnly ? credit(market, id, fill.offer.maker) : type(uint256).max
             );
-            (uint256 takenUnits, uint256 buyerAssets,) =
-                tryTake(adapter, fill.offer, fill.ratifierData, unitsToTake, takerCallbackData, id);
-            filledUnits += takenUnits;
-            filledBuyerAssets += buyerAssets;
+            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the take.
+            try IMidnightAdapter(adapter).take(fill.offer, fill.ratifierData, unitsToTake, takerCallbackData) returns (
+                uint256 resBuyerAssets, uint256
+            ) {
+                filledUnits += unitsToTake;
+                filledBuyerAssets += resBuyerAssets;
+            } catch {}
         }
 
         require(filledUnits == targetUnits, OutOfOffers());
@@ -168,10 +172,13 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
                 fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max,
                 TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
-            (uint256 takenUnits,, uint256 sellerAssets) =
-                tryTake(adapter, fill.offer, fill.ratifierData, unitsToTake, "", id);
-            filledUnits += takenUnits;
-            filledSellerAssets += sellerAssets;
+            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the take.
+            try IMidnightAdapter(adapter).take(fill.offer, fill.ratifierData, unitsToTake, "") returns (
+                uint256, uint256 resSellerAssets
+            ) {
+                filledUnits += unitsToTake;
+                filledSellerAssets += resSellerAssets;
+            } catch {}
         }
 
         require(filledSellerAssets == targetSellerAssets, OutOfOffers());
@@ -211,10 +218,13 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
                 fill.offer.reduceOnly ? IMidnight(MIDNIGHT).debt(id, fill.offer.maker) : type(uint256).max,
                 TakeAmountsLib.buyerAssetsToUnits(MIDNIGHT, id, fill.offer, buyerAssetsBound(id, fill.offer))
             );
-            (uint256 takenUnits,, uint256 sellerAssets) =
-                tryTake(adapter, fill.offer, fill.ratifierData, unitsToTake, "", id);
-            filledUnits += takenUnits;
-            filledSellerAssets += sellerAssets;
+            // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the take.
+            try IMidnightAdapter(adapter).take(fill.offer, fill.ratifierData, unitsToTake, "") returns (
+                uint256, uint256 resSellerAssets
+            ) {
+                filledUnits += unitsToTake;
+                filledSellerAssets += resSellerAssets;
+            } catch {}
         }
 
         require(filledUnits == targetUnits, OutOfOffers());
@@ -222,33 +232,6 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
     }
 
     /// INTERNAL FUNCTIONS ///
-
-    /// @dev Takes `units` of `offer` through `adapter` and returns the units, buyer assets and seller assets filled,
-    /// or zeros if the take reverts (the offer is then skipped).
-    /// @dev MidnightAdapter.take does not return the buyer and seller assets of the take, so they are computed here with
-    /// Midnight's formula, right before the take: nothing state-changing runs between this read of the settlement fee
-    /// and Midnight's own. If it returned them, this function would not be needed: the take could be inlined in the
-    /// loops as in MidnightBundlesV2.
-    function tryTake(
-        address adapter,
-        Offer memory offer,
-        bytes memory ratifierData,
-        uint256 units,
-        bytes memory takerCallbackData,
-        bytes32 id
-    ) internal returns (uint256 takenUnits, uint256 takenBuyerAssets, uint256 takenSellerAssets) {
-        uint256 offerPrice = TickLib.tickToPrice(offer.tick);
-        uint256 settlementFee =
-            IMidnight(MIDNIGHT).settlementFee(id, UtilsLib.zeroFloorSub(offer.market.maturity, block.timestamp));
-        uint256 sellerPrice = offer.buy ? offerPrice - settlementFee : offerPrice;
-        uint256 buyerPrice = sellerPrice + settlementFee;
-        uint256 buyerAssets = offer.buy ? units.mulDivDown(buyerPrice, WAD) : units.mulDivUp(buyerPrice, WAD);
-        uint256 sellerAssets = offer.buy ? units.mulDivDown(sellerPrice, WAD) : units.mulDivUp(sellerPrice, WAD);
-        // forge-lint: disable-next-item(reentrancy-no-eth) The entrypoint lock remains active through the take.
-        try IMidnightAdapter(adapter).take(offer, ratifierData, units, takerCallbackData) {
-            return (units, buyerAssets, sellerAssets);
-        } catch {}
-    }
 
     /// @dev Returns user's credit on market, after fee accrual and slashing.
     function credit(Market memory market, bytes32 id, address user) internal view returns (uint256) {

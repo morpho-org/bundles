@@ -84,7 +84,9 @@ contract FakeAdapter {
         parentVault = _parentVault;
     }
 
-    function take(Offer memory, bytes calldata, uint256, bytes calldata) external {}
+    function take(Offer memory, bytes calldata, uint256, bytes calldata) external pure returns (uint256, uint256) {
+        return (0, 0);
+    }
 }
 
 /// @dev A vault that says everyone is an allocator.
@@ -1064,15 +1066,16 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
 
     /// FAKE ADAPTERS ///
 
-    /// @dev The bundle counts a take that does not revert as filled, so an adapter whose take does nothing makes the
-    /// call succeed with nothing bought. Harmless: the fake adapter only acts as itself, and nothing real moves.
+    /// @dev The bundle counts a take that does not revert as filled and trusts the amounts the adapter returns, so an
+    /// adapter whose take does nothing makes the call succeed with nothing bought. Harmless: the fake adapter only
+    /// acts as itself, and nothing real moves.
     function testFakeAdapterNamingRealVault() public {
         FakeAdapter fake = new FakeAdapter(address(vault));
         uint256 vaultBalanceBefore = loanToken.balanceOf(address(vault));
 
         vm.recordLogs();
         vm.prank(allocator);
-        bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(
+        bundle.midnightAdapterBundlesV1BuyWithUnitsTarget(
             address(fake),
             market,
             15_000e18,
@@ -1096,7 +1099,7 @@ contract MidnightAdapterBundlesV1Test is MidnightAdapterBundlesV1Setup {
 
         vm.recordLogs();
         vm.prank(stranger);
-        bundle.midnightAdapterBundlesV1BuyWithAssetsTarget(
+        bundle.midnightAdapterBundlesV1BuyWithUnitsTarget(
             address(fake),
             market,
             15_000e18,
