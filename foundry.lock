@@ -6,7 +6,7 @@
     "rev": "ae732258e55be466b959705ad2e6bc6c66e1819d"
   },
   "lib/midnight": {
-    "rev": "4603969e80d6f911c33586c6b971e8edd7821bbc"
+    "rev": "4e2570e51171d09228645b2d5bdf84ef24b1720b"
   },
   "lib/morpho-blue": {
     "rev": "1478e9cfe1b4d514f80682b3b60e4e12ff3ee45a"
@@ -15,6 +15,6 @@
     "rev": "cc56ad0f3439c502c246fc5cfcc3db92bb8b7219"
   },
   "lib/vault-v2": {
-    "rev": "2b139002feaf4631f1c63d880380ca2278df7aec"
+    "rev": "2df6ca5626af55bc281c3823a46353b97f38b0f4"
   }
 }
