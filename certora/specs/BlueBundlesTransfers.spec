@@ -73,7 +73,7 @@ function summaryUnwrapNative(uint256 amount) {
 }
 
 hook CALL(uint256 g, address addr, uint256 value, uint256 argsOffset, uint256 argsLength, uint256 retOffset, uint256 retLength) uint256 rc {
-    if (executingContract == currentContract) {
+    if (executingContract == currentContract && rc != 0) {
         nativeTransfers[addr] = nativeTransfers[addr] + value;
     }
 }
