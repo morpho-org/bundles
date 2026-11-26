@@ -34,6 +34,9 @@ methods {
 // Net amount transferred to each account during the interaction, per token, which is not the token balance.
 persistent ghost mapping(address => mapping(address => mathint)) transferBalanceChange;
 
+// Native value sent by the bundler to each account during the interaction.
+persistent ghost mapping(address => mathint) nativeTransfers;
+
 persistent ghost mathint wrappedAssets;
 
 persistent ghost mathint unwrappedAssets;
@@ -67,6 +70,12 @@ function summaryWrapNative(uint256 value) {
 
 function summaryUnwrapNative(uint256 amount) {
     unwrappedAssets = unwrappedAssets + amount;
+}
+
+hook CALL(uint256 g, address addr, uint256 value, uint256 argsOffset, uint256 argsLength, uint256 retOffset, uint256 retLength) uint256 rc {
+    if (executingContract == currentContract) {
+        nativeTransfers[addr] = nativeTransfers[addr] + value;
+    }
 }
 
 function summarySupply(uint256 assets, uint256 shares) returns (uint256, uint256) {
@@ -153,16 +162,19 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
     require currentContract == 13, "ack";
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
+    require forall address a. nativeTransfers[a] == 0, "only count native transfers of the interaction";
     require wrappedAssets == 0 && unwrappedAssets == 0 && repaidAssets == 0, "only count operations of the interaction";
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, repayAssets, repayShares, maxRepayAssets, collateralAssets, maxLtv, loanTokenPermit, signedAuthorization, referralFeePct, referralFeeRecipient, deadline);
 
     // Conservatively count both the native transfer and balance change from transfers, even if at most one is non-zero.
     mathint spent = e.msg.value - transferBalanceChange[marketParams.loanToken][e.msg.sender];
     mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
+    mathint refunded = nativeTransfers[e.msg.sender];
 
-    // Also check that every native token sent is wrapped.
+    // Also check that every native token sent is wrapped, and that every unwrapped token is sent back.
     assert e.msg.value == wrappedAssets;
-    assert spent == repaidAssets + unwrappedAssets + fees;
+    assert unwrappedAssets == refunded;
+    assert spent == repaidAssets + refunded + fees;
 }
 
 rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint256 assets, TokenLib.TokenPermit loanTokenPermit, uint256 referralFeePct, address referralFeeRecipient, uint256 deadline) {
