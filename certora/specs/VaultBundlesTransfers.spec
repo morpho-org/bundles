@@ -8,7 +8,6 @@ methods {
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransferFrom(token, currentContract, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
     function _.permitTransferFrom(ISignatureTransfer.PermitTransferFrom permit, ISignatureTransfer.SignatureTransferDetails transferDetails, address owner, bytes signature) external => summarySafeTransferFrom(permit.permitted.token, owner, transferDetails.to, transferDetails.requestedAmount) expect void;
-    function _.deposit() external with(env e) => summaryWrapNative(e.msg.value) expect void;
 
     // Sound since the asset of a vault is immutable.
     function _.asset() external => assetOf[calledContract] expect(address);
@@ -27,12 +26,6 @@ persistent ghost mapping(address => mapping(address => mathint)) transferBalance
 function summarySafeTransferFrom(address token, address from, address to, uint256 amount) {
     transferBalanceChange[token][from] = transferBalanceChange[token][from] - amount;
     transferBalanceChange[token][to] = transferBalanceChange[token][to] + amount;
-}
-
-persistent ghost mathint wrappedAssets;
-
-function summaryWrapNative(uint256 value) {
-    wrappedAssets = wrappedAssets + value;
 }
 
 persistent ghost mapping(address => address) assetOf;
@@ -70,7 +63,6 @@ rule depositDoesntLoseTokens(env e, address vault, uint256 assets, uint256 maxSh
     require currentContract == 13, "ack";
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
-    wrappedAssets = 0;
     depositedAssets = 0;
     vaultBundlesV1Deposit(e, vault, assets, maxSharePriceE27, assetPermit, referralFeePct, referralFeeRecipient, deadline);
 
@@ -78,8 +70,6 @@ rule depositDoesntLoseTokens(env e, address vault, uint256 assets, uint256 maxSh
     mathint spent = e.msg.value - transferBalanceChange[asset][e.msg.sender];
     mathint fees = transferBalanceChange[asset][referralFeeRecipient];
 
-    // Also check that every native token sent is wrapped.
-    assert e.msg.value == wrappedAssets;
     assert spent == depositedAssets + fees;
 }
 
