@@ -74,11 +74,12 @@ rule depositDoesntLoseTokens(env e, address vault, uint256 assets, uint256 maxSh
     depositedAssets = 0;
     vaultBundlesV1Deposit(e, vault, assets, maxSharePriceE27, assetPermit, referralFeePct, referralFeeRecipient, deadline);
 
-    // The native value sent is spent in the vault asset, which it is wrapped into.
+    // Conservatively count both the native transfer and balance change from transfers, even if at most one is non-zero.
     mathint spent = e.msg.value - transferBalanceChange[asset][e.msg.sender];
     mathint fees = transferBalanceChange[asset][referralFeeRecipient];
 
-    assert wrappedAssets == e.msg.value;
+    // Also check that every native token sent is wrapped.
+    assert e.msg.value == wrappedAssets;
     assert spent == depositedAssets + fees;
 }
 
