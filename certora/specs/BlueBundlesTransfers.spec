@@ -5,7 +5,7 @@ methods {
     function TokenLib.forceApproveMax(address token, address spender) internal => NONDET;
     function _.setAuthorizationWithSig(BlueBundlesV1.Authorization, BlueBundlesV1.Signature) external => NONDET;
 
-    // Over-approximate checks and arithmetic, since we don't check for reverts in this file.
+    // Over-approximation of checks and arithmetic, since we don't check for reverts in this file.
     function BlueBundlesV1.requireMaxLtv(BlueBundlesV1.MarketParams memory, address, uint256) internal => NONDET;
     function UtilsLib.mulDivDown(uint256, uint256, uint256) internal returns (uint256) => NONDET;
     function UtilsLib.mulDivUp(uint256 x, uint256 y, uint256 d) internal returns (uint256) => mulDivUpGhost(x, y, d);
