@@ -24,6 +24,7 @@ methods {
     function _.repay(BlueBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summaryRepay(calledContract, assets, data) expect(uint256, uint256);
     function _.supplyCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, bytes data) external => summarySupplyCollateral(assets) expect void;
     function _.withdrawCollateral(BlueBundlesV1.MarketParams marketParams, uint256 assets, address onBehalf, address) external => summaryWithdrawCollateral(assets) expect void;
+
     function _.flashLoan(address, uint256 assets, bytes data) external => summaryFlashLoan(calledContract, assets, data) expect void;
 }
 
@@ -108,14 +109,14 @@ function summaryWithdrawCollateral(uint256 assets) {
     withdrawnCollateral = withdrawnCollateral + assets;
 }
 
+function summaryPayPenalty(uint128 assets, uint64 penalty) {
+    penaltyAssets = penaltyAssets + mulDivUpGhost(assets, penalty, WAD());
+}
+
 function summaryFlashLoan(address blue, uint256 assets, bytes data) {
     env callbackEnv;
     require callbackEnv.msg.sender == blue, "Blue calls back";
     onMorphoFlashLoan(callbackEnv, assets, data);
-}
-
-function summaryPayPenalty(uint128 assets, uint64 penalty) {
-    penaltyAssets = penaltyAssets + mulDivUpGhost(assets, penalty, WAD());
 }
 
 /// RULES ///
