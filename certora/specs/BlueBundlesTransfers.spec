@@ -14,8 +14,6 @@ methods {
     function SafeTransferLib.safeTransfer(address token, address receiver, uint256 amount) internal => summarySafeTransferFrom(token, currentContract, receiver, amount);
     function SafeTransferLib.safeTransferFrom(address token, address from, address to, uint256 amount) internal => summarySafeTransferFrom(token, from, to, amount);
     function _.permitTransferFrom(ISignatureTransfer.PermitTransferFrom permit, ISignatureTransfer.SignatureTransferDetails transferDetails, address owner, bytes signature) external => summarySafeTransferFrom(permit.permitted.token, owner, transferDetails.to, transferDetails.requestedAmount) expect void;
-    function _.deposit() external with(env e) => summaryWrapNative(e.msg.value) expect void;
-    function _.withdraw(uint256 amount) external => summaryUnwrapNative(amount) expect void;
 
     // Calls accounting for transfers.
     function _.allocateFromIdle(address, address, BlueBundlesV1.MarketParams, uint128 assets, uint64 penalty) external => summaryPayPenalty(assets, penalty) expect void;
@@ -36,10 +34,6 @@ persistent ghost mapping(address => mapping(address => mathint)) transferBalance
 
 // Native value sent by the bundler to each account during the interaction.
 persistent ghost mapping(address => mathint) nativeTransfers;
-
-persistent ghost mathint wrappedAssets;
-
-persistent ghost mathint unwrappedAssets;
 
 persistent ghost mathint suppliedAssets;
 
@@ -62,14 +56,6 @@ definition WAD() returns uint256 = 10 ^ 18;
 function summarySafeTransferFrom(address token, address from, address to, uint256 amount) {
     transferBalanceChange[token][from] = transferBalanceChange[token][from] - amount;
     transferBalanceChange[token][to] = transferBalanceChange[token][to] + amount;
-}
-
-function summaryWrapNative(uint256 value) {
-    wrappedAssets = wrappedAssets + value;
-}
-
-function summaryUnwrapNative(uint256 amount) {
-    unwrappedAssets = unwrappedAssets + amount;
 }
 
 hook CALL(uint256 g, address addr, uint256 value, uint256 argsOffset, uint256 argsLength, uint256 retOffset, uint256 retLength) uint256 rc {
@@ -142,7 +128,7 @@ rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams
 
     require marketParams.loanToken != marketParams.collateralToken, "assume different loan and collateral tokens for simpler accounting";
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
-    require wrappedAssets == 0 && borrowedAssets == 0 && suppliedCollateral == 0 && penaltyAssets == 0, "only count operations of the interaction";
+    require borrowedAssets == 0 && suppliedCollateral == 0 && penaltyAssets == 0, "only count operations of the interaction";
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, borrowAssets, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
     // Conservatively count both the native transfer and balance change from transfers, even if at most one is non-zero.
@@ -150,8 +136,6 @@ rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams
     mathint received = transferBalanceChange[marketParams.loanToken][e.msg.sender];
     mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
 
-    // Also check that every native token sent is wrapped.
-    assert e.msg.value == wrappedAssets;
     assert borrowedAssets == received + penaltyAssets + fees;
     assert sent == suppliedCollateral;
 }
@@ -164,7 +148,7 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
     require forall address a. nativeTransfers[a] == 0, "only count native transfers of the interaction";
-    require wrappedAssets == 0 && unwrappedAssets == 0 && repaidAssets == 0, "only count operations of the interaction";
+    require repaidAssets == 0, "only count operations of the interaction";
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, repayAssets, repayShares, maxRepayAssets, collateralAssets, maxLtv, loanTokenPermit, signedAuthorization, referralFeePct, referralFeeRecipient, deadline);
 
     // Conservatively count both the native transfer and balance change from transfers, even if at most one is non-zero.
@@ -172,9 +156,6 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
     mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
     mathint refunded = nativeTransfers[e.msg.sender];
 
-    // Also check that every native token sent is wrapped, and that every unwrapped token is sent back.
-    assert e.msg.value == wrappedAssets;
-    assert unwrappedAssets == refunded;
     assert spent == repaidAssets + refunded + fees;
 }
 
@@ -185,15 +166,13 @@ rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint
     require currentContract == 13, "ack";
 
     require forall address t. forall address a. transferBalanceChange[t][a] == 0, "only count transfers of the interaction";
-    require wrappedAssets == 0 && suppliedAssets == 0, "only count operations of the interaction";
+    require suppliedAssets == 0, "only count operations of the interaction";
     blueBundlesV1Supply(e, marketParams, assets, loanTokenPermit, referralFeePct, referralFeeRecipient, deadline);
 
     // Conservatively count both the native transfer and balance change from transfers, even if at most one is non-zero.
     mathint spent = e.msg.value - transferBalanceChange[marketParams.loanToken][e.msg.sender];
     mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
 
-    // Also check that every native token sent is wrapped.
-    assert e.msg.value == wrappedAssets;
     assert spent == suppliedAssets + fees;
 }
 
