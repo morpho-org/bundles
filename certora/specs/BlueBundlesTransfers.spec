@@ -73,6 +73,7 @@ function summaryUnwrapNative(uint256 amount) {
 }
 
 hook CALL(uint256 g, address addr, uint256 value, uint256 argsOffset, uint256 argsLength, uint256 retOffset, uint256 retLength) uint256 rc {
+    // The return code rc is 0 when the call reverts, so only successful native transfers are counted.
     if (executingContract == currentContract && rc != 0) {
         nativeTransfers[addr] = nativeTransfers[addr] + value;
     }
