@@ -11,9 +11,10 @@ methods {
     function _.asset() external => assetOf[calledContract] expect(address);
 
     // Calls accounting for transfers.
-    function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(calledContract, assets, data) expect void;
     function _.supply(VaultExitBundlesV1.MarketParams marketParams, uint256 assets, uint256 shares, address onBehalf, bytes data) external => summarySupply(calledContract, assets, data) expect(uint256, uint256);
     function _.withdraw(uint256 assets, address, address) external => summaryWithdraw(assets) expect(uint256);
+
+    function _.flashLoan(address token, uint256 assets, bytes data) external => summaryFlashLoan(calledContract, assets, data) expect void;
 }
 
 /// HELPERS ///
@@ -32,12 +33,6 @@ function summarySafeTransfer(address token, address to, uint256 amount) {
     transferBalanceChange[token][to] = transferBalanceChange[token][to] + amount;
 }
 
-function summaryFlashLoan(address blue, uint256 assets, bytes data) {
-    env callbackEnv;
-    require callbackEnv.msg.sender == blue, "Blue calls back";
-    onMorphoFlashLoan(callbackEnv, assets, data);
-}
-
 function summarySupply(address blue, uint256 assets, bytes data) returns (uint256, uint256) {
     if (data.length > 0) {
         env callbackEnv;
@@ -53,6 +48,12 @@ function summaryWithdraw(uint256 assets) returns uint256 {
     withdrawnAssets = withdrawnAssets + assets;
     uint256 shares;
     return shares;
+}
+
+function summaryFlashLoan(address blue, uint256 assets, bytes data) {
+    env callbackEnv;
+    require callbackEnv.msg.sender == blue, "Blue calls back";
+    onMorphoFlashLoan(callbackEnv, assets, data);
 }
 
 /// RULES ///
