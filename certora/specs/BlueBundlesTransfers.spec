@@ -135,12 +135,13 @@ rule supplyCollateralAndBorrowDoesntLoseTokens(env e, BlueBundlesV1.MarketParams
     require wrappedAssets == 0 && borrowedAssets == 0 && suppliedCollateral == 0 && penaltyAssets == 0, "only count operations of the interaction";
     blueBundlesV1SupplyCollateralAndBorrow(e, marketParams, collateralAssets, borrowAssets, maxLtv, collateralPermit, signedAuthorization, reallocations, referralFeePct, referralFeeRecipient, deadline);
 
-    // The native value sent is spent in the collateral token, which it is wrapped into.
+    // Conservatively count both the native transfer and balance change from transfers, even if at most one is non-zero.
     mathint sent = e.msg.value - transferBalanceChange[marketParams.collateralToken][e.msg.sender];
     mathint received = transferBalanceChange[marketParams.loanToken][e.msg.sender];
     mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
 
-    assert wrappedAssets == e.msg.value;
+    // Also check that every native token sent is wrapped.
+    assert e.msg.value == wrappedAssets;
     assert borrowedAssets == received + penaltyAssets + fees;
     assert sent == suppliedCollateral;
 }
@@ -155,11 +156,12 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
     require wrappedAssets == 0 && unwrappedAssets == 0 && repaidAssets == 0, "only count operations of the interaction";
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, repayAssets, repayShares, maxRepayAssets, collateralAssets, maxLtv, loanTokenPermit, signedAuthorization, referralFeePct, referralFeeRecipient, deadline);
 
-    // The native value sent is spent in the loan token, which it is wrapped into.
+    // Conservatively count both the native transfer and balance change from transfers, even if at most one is non-zero.
     mathint spent = e.msg.value - transferBalanceChange[marketParams.loanToken][e.msg.sender];
     mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
 
-    assert wrappedAssets == e.msg.value;
+    // Also check that every native token sent is wrapped.
+    assert e.msg.value == wrappedAssets;
     assert spent == repaidAssets + unwrappedAssets + fees;
 }
 
@@ -173,11 +175,12 @@ rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint
     require wrappedAssets == 0 && suppliedAssets == 0, "only count operations of the interaction";
     blueBundlesV1Supply(e, marketParams, assets, loanTokenPermit, referralFeePct, referralFeeRecipient, deadline);
 
-    // The native value sent is spent in the loan token, which it is wrapped into.
+    // Conservatively count both the native transfer and balance change from transfers, even if at most one is non-zero.
     mathint spent = e.msg.value - transferBalanceChange[marketParams.loanToken][e.msg.sender];
     mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
 
-    assert wrappedAssets == e.msg.value;
+    // Also check that every native token sent is wrapped.
+    assert e.msg.value == wrappedAssets;
     assert spent == suppliedAssets + fees;
 }
 
