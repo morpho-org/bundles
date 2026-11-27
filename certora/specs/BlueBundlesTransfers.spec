@@ -150,8 +150,10 @@ rule repayAndWithdrawCollateralDoesntLoseTokens(env e, BlueBundlesV1.MarketParam
     require repaidAssets == 0, "only count operations of the interaction";
     blueBundlesV1RepayAndWithdrawCollateral(e, marketParams, repayAssets, repayShares, maxRepayAssets, collateralAssets, maxLtv, loanTokenPermit, signedAuthorization, referralFeePct, referralFeeRecipient, deadline);
 
+    mathint erc20TokensSpent = -transferBalanceChange[marketParams.loanToken][e.msg.sender];
+
     // Conservatively count both the native transfer and balance change from transfers, even if at most one is non-zero.
-    mathint spent = e.msg.value - transferBalanceChange[marketParams.loanToken][e.msg.sender];
+    mathint spent = e.msg.value + erc20TokensSpent;
     mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
     mathint refunded = nativeTransfers[e.msg.sender];
 
@@ -168,8 +170,10 @@ rule supplyDoesntLoseTokens(env e, BlueBundlesV1.MarketParams marketParams, uint
     require suppliedAssets == 0, "only count operations of the interaction";
     blueBundlesV1Supply(e, marketParams, assets, loanTokenPermit, referralFeePct, referralFeeRecipient, deadline);
 
+    mathint erc20TokensSpent = -transferBalanceChange[marketParams.loanToken][e.msg.sender];
+
     // Conservatively count both the native transfer and balance change from transfers, even if at most one is non-zero.
-    mathint spent = e.msg.value - transferBalanceChange[marketParams.loanToken][e.msg.sender];
+    mathint spent = e.msg.value + erc20TokensSpent;
     mathint fees = transferBalanceChange[marketParams.loanToken][referralFeeRecipient];
 
     assert spent == suppliedAssets + fees;
