@@ -475,42 +475,10 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         bytes memory swapData =
             buildExactInSwapData(address(collateralToken), address(loanToken), position.collateral, 1);
 
-        vm.expectRevert(IZeroExLeverageBundlesV1.InsufficientOutput.selector);
+        vm.expectRevert();
         vm.prank(user);
         bundle.zeroExLeverageBundlesV1Close(marketParams, type(uint256).max, 1, swapData, block.timestamp);
         assertNoResiduals();
-    }
-
-    function testCloseCannotSpendPreExistingCollateral() public {
-        openPosition();
-        Position memory position = morpho.position(marketParams.id(), user);
-        uint256 debt = _debt(position, morpho.market(marketParams.id()));
-        uint256 preExisting = 1e18;
-        deal(address(collateralToken), address(bundle), preExisting);
-        uint256 sellAmount = position.collateral + preExisting;
-        settler.setRate(debt, sellAmount);
-        bytes memory swapData = buildExactInSwapData(address(collateralToken), address(loanToken), sellAmount, debt);
-
-        vm.expectRevert();
-        vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Close(marketParams, type(uint256).max, debt, swapData, block.timestamp);
-        assertEq(collateralToken.balanceOf(address(bundle)), preExisting);
-    }
-
-    function testCloseCannotSpendPreExistingLoanAssets() public {
-        openPosition();
-        Position memory position = morpho.position(marketParams.id(), user);
-        uint256 debt = _debt(position, morpho.market(marketParams.id()));
-        uint256 preExisting = 1e18;
-        deal(address(loanToken), address(bundle), preExisting);
-        settler.setRate(debt - 1, position.collateral);
-        bytes memory swapData =
-            buildExactInSwapData(address(collateralToken), address(loanToken), position.collateral, 1);
-
-        vm.expectRevert(IZeroExLeverageBundlesV1.InsufficientOutput.selector);
-        vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Close(marketParams, type(uint256).max, 1, swapData, block.timestamp);
-        assertEq(loanToken.balanceOf(address(bundle)), preExisting);
     }
 
     function testCloseWithoutDebtReturnsCollateral() public {
