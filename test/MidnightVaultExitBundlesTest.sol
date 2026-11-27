@@ -5,7 +5,6 @@ pragma solidity 0.8.34;
 import {Test} from "../lib/forge-std/src/Test.sol";
 import {Vm} from "../lib/forge-std/src/Vm.sol";
 import {MidnightVaultExitBundlesV1} from "../src/vault-exit/MidnightVaultExitBundlesV1.sol";
-import {MidnightVaultExitBundlesHarness} from "../certora/helpers/MidnightVaultExitBundlesHarness.sol";
 import {Permit} from "../src/libraries/TokenLib.sol";
 import {IMorpho} from "../lib/metamorpho/lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {IVaultV2} from "../lib/vault-v2/src/interfaces/IVaultV2.sol";
@@ -260,8 +259,28 @@ contract MidnightVaultExitBundlesTest is Test {
     }
 
     function exit(uint256 assets, uint256 maxSeed) internal {
-        bundle.midnightVaultExitBundlesV1InKindRedemption(
-            address(vault), address(adapter), assets, maxSeed, noPermit(), block.timestamp
+        bundle.midnightVaultExitBundlesV1InKindRedemptionByLiquidity(
+            address(vault),
+            address(adapter),
+            assets,
+            type(uint256).max,
+            new bytes32[](0),
+            maxSeed,
+            noPermit(),
+            block.timestamp
+        );
+    }
+
+    function exitByLiquidity(uint256 maxAssets, uint256 maxMarkets) internal returns (uint256) {
+        return exitByLiquidity(maxAssets, maxMarkets, new bytes32[](0));
+    }
+
+    function exitByLiquidity(uint256 maxAssets, uint256 maxMarkets, bytes32[] memory excludedMarketIds)
+        internal
+        returns (uint256)
+    {
+        return bundle.midnightVaultExitBundlesV1InKindRedemptionByLiquidity(
+            address(vault), address(adapter), maxAssets, maxMarkets, excludedMarketIds, 0, noPermit(), block.timestamp
         );
     }
 
@@ -364,31 +383,60 @@ contract MidnightVaultExitBundlesTest is Test {
         checkExit(ASSETS, ASSETS / 2);
     }
 
-    function testMarketListSkipsEmptyMarketAndUsesMultipleMarkets() public {
-        Market memory otherMarket = addMarket(ASSETS / 2);
-        Market memory emptyMarket = abi.decode(abi.encode(otherMarket), (Market));
-        emptyMarket.maturity += 1 days;
-        bundle.midnightVaultExitBundlesV1InKindRedemption(
-            address(vault), address(adapter), ASSETS, 0, noPermit(), block.timestamp
-        );
+    function testLiquiditySortedExitUsesLargestMarketFirst() public {
+        Market memory otherMarket = addMarket(2 * DEPOSIT);
 
-        assertEq(midnight.credit(IdLib.toId(emptyMarket), address(this)), 0, "market absent from the adapter book");
-        assertEq(midnight.credit(IdLib.toId(otherMarket), address(this)), 0, "later adapter market untouched");
-        assertEq(midnight.credit(IdLib.toId(market), address(this)), ASSETS, "first adapter market");
+        uint256 exited = exitByLiquidity(ASSETS, 1);
+
+        assertEq(exited, ASSETS, "exited assets");
+        assertEq(midnight.credit(IdLib.toId(otherMarket), address(this)), ASSETS, "largest market");
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), 0, "smaller market");
     }
 
-    function testProRataUsesAllMarkets() public {
+    function testLiquiditySortedExitCapsAtSelectedMarkets() public {
         Market memory otherMarket = addMarket(ASSETS / 2);
-        uint256 totalCredit = DEPOSIT + ASSETS / 2;
-        uint256 firstMarketAssets = ASSETS.mulDivDown(DEPOSIT, totalCredit);
-        uint256 otherMarketAssets = ASSETS - firstMarketAssets;
+        deal(address(usdc), address(this), 2 * DEPOSIT * RATE / 1e18);
 
-        bundle.midnightVaultExitBundlesV1InKindRedemptionProRata(
-            address(vault), address(adapter), ASSETS, 0, noPermit(), block.timestamp
-        );
+        uint256 exited = exitByLiquidity(type(uint256).max, 1);
 
-        assertEq(midnight.credit(IdLib.toId(market), address(this)), firstMarketAssets, "first market credit");
-        assertEq(midnight.credit(IdLib.toId(otherMarket), address(this)), otherMarketAssets, "other market credit");
+        assertEq(exited, DEPOSIT, "selected market capacity");
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), DEPOSIT, "largest market drained");
+        assertEq(midnight.credit(IdLib.toId(otherMarket), address(this)), 0, "unselected market");
+    }
+
+    function testLiquiditySortedExitResortsOnEveryCall() public {
+        Market memory otherMarket = addMarket(2 * DEPOSIT);
+        deal(address(usdc), address(this), 2 * DEPOSIT * RATE / 1e18);
+
+        assertEq(exitByLiquidity(16_000_000e6, 1), 16_000_000e6, "first exit");
+        assertEq(exitByLiquidity(ASSETS, 1), ASSETS, "second exit");
+
+        assertEq(midnight.credit(IdLib.toId(otherMarket), address(this)), 16_000_000e6, "first largest market");
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), ASSETS, "new largest market");
+    }
+
+    function testLiquiditySortedExitSkipsExcludedMarkets() public {
+        Market memory otherMarket = addMarket(2 * DEPOSIT);
+        bytes32[] memory excludedMarketIds = new bytes32[](1);
+        excludedMarketIds[0] = IdLib.toId(otherMarket);
+
+        assertEq(exitByLiquidity(ASSETS, 1, excludedMarketIds), ASSETS, "exit");
+
+        assertEq(midnight.credit(IdLib.toId(otherMarket), address(this)), 0, "excluded largest market");
+        assertEq(midnight.credit(IdLib.toId(market), address(this)), ASSETS, "largest allowed market");
+    }
+
+    function testLiquiditySortedExitRejectsUnsortedExclusions() public {
+        bytes32[] memory excludedMarketIds = new bytes32[](2);
+        excludedMarketIds[0] = bytes32(uint256(2));
+        excludedMarketIds[1] = bytes32(uint256(1));
+        vm.expectRevert(MidnightVaultExitBundlesV1.ExclusionsNotSorted.selector);
+        exitByLiquidity(ASSETS, 1, excludedMarketIds);
+    }
+
+    function testLiquiditySortedExitRejectsZeroMaxMarkets() public {
+        vm.expectRevert(MidnightVaultExitBundlesV1.ZeroMaxMarkets.selector);
+        exitByLiquidity(ASSETS, 0);
     }
 
     function testRedeemerDebtBelowExitIsRepaidBeforeCredit() public {
@@ -405,11 +453,6 @@ contract MidnightVaultExitBundlesTest is Test {
         assertEq(midnight.credit(IdLib.toId(market), address(this)), 0, "no excess credit");
     }
 
-    function testInsufficientMarketCredit() public {
-        vm.expectRevert(MidnightVaultExitBundlesV1.InsufficientMarketCredit.selector);
-        exit(DEPOSIT + 1, 0);
-    }
-
     function testSharesPermit() public {
         (address user, uint256 privateKey) = makeAddrAndKey("permit user");
         uint256 shares = vault.balanceOf(address(this));
@@ -423,8 +466,15 @@ contract MidnightVaultExitBundlesTest is Test {
 
         Permit memory permit = signSharesPermit(privateKey, user, shares);
         vm.prank(user);
-        bundle.midnightVaultExitBundlesV1InKindRedemption(
-            address(vault), address(adapter), ASSETS, 0, permit, block.timestamp
+        bundle.midnightVaultExitBundlesV1InKindRedemptionByLiquidity(
+            address(vault),
+            address(adapter),
+            ASSETS,
+            type(uint256).max,
+            new bytes32[](0),
+            0,
+            permit,
+            block.timestamp
         );
 
         assertEq(midnight.credit(IdLib.toId(market), user), ASSETS, "user credit");
@@ -444,8 +494,15 @@ contract MidnightVaultExitBundlesTest is Test {
         Permit memory permit = signSharesPermit(privateKey, user, 1);
         vm.prank(user);
         vm.expectRevert();
-        bundle.midnightVaultExitBundlesV1InKindRedemption(
-            address(vault), address(adapter), ASSETS, 0, permit, block.timestamp
+        bundle.midnightVaultExitBundlesV1InKindRedemptionByLiquidity(
+            address(vault),
+            address(adapter),
+            ASSETS,
+            type(uint256).max,
+            new bytes32[](0),
+            0,
+            permit,
+            block.timestamp
         );
 
         assertEq(midnight.credit(IdLib.toId(market), user), 0, "atomic exit");
@@ -499,8 +556,15 @@ contract MidnightVaultExitBundlesTest is Test {
 
     function testDeadlinePassed() public {
         vm.expectRevert(MidnightVaultExitBundlesV1.DeadlinePassed.selector);
-        bundle.midnightVaultExitBundlesV1InKindRedemption(
-            address(vault), address(adapter), ASSETS, 0, noPermit(), block.timestamp - 1
+        bundle.midnightVaultExitBundlesV1InKindRedemptionByLiquidity(
+            address(vault),
+            address(adapter),
+            ASSETS,
+            1,
+            new bytes32[](0),
+            0,
+            noPermit(),
+            block.timestamp - 1
         );
     }
 
@@ -535,8 +599,15 @@ contract MidnightVaultExitBundlesTest is Test {
 
     function testAdapterNotPartOfVault() public {
         vm.expectRevert(MidnightVaultExitBundlesV1.AdapterNotPartOfVault.selector);
-        bundle.midnightVaultExitBundlesV1InKindRedemption(
-            address(vault), address(1), ASSETS, 0, noPermit(), block.timestamp
+        bundle.midnightVaultExitBundlesV1InKindRedemptionByLiquidity(
+            address(vault),
+            address(1),
+            ASSETS,
+            1,
+            new bytes32[](0),
+            0,
+            noPermit(),
+            block.timestamp
         );
     }
 
@@ -574,8 +645,17 @@ contract MidnightVaultExitBundlesTest is Test {
         uint256 seed = chunk + chunk.mulDivUp(RATE, 1e18);
         recordExitGas(
             abi.encodeCall(
-                MidnightVaultExitBundlesV1.midnightVaultExitBundlesV1InKindRedemption,
-                (address(vault), address(adapter), ASSETS, seed, noPermit(), block.timestamp)
+                MidnightVaultExitBundlesV1.midnightVaultExitBundlesV1InKindRedemptionByLiquidity,
+                (
+                    address(vault),
+                    address(adapter),
+                    ASSETS,
+                    1,
+                    new bytes32[](0),
+                    seed,
+                    noPermit(),
+                    block.timestamp
+                )
             )
         );
     }
@@ -604,15 +684,5 @@ contract MidnightVaultExitBundlesTest is Test {
 contract MidnightVaultExitBundlesGatedTest is MidnightVaultExitBundlesTest {
     function setUp() public override {
         setUpMarket(true);
-    }
-}
-
-contract MidnightVaultExitBundlesMathTest is Test {
-    function testProRataRoundingDoesNotExceedMarketCredit() public {
-        MidnightVaultExitBundlesHarness harness = new MidnightVaultExitBundlesHarness();
-        (uint256 first, uint256 second, uint256 third) = harness.distributeThree(1, 1, 1, 2);
-        assertEq(first, 0);
-        assertEq(second, 1);
-        assertEq(third, 1);
     }
 }

@@ -9,21 +9,7 @@ contract MidnightVaultExitBundlesHarness is MidnightVaultExitBundlesV1 {
 
     function redeemFullyIdle(address vault, address adapter, uint256 exitAssets, uint256 deadline) external {
         Permit memory permit;
-        _redeem(vault, adapter, exitAssets, 0, permit, deadline, false);
-    }
-
-    function distributeThree(uint256 first, uint256 second, uint256 third, uint256 assets)
-        external
-        pure
-        returns (uint256, uint256, uint256)
-    {
-        uint256[] memory amounts = new uint256[](3);
-        amounts[0] = first;
-        amounts[1] = second;
-        amounts[2] = third;
-        uint256 total = first + second + third;
-        amounts = _distributeProRata(amounts, assets, total);
-        return (amounts[0], amounts[1], amounts[2]);
+        _redeemByLiquidity(vault, adapter, exitAssets, type(uint256).max, new bytes32[](0), 0, permit, deadline);
     }
 
     function chunk(uint256 seed, uint256 feeRate, uint256 assets) external pure returns (uint256, uint256, uint256) {

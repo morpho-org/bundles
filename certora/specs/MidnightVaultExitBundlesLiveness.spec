@@ -64,26 +64,6 @@ rule fullyIdleExitDoesNotRevert(env e, address vault, address adapter, uint256 e
     assert initiator() == 0;
 }
 
-rule proRataThreeMarketsConservesAssets(env e, uint256 first, uint256 second, uint256 third, uint256 assets) {
-    require e.msg.value == 0;
-    require first <= maxTokenSupply();
-    require second <= maxTokenSupply();
-    require third <= maxTokenSupply();
-    require assets > 0;
-    require assets <= first + second + third;
-
-    uint256 firstAmount;
-    uint256 secondAmount;
-    uint256 thirdAmount;
-    firstAmount, secondAmount, thirdAmount = distributeThree@withrevert(e, first, second, third, assets);
-
-    assert !lastReverted;
-    assert firstAmount + secondAmount + thirdAmount == assets;
-    assert firstAmount <= first;
-    assert secondAmount <= second;
-    assert thirdAmount <= third;
-}
-
 rule chunkMakesProgress(env e, uint256 seed, uint256 feeRate, uint256 assets) {
     require e.msg.value == 0;
     require seed >= 2;
