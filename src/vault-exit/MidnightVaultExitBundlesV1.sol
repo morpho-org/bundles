@@ -148,7 +148,6 @@ contract MidnightVaultExitBundlesV1 is IMorphoFlashLoanCallback, IIntermediary {
         IMorpho(MORPHO).flashLoan(asset, seed, abi.encode(vault, adapter, marketList, assetsToWithdrawFromVault));
         TokenLib.safeApprove(asset, MORPHO, 0);
         initiator = address(0);
-        proRataRedemption = false;
         return exitAssets;
     }
 
