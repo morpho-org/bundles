@@ -415,6 +415,30 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertNoResiduals();
     }
 
+    function testCloseWithInputBalanceIncreaseDuringSwap() public {
+        openPosition();
+        Position memory beforePosition = morpho.position(marketParams.id(), user);
+        uint256 debt = _debt(beforePosition, morpho.market(marketParams.id()));
+        bytes memory swapData =
+            buildSwapData(address(collateralToken), address(loanToken), beforePosition.collateral, debt);
+        uint256 donation = debt + 1e18;
+        deal(address(collateralToken), address(settler), donation);
+        settler.setReentry(
+            address(collateralToken), abi.encodeWithSignature("transfer(address,uint256)", address(bundle), donation)
+        );
+        uint256 collateralBalanceBefore = collateralToken.balanceOf(user);
+
+        vm.prank(user);
+        bundle.zeroExLeverageBundlesV1Close(marketParams, beforePosition.collateral, debt, swapData, block.timestamp);
+
+        Position memory afterPosition = morpho.position(marketParams.id(), user);
+        assertEq(afterPosition.borrowShares, 0);
+        assertEq(afterPosition.collateral, 0);
+        assertEq(collateralToken.balanceOf(user) - collateralBalanceBefore, beforePosition.collateral);
+        assertEq(collateralToken.balanceOf(address(bundle)), donation - debt);
+        assertEq(loanToken.balanceOf(address(bundle)), 0);
+    }
+
     function testCloseExactOutRequiresMinLoanOut() public {
         openPosition();
         Position memory position = morpho.position(marketParams.id(), user);

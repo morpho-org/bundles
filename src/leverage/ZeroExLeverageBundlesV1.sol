@@ -397,7 +397,7 @@ contract ZeroExLeverageBundlesV1 is
         TokenLib.safeApprove(tokenIn, ALLOWANCE_HOLDER, 0);
 
         uint256 inAfter = IERC20(tokenIn).balanceOf(address(this));
-        spent = inBefore - inAfter;
+        spent = inBefore.zeroFloorSub(inAfter);
         require(spent <= maxIn, ExcessiveInput());
 
         uint256 outAfter = IERC20(tokenOut).balanceOf(address(this));
