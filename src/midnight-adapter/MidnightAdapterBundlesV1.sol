@@ -47,7 +47,7 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
     // For the buy functions below, takerCallbackData is forwarded to the adapter and selects the funding source: abi.encode(address(0), "") for the vault's idle assets.
 
     /// @dev The vault will pay at most maxBuyerAssets.
-    /// @dev The adapter will gain exactly targetUnits.
+    /// @dev The adapter will buy exactly targetUnits.
     function midnightAdapterBundlesV1BuyWithUnitsTarget(
         address adapter,
         Market memory market,
@@ -141,7 +141,7 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
     }
 
     /// @dev Total loan assets paid by the vault is targetBuyerAssets.
-    /// @dev The adapter will gain at least minUnits.
+    /// @dev The adapter will buy at least minUnits.
     function midnightAdapterBundlesV1BuyWithAssetsTarget(
         address adapter,
         Market memory market,

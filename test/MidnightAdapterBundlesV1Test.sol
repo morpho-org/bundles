@@ -479,6 +479,9 @@ abstract contract MidnightAdapterBundlesV1Setup is TokenTest {
         assertEq(collateralToken.balanceOf(address(bundle)), 0, "bundle collateral balance");
         assertEq(loanToken.allowance(address(bundle), address(midnight)), 0, "bundle allowance midnight");
         assertEq(loanToken.allowance(address(bundle), address(adapter)), 0, "bundle allowance adapter");
+        (uint128 bundleCredit,,) = midnight.updatePositionView(market, id, address(bundle));
+        assertEq(bundleCredit, 0, "bundle credit");
+        assertEq(midnight.debt(id, address(bundle)), 0, "bundle debt");
     }
 }
 
