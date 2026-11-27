@@ -14,12 +14,9 @@ import {IMidnightAdapter} from "./interfaces/IMidnightAdapter.sol";
 import {IMidnightAdapterBundlesV1} from "./interfaces/IMidnightAdapterBundlesV1.sol";
 
 /// @dev This contract enables Midnight batch-takes for a Vault V2 through its MidnightAdapter, including the withdrawal of repaid credit at face value.
-/// @dev It is the take side of MidnightBundlesV2, with MidnightAdapter.take in place of Midnight.take and VaultV2.deallocate in place of Midnight.withdraw.
-/// @dev msg.sender must be an allocator of the adapter's parent vault. The vault is always read from the adapter, never passed by the caller.
+/// @dev msg.sender must be an allocator of the adapter's parent vault.
 /// @dev This contract must be an allocator of the vault beforehand.
 /// @dev The adapter must be a MidnightAdapter whose take returns the buyer and seller assets.
-/// @dev The adapter's and the vault's checks (caps, maxTtm, minNetBuyRate, maxNetSellRate, shortfallAllowance, forceSellable) apply to every take.
-/// @dev This contract holds no tokens and gives no approvals: the vault pays and receives through the adapter.
 /// @dev Because takes can make arbitrary calls, all entrypoints remain locked throughout the call to this contract.
 contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
     using UtilsLib for uint256;
@@ -42,7 +39,7 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
     /// EXTERNAL FUNCTIONS ///
 
     // Only touched offers are checked to point to the given market.
-    // The buy/sell functions below skip the offer if the take reverted, including when the adapter or the vault rejects it. This avoids reverting the whole call when other offers passed as argument still have liquidity.
+    // The buy/sell functions below skip the offer if the take reverted. This avoids reverting the whole call when other offers passed as argument still have liquidity.
     // The vault is always the tokens payer (for buy) and the tokens receiver (for sell and withdraw), through the adapter.
     // Offers are taken in the order they are passed. One sensible strategy is to sort them by price (increasing to buy, decreasing to sell).
     // offerFills[i].units should prevent taking more than what is takeable w.r.t. the callback / the balances / the health.
@@ -105,7 +102,6 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
         uint256 deadline
     ) external nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
-        // The same vault is used for the allocator check and for the withdrawal.
         address vault = IMidnightAdapter(adapter).parentVault();
         require(IVaultV2(vault).isAllocator(msg.sender), Unauthorized());
         // touchMarket to have the correct settlement fees.
@@ -200,7 +196,6 @@ contract MidnightAdapterBundlesV1 is IMidnightAdapterBundlesV1 {
         uint256 deadline
     ) external nonReentrant {
         require(block.timestamp <= deadline, DeadlinePassed());
-        // The same vault is used for the allocator check and for the withdrawal.
         address vault = IMidnightAdapter(adapter).parentVault();
         require(IVaultV2(vault).isAllocator(msg.sender), Unauthorized());
         // touchMarket to have the correct settlement fees.
