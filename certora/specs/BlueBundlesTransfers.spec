@@ -75,7 +75,6 @@ function summarySupply(uint256 assets, uint256 shares) returns (uint256, uint256
 
 function summaryWithdraw(uint256 assets) returns (uint256, uint256) {
     uint256 withdrawn;
-    require assets > 0 => withdrawn == assets, "withdraw exact assets";
     withdrawnAssets = withdrawnAssets + withdrawn;
     uint256 shares;
     return (withdrawn, shares);
@@ -90,7 +89,6 @@ function summaryBorrow(uint256 assets, uint256 shares) returns (uint256, uint256
 
 function summaryRepay(address blue, uint256 assets, bytes data) returns (uint256, uint256) {
     uint256 repaid;
-    require assets > 0 => repaid == assets, "repay exact assets";
     if (data.length > 0) {
         env callbackEnv;
         require callbackEnv.msg.sender == blue, "Blue calls back";
