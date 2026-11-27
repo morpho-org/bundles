@@ -68,7 +68,7 @@ contract ZeroExLeverageBundlesV1 is
     /// @dev If the swap would spend more than loanAssets + maxBorrowAssets - penaltyAssets or buy less than collateralToBuy, the call reverts.
     /// @dev The surplus of loan assets repays msg.sender's debt and the rest is sent to msg.sender; the collateral bought above collateralToBuy is supplied for msg.sender.
     /// @dev With maxBorrowAssets > 0, the msg.sender must be healthy on Blue with maxBorrowAssets borrowed and collateralAssets + collateralToBuy supplied, or else Blue reverts: the health check is performed before the surplus repays debt.
-    /// @dev The msg.sender must have authorized this contract on Blue, and approved it for collateralAssets and loanAssets.
+    /// @dev The msg.sender must have approved this contract for collateralAssets and loanAssets, and authorized it on Blue when maxBorrowAssets > 0.
     /// @dev maxLtv caps msg.sender's resulting LTV; type(uint256).max disables it.
     function zeroExLeverageBundlesV1Lever(
         MarketParams memory marketParams,
@@ -235,7 +235,7 @@ contract ZeroExLeverageBundlesV1 is
     /// INTERNAL ///
 
     /// @dev maxSwapIn is loanAssets + maxBorrowAssets - penaltyAssets.
-    /// @dev The flash-loaned assets, if any, stay in this contract to repay the flash loan.
+    /// @dev The flash-loaned amount, if any, is repaid by leaving unspent borrowed assets in this contract.
     function executeLever(bytes calldata leverData) internal {
         (
             MarketParams memory marketParams,
