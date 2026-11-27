@@ -3,7 +3,7 @@
 pragma solidity ^0.8.0;
 
 import {LeverageTest} from "./helpers/LeverageTest.sol";
-import {Id, MarketParams, Market, Position} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {MarketParams, Market, Position} from "../lib/morpho-blue/src/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
 import {SharesMathLib} from "../lib/morpho-blue/src/libraries/SharesMathLib.sol";
 import {IAllowanceHolder} from "./helpers/IAllowanceHolder.sol";
@@ -373,52 +373,6 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         assertEq(morpho.position(marketParams.id(), user).borrowShares, 0);
         assertApproxEqAbs(loanToken.balanceOf(user) - loanBalanceBefore, surplus - remainingDebt, 2);
         assertGt(collateralToSell, debtBefore);
-        assertNoResiduals();
-    }
-
-    function testDeleverSurplusBelowOneBorrowShareIsSentToUser() public {
-        (uint256 shares, uint256 repaid) = _testDeleverSurplusWithExpensiveBorrowShares(1e12);
-        assertEq(shares, 0);
-        assertEq(repaid, 0);
-    }
-
-    function testDeleverSurplusDustAboveRepaidSharesIsSentToUser() public {
-        uint256 surplus = 3e12;
-        (uint256 shares, uint256 repaid) = _testDeleverSurplusWithExpensiveBorrowShares(surplus);
-        assertEq(shares, 1);
-        assertLt(repaid, surplus);
-    }
-
-    /// @dev Delevers on a market where a borrow share is worth about 2e12 assets, so that the surplus doesn't convert to a whole number of shares.
-    function _testDeleverSurplusWithExpensiveBorrowShares(uint256 surplus)
-        internal
-        returns (uint256 surplusShares, uint256 surplusRepaid)
-    {
-        openPosition();
-        uint128 borrowShares = 4e6;
-        setBorrowShares(borrowShares);
-        Market memory market = morpho.market(marketParams.id());
-
-        uint256 minRepayAssets = 1e18;
-        uint256 collateralToSell = minRepayAssets + surplus;
-        uint256 minRepayShares = minRepayAssets.toSharesDown(market.totalBorrowAssets, market.totalBorrowShares);
-        uint256 totalBorrowAssets = market.totalBorrowAssets - minRepayAssets;
-        uint256 totalBorrowShares = market.totalBorrowShares - minRepayShares;
-        surplusShares = surplus.toSharesDown(totalBorrowAssets, totalBorrowShares);
-        surplusRepaid = surplusShares.toAssetsUp(totalBorrowAssets, totalBorrowShares);
-
-        bytes memory swapData =
-            buildExactInSwapData(address(collateralToken), address(loanToken), collateralToSell, minRepayAssets);
-        uint256 loanBalanceBefore = loanToken.balanceOf(user);
-
-        vm.prank(user);
-        bundle.zeroExLeverageBundlesV1Delever(
-            marketParams, collateralToSell, minRepayAssets, swapData, type(uint256).max, block.timestamp
-        );
-
-        assertEq(morpho.position(marketParams.id(), user).borrowShares, borrowShares - minRepayShares - surplusShares);
-        assertEq(morpho.market(marketParams.id()).totalBorrowAssets, totalBorrowAssets - surplusRepaid);
-        assertEq(loanToken.balanceOf(user) - loanBalanceBefore, surplus - surplusRepaid);
         assertNoResiduals();
     }
 
@@ -1008,26 +962,6 @@ contract ZeroExLeverageBundlesV1Test is LeverageTest {
         );
         Position memory position = morpho.position(marketParams.id(), user);
         debt = _debt(position, morpho.market(marketParams.id()));
-    }
-
-    /// @dev Overwrites the borrow shares of user, assumed to be the only borrower, and of the market in Blue's storage.
-    function setBorrowShares(uint128 borrowShares) internal {
-        bytes32 id = Id.unwrap(marketParams.id());
-        bytes32 marketSlot = bytes32(uint256(keccak256(abi.encode(id, uint256(3)))) + 1);
-        bytes32 positionSlot = bytes32(uint256(keccak256(abi.encode(user, keccak256(abi.encode(id, uint256(2)))))) + 1);
-        Market memory market = morpho.market(marketParams.id());
-        Position memory position = morpho.position(marketParams.id(), user);
-        assertEq(position.borrowShares, market.totalBorrowShares);
-
-        vm.store(address(morpho), marketSlot, bytes32(uint256(borrowShares) << 128 | uint256(market.totalBorrowAssets)));
-        vm.store(address(morpho), positionSlot, bytes32(uint256(position.collateral) << 128 | uint256(borrowShares)));
-
-        Market memory newMarket = morpho.market(marketParams.id());
-        Position memory newPosition = morpho.position(marketParams.id(), user);
-        assertEq(newMarket.totalBorrowShares, borrowShares);
-        assertEq(newMarket.totalBorrowAssets, market.totalBorrowAssets);
-        assertEq(newPosition.borrowShares, borrowShares);
-        assertEq(newPosition.collateral, position.collateral);
     }
 
     function _debt(Position memory position, Market memory market) internal pure returns (uint256) {

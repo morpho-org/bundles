@@ -315,7 +315,7 @@ contract ZeroExLeverageBundlesV1 is
         repaySurplus(marketParams, sender, received - assets);
     }
 
-    /// @dev Repays as many of sender's borrow shares as the surplus of loan assets can pay for, and sends the rest to sender.
+    /// @dev Repays sender's debt with the surplus of loan assets, and sends what is left above the debt to sender.
     /// @dev Accrues interest when needed.
     function repaySurplus(MarketParams memory marketParams, address sender, uint256 surplus) internal {
         if (surplus > 0) {
@@ -326,12 +326,14 @@ contract ZeroExLeverageBundlesV1 is
                 IMorpho(BLUE).accrueInterest(marketParams);
                 market = IMorpho(BLUE).market(id);
             }
-            uint256 shares =
-                UtilsLib.min(surplus.toSharesDown(market.totalBorrowAssets, market.totalBorrowShares), borrowShares);
+            uint256 debt = borrowShares.toAssetsUp(market.totalBorrowAssets, market.totalBorrowShares);
 
-            uint256 repaid;
-            if (shares > 0) (repaid,) = IMorpho(BLUE).repay(marketParams, 0, shares, sender, "");
-            if (surplus > repaid) SafeTransferLib.safeTransfer(marketParams.loanToken, sender, surplus - repaid);
+            if (surplus < debt) {
+                IMorpho(BLUE).repay(marketParams, surplus, 0, sender, "");
+            } else {
+                if (borrowShares > 0) IMorpho(BLUE).repay(marketParams, 0, borrowShares, sender, "");
+                SafeTransferLib.safeTransfer(marketParams.loanToken, sender, surplus - debt);
+            }
         }
     }
 
